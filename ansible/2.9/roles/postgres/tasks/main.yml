@@ -1,0 +1,65 @@
+---
+- name: Import PostgreSQL GPG key (RedHat)
+  ansible.builtin.rpm_key:
+    state: present
+    key: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+  when: ansible_os_family == "RedHat"
+  become: yes
+
+- name: Import PostgreSQL GPG key (Debian)
+  ansible.builtin.apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+  when: ansible_os_family == "Debian"
+  become: yes
+
+- name: Add PostgreSQL repository (RHEL/Rocky)
+  ansible.builtin.yum:
+    name: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ansible_distribution_major_version }}-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
+    state: present
+    disable_gpg_check: yes
+  when: ansible_os_family == "RedHat"
+  become: yes
+
+- name: Add PostgreSQL repository (Debian/Ubuntu)
+  ansible.builtin.apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state: present
+  when: ansible_os_family == "Debian"
+  become: yes
+
+- name: Disable the built-in PostgreSQL module (RHEL/Rocky)
+  ansible.builtin.command:
+    cmd: "dnf -qy module disable postgresql"
+  when: ansible_os_family == "RedHat"
+  become: yes
+
+- name: Install PostgreSQL (RHEL/Rocky)
+  ansible.builtin.package:
+    name: "postgresql{{ postgres_version_map[db_version] }}-server"
+    state: present
+  when: ansible_os_family == "RedHat"
+  notify: Start PostgreSQL service
+  become: yes
+
+- name: Install PostgreSQL (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "postgresql-{{ postgres_version_map[db_version] }}"
+    state: present
+  when: ansible_os_family == "Debian"
+  notify: Start PostgreSQL service
+  become: yes
+
+- name: Check if data directory is initialized (RHEL/Rocky)
+  ansible.builtin.stat:
+    path: "/var/lib/pgsql/{{ postgres_version_map[db_version] }}/data/postgresql.conf"
+  register: postgres_data
+  when: ansible_os_family == "RedHat"
+  become: yes
+
+- name: Initialize the database (RHEL/Rocky)
+  ansible.builtin.command:
+    cmd: "/usr/pgsql-{{ postgres_version_map[db_version] }}/bin/postgresql-{{ postgres_version_map[db_version] }}-setup initdb"
+  when: ansible_os_family == "RedHat" and not postgres_data.stat.exists
+  notify: Start PostgreSQL service
+  become: yes

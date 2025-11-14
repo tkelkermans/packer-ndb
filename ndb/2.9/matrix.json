@@ -1,0 +1,92 @@
+[
+    {
+        "ndb_version": "2.9",
+        "os_type": "Rocky Linux",
+        "os_version": "9.6",
+        "db_type": "pgsql",
+        "db_version": "17",
+        "patroni_version": "4.0.5/ 3.2.2",
+        "etcd_version": "3.5.12"
+    },
+    {
+        "ndb_version": "2.9",
+        "os_type": "Rocky Linux",
+        "os_version": "9.6",
+        "db_type": "pgsql",
+        "db_version": "16",
+        "patroni_version": "4.0.5/ 3.2.2",
+        "etcd_version": "3.5.12"
+    },
+    {
+        "ndb_version": "2.9",
+        "os_type": "Rocky Linux",
+        "os_version": "9.6",
+        "db_type": "pgsql",
+        "db_version": "15",
+        "patroni_version": "3.2.2",
+        "etcd_version": "3.5.12"
+    },
+    {
+        "ndb_version": "2.9",
+        "os_type": "Rocky Linux",
+        "os_version": "9.6",
+        "db_type": "pgsql",
+        "db_version": "14",
+        "patroni_version": "3.2.2",
+        "etcd_version": "3.5.12"
+    },
+    {
+        "ndb_version": "2.9",
+        "os_type": "RHEL",
+        "os_version": "9.6",
+        "db_type": "pgsql",
+        "db_version": "17",
+        "patroni_version": "*4.0.5/ 3.3.2",
+        "etcd_version": "3.5.12"
+    },
+    {
+        "ndb_version": "2.9",
+        "os_type": "RHEL",
+        "os_version": "9.6",
+        "db_type": "pgsql",
+        "db_version": "16",
+        "patroni_version": "4.0.5/ 3.3.2",
+        "etcd_version": "3.5.12"
+    },
+    {
+        "ndb_version": "2.9",
+        "os_type": "RHEL",
+        "os_version": "9.6",
+        "db_type": "pgsql",
+        "db_version": "15",
+        "patroni_version": "3.2.2",
+        "etcd_version": "3.5.12"
+    },
+    {
+        "ndb_version": "2.9",
+        "os_type": "RHEL",
+        "os_version": "9.6",
+        "db_type": "pgsql",
+        "db_version": "14",
+        "patroni_version": "3.2.2",
+        "etcd_version": "3.5.12"
+    },
+    {
+        "ndb_version": "2.9",
+        "os_type": "Ubuntu Linux",
+        "os_version": "22.04",
+        "db_type": "pgsql",
+        "db_version": "16",
+        "patroni_version": "3.2.2",
+        "etcd_version": "3.5.12"
+    },
+    {
+        "ndb_version": "2.9",
+        "os_type": "Ubuntu Linux",
+        "os_version": "22.04",
+        "db_type": "pgsql",
+        "db_version": "15",
+        "patroni_version": "3.2.2",
+        "etcd_version": "3.5.12"
+    }
+]

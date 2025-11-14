@@ -1,0 +1,5 @@
+- name: Configure Packer VM
+  hosts: all
+  roles:
+    - common
+    - postgres

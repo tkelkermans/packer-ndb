@@ -1,0 +1,63 @@
+---
+- name: Enable CRB repository (Rocky Linux)
+  community.general.dnf_config_manager:
+    name: crb
+    state: enabled
+  when: ansible_distribution == 'Rocky'
+  become: yes
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+  become: yes
+
+- name: Install common packages
+  ansible.builtin.package:
+    name: "{{ common_packages }}"
+    state: present
+  become: yes
+
+- name: Install Red Hat specific packages
+  ansible.builtin.package:
+    name: "{{ redhat_packages }}"
+    state: present
+  when: ansible_os_family == "RedHat"
+  become: yes
+
+- name: Install Debian specific packages
+  ansible.builtin.package:
+    name: "{{ debian_packages }}"
+    state: present
+  when: ansible_os_family == "Debian"
+  become: yes
+
+- name: Ensure cron service is running
+  ansible.builtin.service:
+    name: "{{ 'crond' if ansible_os_family == 'RedHat' else 'cron' }}"
+    state: started
+    enabled: true
+  become: yes
+
+- name: Ensure secure_path is present in /etc/sudoers
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers
+    line: "Defaults    secure_path = /sbin:/bin:/usr/sbin:/usr/bin"
+    regexp: '^Defaults\s+secure_path\s*='
+    validate: 'visudo -cf %s'
+  become: yes
+
+- name: Disable requiretty in /etc/sudoers
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers
+    regexp: '^Defaults    requiretty'
+    state: absent
+    validate: 'visudo -cf %s'
+  become: yes
+
+- name: Ensure /tmp has correct permissions (1777 with sticky bit)
+  ansible.builtin.file:
+    path: /tmp
+    mode: '1777'
+    state: directory
+  become: yes
