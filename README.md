@@ -252,7 +252,7 @@ You can fine-tune the suite with the following options:
 
 Use `./test.sh --help` for the complete list of filters (include/exclude OS, include NDB versions, control concurrency).
 
-Before launching any build, `build.sh` validates the selected matrix file and `test.sh` validates every discovered `ndb/*/matrix.json`. The validator ensures required fields exist, `ndb_version` matches the directory name, extensions are well formed, versions no longer contain `/`, and `ha_components` blocks are structurally valid. You can run it manually with:
+Before launching any build, `build.sh` validates the selected matrix file and `test.sh` validates every discovered `ndb/*/matrix.json`. The validator ensures required fields are non-empty strings, `ndb_version` matches the directory name, extensions are well formed, versions no longer contain `/`, and `ha_components` blocks are structurally valid. You can run it manually with:
 
 ```bash
 scripts/matrix_validate.sh ndb/*/matrix.json

@@ -45,7 +45,7 @@ JSON
     "ndb_version": "wrong",
     "engine": "",
     "db_type": "mysql",
-    "os_type": "Rocky Linux",
+    "os_type": null,
     "os_version": "9.9",
     "db_version": "18/17",
     "provisioning_role": "postgresql",
@@ -62,6 +62,7 @@ JSON
     fail "invalid matrix unexpectedly passed validation"
   fi
   grep -q "ndb_version" /tmp/ndb-invalid-matrix.out || fail "invalid matrix output missed version error"
+  grep -q "os_type" /tmp/ndb-invalid-matrix.out || fail "invalid matrix output missed null required-field error"
   grep -q "db_version contains '/'" /tmp/ndb-invalid-matrix.out || fail "invalid matrix output missed db_version error"
   pass "matrix validator"
 }

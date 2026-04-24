@@ -50,8 +50,8 @@ validate_matrix_file() {
             (
               ["ndb_version", "engine", "db_type", "os_type", "os_version", "db_version", "provisioning_role"][]
               as $field
-              | select((($entry | has($field)) | not) or (($entry[$field] | type == "string") and (($entry[$field] | trim_string) == "")))
-              | "\(ctx($idx; $entry)): missing or empty field '\''\($field)'\''"
+              | select((($entry | has($field)) | not) or (($entry[$field] | type) != "string") or (($entry[$field] | trim_string) == ""))
+              | "\(ctx($idx; $entry)): missing, non-string, or empty field '\''\($field)'\''"
             ),
             (
               select($expected != "" and ($entry.ndb_version // null) != $expected)
