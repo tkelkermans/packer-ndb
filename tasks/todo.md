@@ -36,7 +36,7 @@ Implementation plan approved for the next reliability pass:
 - [x] Confirm execution mode before implementation
 - [x] Execute Task 1: shell matrix validator and self-test harness
 - [x] Execute Task 2: Prism shell helper library
-- [ ] Execute Task 3: source image preflight and staging
+- [x] Execute Task 3: source image preflight and staging
 - [ ] Execute Task 4: build manifest writer
 - [ ] Execute Task 5: artifact validation helper
 - [ ] Execute Task 6: manifest status and failure integration
