@@ -39,6 +39,13 @@ function cleanup() {
 function on_exit() {
   local status=$?
   if [[ "$status" -ne 0 && "${MANIFEST_FINALIZED:-false}" != "true" && -n "${MANIFEST_FILE:-}" && -f "${MANIFEST_FILE:-}" ]]; then
+    if [[ "${VALIDATE_BUILD:-false}" == "true" ]]; then
+      local in_guest_status
+      in_guest_status=$(jq -r '.validation.in_guest // ""' "$MANIFEST_FILE" 2>/dev/null || printf '')
+      if [[ "$in_guest_status" == "running" ]]; then
+        "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.in_guest" --value "failed" >/dev/null 2>&1 || true
+      fi
+    fi
     if [[ -n "${PACKER_STARTED_EPOCH:-}" ]]; then
       local failed_at failed_epoch
       failed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -782,6 +789,9 @@ fi
 PACKER_STARTED_EPOCH=$(date +%s)
 if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".packer.started_at" --value "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  if [[ "$VALIDATE_BUILD" == "true" ]]; then
+    "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.in_guest" --value "running"
+  fi
 fi
 
 "${PACKER_CMD[@]}" \

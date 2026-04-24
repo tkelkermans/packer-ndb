@@ -91,7 +91,7 @@ Reuse a source image that is already present in Prism:
 ./build.sh --ci --source-image-name "Rocky-9-GenericCloud-LVM-9.7-20251123.2.x86_64.qcow2" --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
-Run the Rocky Linux NDB 2.10 build suite with both validation stages and manifests. This is a live Prism build suite, not a local unit test; it can create several build VMs, disposable validation VMs, saved images, and manifest files.
+Run the Rocky Linux NDB 2.10 build suite with both validation stages and manifests. This is a live Prism build suite, not a local unit test; it can create several build VMs, disposable validation VMs, saved images, and manifest files. If one parallel build fails, `test.sh` stops launching new builds, waits for already-started builds to finish, and then exits with a failure.
 
 ```bash
 ./test.sh --include-ndb 2.10 --include-os "Rocky Linux" --validate --validate-artifact --manifest
@@ -260,7 +260,7 @@ Useful fields:
 - `source_image`: whether the source came from a remote URI, local path, staged image, or existing Prism image.
 - `packer.started_at`, `packer.finished_at`, `packer.duration_seconds`: the Packer phase only.
 - `artifact.image_name`, `artifact.image_uuid`: the saved Prism image.
-- `validation.in_guest`: in-guest validation status.
+- `validation.in_guest`: in-guest validation status, such as `not-requested`, `running`, `passed`, or `failed`.
 - `validation.artifact`: final artifact validation status.
 - `cleanup.artifact_validation_vm`: whether the disposable validation VM was deleted, retained, or cleanup failed.
 

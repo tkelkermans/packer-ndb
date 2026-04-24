@@ -464,3 +464,69 @@ run_release_scaffold_tests() {
 }
 
 run_release_scaffold_tests
+
+run_test_harness_tests() {
+  local tmpdir marker
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  marker="$tmpdir/second-build-finished"
+
+  mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
+  cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
+
+  cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
+[
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.99",
+    "db_version": "1",
+    "provisioning_role": "postgresql"
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.99",
+    "db_version": "2",
+    "provisioning_role": "postgresql"
+  }
+]
+JSON
+
+  cat > "$tmpdir/build.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+db_version=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --db-version)
+      db_version=$2
+      shift
+      ;;
+  esac
+  shift
+done
+if [[ "$db_version" == "1" ]]; then
+  exit 17
+fi
+sleep 1
+touch "${NDB_SELFTEST_SECOND_BUILD_MARKER:?}"
+SH
+  chmod +x "$tmpdir/test.sh" "$tmpdir/build.sh"
+
+  if (
+    cd "$tmpdir"
+    SKIP_MATRIX_VALIDATION=true NDB_SELFTEST_SECOND_BUILD_MARKER="$marker" ./test.sh --include-ndb 9.99 --max-parallel 2 >/dev/null 2>&1
+  ); then
+    fail "test harness failure unexpectedly passed"
+  fi
+
+  [[ -e "$marker" ]] || fail "test harness did not drain active parallel build"
+  pass "test harness drains active builds"
+}
+
+run_test_harness_tests

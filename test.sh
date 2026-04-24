@@ -140,10 +140,41 @@ if [[ "${SKIP_MATRIX_VALIDATION:-false}" != "true" ]]; then
 fi
 
 declare -a ACTIVE_PIDS=()
+TEST_FAILURES=0
+
+function terminate_active_builds() {
+  local pid
+  for pid in "${ACTIVE_PIDS[@]}"; do
+    if kill -0 "$pid" >/dev/null 2>&1; then
+      kill "$pid" >/dev/null 2>&1 || true
+    fi
+  done
+  for pid in "${ACTIVE_PIDS[@]}"; do
+    wait "$pid" >/dev/null 2>&1 || true
+  done
+  ACTIVE_PIDS=()
+}
+
+function cleanup_on_exit() {
+  local status=$?
+  if [[ "$status" -ne 0 && ${#ACTIVE_PIDS[@]} -gt 0 ]]; then
+    terminate_active_builds
+  fi
+}
+trap cleanup_on_exit EXIT
+trap 'terminate_active_builds; exit 130' INT TERM
 
 function wait_for_one() {
   local pid=$1
-  wait "$pid"
+  local status=0
+  if wait "$pid"; then
+    status=0
+  else
+    status=$?
+    TEST_FAILURES=$((TEST_FAILURES + 1))
+    echo "Error: build process ${pid} failed with exit status ${status}." >&2
+  fi
+  return 0
 }
 
 function wait_for_all() {
@@ -165,7 +196,7 @@ function os_allowed() {
   if (( ${#INCLUDE_OS[@]} > 0 )) && ! contains "$os" "${INCLUDE_OS[@]}"; then
     return 1
   fi
-  if contains "$os" "${EXCLUDE_OS[@]}"; then
+  if (( ${#EXCLUDE_OS[@]} > 0 )) && contains "$os" "${EXCLUDE_OS[@]}"; then
     return 1
   fi
   if [[ "$ALLOW_RHEL" != "true" ]]; then
@@ -196,6 +227,9 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
   echo "--- Testing NDB version ${ndb_version} ---"
 
   while IFS= read -r build; do
+    if (( TEST_FAILURES > 0 )); then
+      break
+    fi
     db_type=$(echo "$build" | jq -r '.db_type // ""')
     if ! db_type_allowed "$db_type"; then
       continue
@@ -233,8 +267,17 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
     ACTIVE_PIDS+=($!)
     throttle
   done < <(jq -c '.[]' "$matrix_file")
+
+  if (( TEST_FAILURES > 0 )); then
+    break
+  fi
 done
 
 wait_for_all
+
+if (( TEST_FAILURES > 0 )); then
+  echo "--- ${TEST_FAILURES} requested test build(s) failed ---" >&2
+  exit 1
+fi
 
 echo "--- All requested tests completed successfully ---"
