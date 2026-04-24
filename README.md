@@ -201,6 +201,28 @@ To inspect the selected matrix row, resolved source-image plan, generated Ansibl
 
 Dry-run mode does not require the Prism `PKR_VAR_*` environment variables, `packer`, `curl`, or the SSH public key to be present up front. Instead, it prints a readiness summary and explicitly lists any missing live-build prerequisites.
 
+### Preflight and Source Image Staging
+
+Before starting a long build, run a live preflight check. This contacts Prism, verifies the configured cluster and subnet, and checks that the selected source image plan is ready, but it does not start Packer:
+
+```bash
+./build.sh --preflight --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+```
+
+If your selected source image is a remote URI, you can stage it into Prism first. This is useful when a remote image import may take a long time:
+
+```bash
+./build.sh --stage-source --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+```
+
+`--stage-source` is only for remote source image URIs. Local qcow2 file paths still go through Packer's local upload path.
+
+If the source image is already present in Prism, point the build at that image by name:
+
+```bash
+./build.sh --ci --source-image-name "Rocky-9-GenericCloud-LVM-9.7-20251123.2.x86_64.qcow2" --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+```
+
 ## In-Guest Validation
 
 When `--validate` is enabled, the `validate_postgres` role runs after provisioning and fails the build if the VM does not satisfy the expected PostgreSQL/NDB baseline. The current validation pass checks:

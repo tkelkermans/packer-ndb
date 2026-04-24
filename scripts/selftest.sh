@@ -163,3 +163,16 @@ SH
 }
 
 run_prism_helper_tests
+
+run_source_image_tests() {
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/scripts/source_images.sh"
+
+  [[ "$(source_image_key_for_os "Rocky Linux" "9.7")" == "rocky-linux-9.7" ]] || fail "Rocky image key"
+  [[ "$(source_image_key_for_os "Red Hat Enterprise Linux (RHEL)" "9.7")" == "rhel-9.7" ]] || fail "RHEL image key"
+  [[ "$(source_image_key_for_os "Ubuntu Linux" "24.04")" == "ubuntu-linux-24.04" ]] || fail "Ubuntu image key"
+
+  pass "source image helpers"
+}
+
+run_source_image_tests

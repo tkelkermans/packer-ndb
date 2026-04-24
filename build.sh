@@ -6,6 +6,10 @@ TEMP_FILES=()
 
 set -euo pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/source_images.sh
+source "${SCRIPT_DIR}/scripts/source_images.sh"
+
 REQUIRED_ENV_VARS=(
   "PKR_VAR_pc_username"
   "PKR_VAR_pc_password"
@@ -39,6 +43,8 @@ Usage: ./build.sh [options]
 Options:
   --ci                      Run non-interactively
   --dry-run                 Resolve inputs and show the planned build without invoking Packer
+  --preflight               Check live Prism/source-image readiness without invoking Packer
+  --stage-source            Import a remote source image into Prism before invoking Packer
   --validate                Run in-guest validation checks after provisioning and fail the build on validation errors
   --debug                   Enable PACKER_LOG and interactive Packer debug mode
   --ndb-version VERSION     NDB version to build
@@ -102,73 +108,22 @@ function validate_matrix_file() {
 }
 
 function normalize_image_key_part() {
-  printf '%s' "$1" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
+  source_image_normalize_key_part "$1"
 }
 
 function image_key_for_os() {
   local os_type=$1
   local os_version=$2
 
-  case "$os_type" in
-    "Red Hat Enterprise Linux (RHEL)"|"RHEL")
-      echo "rhel-${os_version}"
-      ;;
-    "Rocky Linux")
-      echo "rocky-linux-${os_version}"
-      ;;
-    "Ubuntu Linux")
-      echo "ubuntu-linux-${os_version}"
-      ;;
-    *)
-      echo "$(normalize_image_key_part "$os_type")-${os_version}"
-      ;;
-  esac
+  source_image_key_for_os "$os_type" "$os_version"
 }
 
 function resolve_image_source() {
   local image_key=$1
   local images_file=$2
-  local entry_type
 
   ensure_file_exists "$images_file"
-  entry_type=$(jq -r --arg key "$image_key" 'if has($key) then (.[$key] | type) else "missing" end' "$images_file")
-
-  case "$entry_type" in
-    string)
-      jq -r --arg key "$image_key" '.[$key]' "$images_file"
-      ;;
-    object)
-      local env_var description value
-      env_var=$(jq -r --arg key "$image_key" '.[$key].env_var // ""' "$images_file")
-      description=$(jq -r --arg key "$image_key" '.[$key].description // ""' "$images_file")
-
-      if [[ -z "$env_var" ]]; then
-        echo "Error: images.json entry '${image_key}' must define 'env_var' when using object syntax." >&2
-        exit 1
-      fi
-
-      value="${!env_var:-}"
-      if [[ -z "$value" ]]; then
-        echo "Error: Source image for ${image_key} must be provided via environment variable ${env_var}." >&2
-        if [[ -n "$description" ]]; then
-          echo "${description}" >&2
-        fi
-        exit 1
-      fi
-
-      echo "$value"
-      ;;
-    missing)
-      echo "Error: No source image definition found for key '${image_key}' in ${images_file}." >&2
-      exit 1
-      ;;
-    *)
-      echo "Error: Unsupported images.json entry type '${entry_type}' for key '${image_key}'." >&2
-      exit 1
-      ;;
-  esac
+  source_image_resolve_from_images_json "$images_file" "$image_key"
 }
 
 function image_entry_prefetch() {
@@ -405,6 +360,8 @@ function select_from_list() {
 MODE="interactive"
 DEBUG=false
 DRY_RUN=false
+PREFLIGHT_ONLY=false
+STAGE_SOURCE=false
 VALIDATE_BUILD=false
 
 declare NDB_VERSION=""
@@ -422,6 +379,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dry-run)
       DRY_RUN=true
+      ;;
+    --preflight)
+      PREFLIGHT_ONLY=true
+      ;;
+    --stage-source)
+      STAGE_SOURCE=true
       ;;
     --debug)
       export PACKER_LOG=1
@@ -479,7 +442,7 @@ if [[ "$DRY_RUN" != "true" ]]; then
 fi
 
 PUBLIC_KEY_PATH="packer/id_rsa.pub"
-if [[ "$DRY_RUN" != "true" ]]; then
+if [[ "$DRY_RUN" != "true" && "$PREFLIGHT_ONLY" != "true" ]]; then
   ensure_file_exists "$PUBLIC_KEY_PATH"
 fi
 
@@ -588,7 +551,7 @@ else
   PREFETCH_SOURCE_IMAGE=$(image_entry_prefetch "$IMAGE_KEY" "$IMAGES_FILE")
   IMAGE_ENTRY_TYPE=$(image_entry_type "$IMAGE_KEY" "$IMAGES_FILE")
 
-  if [[ "$DRY_RUN" == "true" && "$IMAGE_ENTRY_TYPE" == "object" ]]; then
+  if [[ ( "$DRY_RUN" == "true" || "$PREFLIGHT_ONLY" == "true" ) && "$IMAGE_ENTRY_TYPE" == "object" ]]; then
     SOURCE_IMAGE_REQUIRED_ENV_VAR=$(image_entry_field "$IMAGE_KEY" "$IMAGES_FILE" "env_var")
     SOURCE_IMAGE_DESCRIPTION=$(image_entry_field "$IMAGE_KEY" "$IMAGES_FILE" "description")
     SOURCE_IMAGE_URI="${!SOURCE_IMAGE_REQUIRED_ENV_VAR:-}"
@@ -609,7 +572,7 @@ if [[ "$OS_TYPE" == "RHEL" || "$OS_TYPE" == "Red Hat Enterprise Linux (RHEL)" ]]
   PREFETCH_SOURCE_IMAGE=true
 fi
 
-if [[ "$DRY_RUN" == "true" ]]; then
+if [[ "$DRY_RUN" == "true" || "$PREFLIGHT_ONLY" == "true" ]]; then
   if [[ -n "$SOURCE_IMAGE_NAME_OVERRIDE" ]]; then
     PACKER_SOURCE_IMAGE_NAME="$SOURCE_IMAGE_NAME_OVERRIDE"
     PACKER_SOURCE_IMAGE_URI="<not used>"
@@ -648,13 +611,18 @@ else
     PACKER_SOURCE_IMAGE_PATH=""
   else
     PACKER_SOURCE_IMAGE_NAME=""
-    SOURCE_IMAGE_URI=$(materialize_source_image "$SOURCE_IMAGE_URI" "$PREFETCH_SOURCE_IMAGE")
-    if [[ "$SOURCE_IMAGE_URI" =~ ^file:// ]]; then
-      PACKER_SOURCE_IMAGE_PATH="${SOURCE_IMAGE_URI#file://}"
-      PACKER_SOURCE_IMAGE_URI=""
-    else
+    if [[ "$STAGE_SOURCE" == "true" && ! "$SOURCE_IMAGE_URI" =~ ^file:// && ! -f "$SOURCE_IMAGE_URI" ]]; then
       PACKER_SOURCE_IMAGE_URI="$SOURCE_IMAGE_URI"
       PACKER_SOURCE_IMAGE_PATH=""
+    else
+      SOURCE_IMAGE_URI=$(materialize_source_image "$SOURCE_IMAGE_URI" "$PREFETCH_SOURCE_IMAGE")
+      if [[ "$SOURCE_IMAGE_URI" =~ ^file:// ]]; then
+        PACKER_SOURCE_IMAGE_PATH="${SOURCE_IMAGE_URI#file://}"
+        PACKER_SOURCE_IMAGE_URI=""
+      else
+        PACKER_SOURCE_IMAGE_URI="$SOURCE_IMAGE_URI"
+        PACKER_SOURCE_IMAGE_PATH=""
+      fi
     fi
   fi
   SOURCE_IMAGE_RUNTIME_ACTION="resolved for live build"
@@ -666,6 +634,36 @@ TIMESTAMP=$(date +%Y%m%d%H%M%S)
 IMAGE_NAME="ndb-${NDB_VERSION}-${DB_TYPE}-${DB_VERSION}-${OS_TYPE}-${OS_VERSION}-${TIMESTAMP}"
 VM_NAME_BASE=$(slugify "${NDB_VERSION}-${DB_TYPE}-${DB_VERSION}-${OS_TYPE}-${OS_VERSION}")
 VM_NAME="ndb-${VM_NAME_BASE:0:40}-${TIMESTAMP}"
+
+if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
+  if [[ "$SOURCE_IMAGE_RESOLUTION_STATUS" == "missing-env" ]]; then
+    echo "Error: source image environment variable is missing: ${SOURCE_IMAGE_REQUIRED_ENV_VAR}" >&2
+    print_dry_run_summary
+    exit 1
+  fi
+
+  source_image_preflight \
+    --source-image-name "$PACKER_SOURCE_IMAGE_NAME" \
+    --source-image-uri "$PACKER_SOURCE_IMAGE_URI" \
+    --source-image-path "$PACKER_SOURCE_IMAGE_PATH" \
+    --cluster-name "$PKR_VAR_cluster_name" \
+    --subnet-name "$PKR_VAR_subnet_name"
+  print_dry_run_summary
+  exit 0
+fi
+
+if [[ "$STAGE_SOURCE" == "true" && -z "$PACKER_SOURCE_IMAGE_NAME" && -n "$PACKER_SOURCE_IMAGE_URI" ]]; then
+  CLUSTER_UUID=$(prism_cluster_uuid_by_name "$PKR_VAR_cluster_name")
+  if [[ -z "$CLUSTER_UUID" ]]; then
+    echo "Error: could not find Prism cluster ${PKR_VAR_cluster_name}" >&2
+    exit 1
+  fi
+
+  PACKER_SOURCE_IMAGE_NAME=$(source_image_stage_remote_uri "$PACKER_SOURCE_IMAGE_URI" "$CLUSTER_UUID")
+  PACKER_SOURCE_IMAGE_URI=""
+  PACKER_SOURCE_IMAGE_PATH=""
+  SOURCE_IMAGE_RUNTIME_ACTION="staged remote source image in Prism before live build"
+fi
 
 if [[ "$DRY_RUN" == "true" ]]; then
   print_dry_run_summary
