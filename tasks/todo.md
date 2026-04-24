@@ -56,3 +56,20 @@ Implementation plan approved for the next reliability pass:
 - Task 8 restructured README into a beginner operator guide. Quality review found missing `packer init packer/` guidance and an under-warned live `test.sh` example; both were added before approval.
 - Final verification found only Packer formatting drift in `packer/database.pkr.hcl` and `packer/variables.pkr.hcl`; fixed with `packer fmt packer` and added README offline verification commands. Live Prism smoke was skipped because the current shell has no `PKR_VAR_*` credentials and `.env` is a named pipe, not a readable env file.
 - Final branch review found parallel `test.sh` failures could leave active builds running; fixed by draining already-started builds, stopping new launches after failure, and adding self-test coverage. It also found failed in-guest validation stayed `not-requested` in manifests; fixed by recording `running` before Packer and converting that to `failed` on nonzero exit.
+
+# Active Plan: PostgreSQL Extension Coverage Guard
+
+- [x] Add a failing self-test proving PostgreSQL matrix rows with empty extensions must be explicitly justified.
+- [x] Implement the matrix validator guard in shell/jq without adding a new language or dependency.
+- [x] Annotate existing intentional empty PostgreSQL extension rows in the 2.9 and 2.10 matrices.
+- [x] Update the README so new users understand extension validation and the intentional-empty marker.
+- [x] Run the focused self-test plus full offline verification.
+
+# Active Plan Review: PostgreSQL Extension Coverage Guard
+
+- Added `extensions_empty_reason` validation to `scripts/matrix_validate.sh` for buildable PostgreSQL rows whose `extensions` list is empty or omitted.
+- Added a self-test that first failed without the guard, then passed after the validator change.
+- Marked the 14 buildable NDB 2.10 PostgreSQL rows with pending extension package coverage as `extensions: []` plus `extensions_empty_reason`.
+- NDB 2.9 already had extension lists for buildable PostgreSQL rows, so no NDB 2.9 matrix annotation was needed.
+- Updated the README matrix guidance, drafting prompt, and PostgreSQL extension section to explain the marker in beginner-friendly terms.
+- Verified with shell syntax checks, self-tests, matrix validation, Packer formatting, Packer validation, Ansible syntax checks, representative 2.9 and 2.10 dry-runs, `git diff --check`, and a jq query proving no buildable empty-extension PostgreSQL rows lack a reason.

@@ -408,6 +408,22 @@ The matrix file is the support contract for one NDB version. Each buildable Post
 
 If `extensions` is omitted or empty, the PostgreSQL role does not install extension packages or create extensions.
 
+For buildable PostgreSQL rows, an empty extension list must be intentional. Add `extensions_empty_reason` so the validator can tell the difference between "we checked and chose none" and "we forgot to add extension coverage":
+
+```json
+{
+  "ndb_version": "2.10",
+  "engine": "PostgreSQL Community Edition",
+  "db_type": "pgsql",
+  "os_type": "Rocky Linux",
+  "os_version": "9.7",
+  "db_version": "18",
+  "provisioning_role": "postgresql",
+  "extensions": [],
+  "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
+}
+```
+
 Use `provisioning_role=metadata` for combinations that should be documented but are not buildable yet.
 
 ### Matrix Drafting Prompt
@@ -415,7 +431,7 @@ Use `provisioning_role=metadata` for combinations that should be documented but 
 You can use this prompt with a language model to draft a new matrix from release notes:
 
 ```text
-Please create a JSON array of all possible build combinations from the provided markdown file. Each object must include ndb_version, engine, db_type, os_type, os_version, db_version, and provisioning_role. Add patroni_version, etcd_version, and ha_components when the release notes include HA component data. Use provisioning_role=postgresql only for combinations that are actually buildable by the current PostgreSQL pipeline, and use provisioning_role=metadata for documentation-only rows.
+Please create a JSON array of all possible build combinations from the provided markdown file. Each object must include ndb_version, engine, db_type, os_type, os_version, db_version, and provisioning_role. Add patroni_version, etcd_version, and ha_components when the release notes include HA component data. Use provisioning_role=postgresql only for combinations that are actually buildable by the current PostgreSQL pipeline, and use provisioning_role=metadata for documentation-only rows. For buildable PostgreSQL rows, add the qualified PostgreSQL extensions in extensions. If a buildable PostgreSQL row intentionally has no extension coverage yet, set extensions to [] and add a clear extensions_empty_reason.
 ```
 
 Always review the generated matrix manually against the release notes before building.
@@ -435,6 +451,8 @@ The PostgreSQL role can install and enable these NDB-qualified extensions when t
 - `timescaledb`
 
 The role installs the matching PGDG packages and runs `CREATE EXTENSION IF NOT EXISTS ...` in the `postgres` database by default. Override target databases with `postgres_extensions_databases` if needed.
+
+The matrix validator fails buildable PostgreSQL rows that have no extension list unless `extensions_empty_reason` is present. This keeps extension gaps visible before a long Packer run starts.
 
 ### Current PostgreSQL Coverage
 

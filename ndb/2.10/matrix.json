@@ -22,7 +22,9 @@
         "2.2.8"
       ]
     },
-    "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",
@@ -48,7 +50,9 @@
         "2.2.8"
       ]
     },
-    "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",
@@ -74,7 +78,9 @@
         "2.2.8"
       ]
     },
-    "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",
@@ -99,7 +105,9 @@
         "2.2.8"
       ]
     },
-    "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",
@@ -124,7 +132,9 @@
         "2.2.8"
       ]
     },
-    "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",
@@ -295,7 +305,9 @@
         "2.2.8"
       ]
     },
-    "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",
@@ -321,7 +333,9 @@
         "2.2.8"
       ]
     },
-    "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",
@@ -347,7 +361,9 @@
         "2.2.8"
       ]
     },
-    "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",
@@ -372,7 +388,9 @@
         "2.2.8"
       ]
     },
-    "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",
@@ -397,7 +415,9 @@
         "2.2.8"
       ]
     },
-    "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",
@@ -569,7 +589,9 @@
       ]
     },
     "provisioning_role": "postgresql",
-    "notes": "Requires the Ubuntu 24.04 rsyslog AppArmor workaround documented in the NDB 2.10 known issues."
+    "notes": "Requires the Ubuntu 24.04 rsyslog AppArmor workaround documented in the NDB 2.10 known issues.",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",
@@ -666,7 +688,9 @@
         "2.2.7"
       ]
     },
-    "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",
@@ -691,7 +715,9 @@
         "2.2.7"
       ]
     },
-    "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",
@@ -716,7 +742,9 @@
         "2.2.7"
       ]
     },
-    "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
   },
   {
     "ndb_version": "2.10",

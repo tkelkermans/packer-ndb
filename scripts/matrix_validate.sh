@@ -74,6 +74,27 @@ validate_matrix_file() {
               | "\(ctx($idx; $entry)): '\''extensions'\'' must only contain non-empty strings"
             ),
             (
+              select(
+                ($entry.db_type // null) == "pgsql"
+                and ($entry.provisioning_role // null) == "postgresql"
+                and (
+                  (($entry | has("extensions")) | not)
+                  or ($entry.extensions == null)
+                  or (($entry.extensions | type) == "array" and ($entry.extensions | length) == 0)
+                )
+                and (($entry.extensions_empty_reason // "") | nonempty_string | not)
+              )
+              | "\(ctx($idx; $entry)): buildable PostgreSQL rows with no extensions must include non-empty '\''extensions_empty_reason'\''"
+            ),
+            (
+              select(($entry | has("extensions_empty_reason")) and (($entry.extensions_empty_reason | nonempty_string) | not))
+              | "\(ctx($idx; $entry)): '\''extensions_empty_reason'\'' must be a non-empty string when present"
+            ),
+            (
+              select(($entry.extensions | type) == "array" and ($entry.extensions | length) > 0 and ($entry | has("extensions_empty_reason")))
+              | "\(ctx($idx; $entry)): omit '\''extensions_empty_reason'\'' when '\''extensions'\'' contains values"
+            ),
+            (
               select(($entry | has("ha_components")) and ($entry.ha_components != null) and (($entry.ha_components | type) != "object"))
               | "\(ctx($idx; $entry)): '\''ha_components'\'' must be an object when present"
             ),
