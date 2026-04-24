@@ -100,9 +100,64 @@ run_matrix_validator_tests
 run_prism_helper_tests() {
   # shellcheck source=/dev/null
   source "$ROOT_DIR/scripts/prism.sh"
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
 
   [[ "$(prism_endpoint_from_host "pc.example.com")" == "https://pc.example.com:9440" ]] || fail "endpoint from host"
+  [[ "$(prism_endpoint_from_host "pc.example.com:9440")" == "https://pc.example.com:9440" ]] || fail "endpoint from host with port"
   [[ "$(prism_endpoint_from_host "https://pc.example.com:9440")" == "https://pc.example.com:9440" ]] || fail "endpoint from URL"
+
+  mkdir -p "$tmpdir/bin"
+  cat > "$tmpdir/bin/curl" <<'SH'
+#!/usr/bin/env bash
+status=${PRISM_TEST_HTTP_STATUS:-200}
+body=${PRISM_TEST_BODY:-'{"ok":true}'}
+output_file=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output_file=$2
+      shift
+      ;;
+    -w)
+      shift
+      ;;
+  esac
+  shift
+done
+
+if [[ -n "$output_file" ]]; then
+  printf '%s' "$body" > "$output_file"
+else
+  printf '%s' "$body"
+fi
+printf '%s' "$status"
+SH
+  chmod +x "$tmpdir/bin/curl"
+
+  (
+    PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    [[ "$(prism_curl GET /api/test)" == '{"ok":true}' ]] || fail "prism_curl success body"
+  )
+
+  (
+    PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    export PRISM_TEST_HTTP_STATUS=401
+    export PRISM_TEST_BODY='{"message":"unauthorized"}'
+    if prism_curl GET /api/test >"$tmpdir/http-failure.out" 2>&1; then
+      fail "prism_curl HTTP failure unexpectedly passed"
+    fi
+    grep -q "HTTP 401" "$tmpdir/http-failure.out" || fail "prism_curl failure missed HTTP status"
+    grep -q "unauthorized" "$tmpdir/http-failure.out" || fail "prism_curl failure missed response body"
+  )
 
   pass "prism helper pure functions"
 }

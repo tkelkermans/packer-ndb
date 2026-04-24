@@ -5,6 +5,8 @@ prism_endpoint_from_host() {
 
   if [[ "$host" == http://* || "$host" == https://* ]]; then
     printf '%s\n' "${host%/}"
+  elif [[ "$host" == *:* ]]; then
+    printf 'https://%s\n' "${host%/}"
   else
     printf 'https://%s:9440\n' "${host%/}"
   fi
@@ -36,21 +38,44 @@ prism_curl() {
   local path=$2
   local payload=${3:-}
   local endpoint
+  local response_file
+  local http_status
+  local curl_rc
 
   endpoint=$(prism_endpoint) || return 1
+  response_file=$(mktemp -t ndb-prism-response.XXXXXX)
 
   if [[ -n "$payload" ]]; then
-    curl -sS -k -u "${PKR_VAR_pc_username}:${PKR_VAR_pc_password}" \
+    http_status=$(curl -sS -k -u "${PKR_VAR_pc_username}:${PKR_VAR_pc_password}" \
       -H "Content-Type: application/json" \
       -X "$method" \
       -d "$payload" \
-      "${endpoint}${path}"
+      -o "$response_file" \
+      -w "%{http_code}" \
+      "${endpoint}${path}") || curl_rc=$?
   else
-    curl -sS -k -u "${PKR_VAR_pc_username}:${PKR_VAR_pc_password}" \
+    http_status=$(curl -sS -k -u "${PKR_VAR_pc_username}:${PKR_VAR_pc_password}" \
       -H "Content-Type: application/json" \
       -X "$method" \
-      "${endpoint}${path}"
+      -o "$response_file" \
+      -w "%{http_code}" \
+      "${endpoint}${path}") || curl_rc=$?
   fi
+
+  if [[ "${curl_rc:-0}" -ne 0 ]]; then
+    rm -f "$response_file"
+    return "$curl_rc"
+  fi
+
+  if [[ ! "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+    printf 'Error: Prism API %s %s returned HTTP %s\n' "$method" "$path" "$http_status" >&2
+    sed 's/^/  /' "$response_file" >&2
+    rm -f "$response_file"
+    return 1
+  fi
+
+  cat "$response_file"
+  rm -f "$response_file"
 }
 
 prism_list_resource() {
