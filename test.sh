@@ -1,24 +1,224 @@
 #!/bin/bash
 
-set -e
+set -euo pipefail
 
-for matrix_file in ndb/*/matrix.json; do
-  ndb_version=$(basename $(dirname "$matrix_file"))
-  echo "--- Testing NDB version ${ndb_version} ---"
-  
-  jq -c '.[]' "$matrix_file" | while read -r build; do
-    os_type=$(echo "$build" | jq -r '.os_type')
-    if [[ "$os_type" == "RHEL" ]]; then
-      echo "--> Skipping RHEL build due to a known issue with long URLs."
-      continue
+INCLUDE_OS=()
+EXCLUDE_OS=()
+INCLUDE_NDB=()
+MAX_PARALLEL=1
+ALLOW_RHEL=false
+INCLUDE_DB_TYPES=("pgsql")
+FILTER_DB_TYPES=true
+VALIDATE_BUILDS=false
+
+function usage() {
+  cat <<EOF
+Usage: $0 [options]
+
+Options:
+  --include-os LIST     Comma-separated list of OS types to include (default: all)
+  --exclude-os LIST     Comma-separated list of OS types to exclude
+  --include-ndb LIST    Comma-separated list of NDB versions to include (default: all)
+  --include-db-type LIST  Comma-separated list of db_type values (default: pgsql)
+  --all-db-types        Disable db_type filtering
+  --max-parallel N      Number of concurrent builds to run (default: 1)
+  --allow-rhel          Include RHEL builds (skipped by default)
+  --validate            Run in-guest validation after provisioning for each build
+  -h, --help            Show this help and exit
+EOF
+}
+
+function split_csv() {
+  local input=$1
+  IFS=',' read -r -a result <<< "$input"
+  printf '%s\0' "${result[@]}"
+}
+
+function contains() {
+  local needle=$1
+  shift
+  for item in "$@"; do
+    if [[ "$item" == "$needle" ]]; then
+      return 0
     fi
-    os_version=$(echo "$build" | jq -r '.os_version')
-    db_version=$(echo "$build" | jq -r '.db_version')
-    
-    echo "--> Testing build: ${os_type} ${os_version}, PostgreSQL ${db_version}"
-    
-    ./build.sh --ci --ndb-version "$ndb_version" --os "$os_type" --os-version "$os_version" --db-version "$db_version"
   done
+  return 1
+}
+
+function db_type_allowed() {
+  local db_type=$1
+  if [[ "$FILTER_DB_TYPES" == true ]]; then
+    contains "$db_type" "${INCLUDE_DB_TYPES[@]}"
+    return
+  fi
+  return 0
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --include-os)
+      while IFS= read -r -d '' value; do
+        INCLUDE_OS+=("$value")
+      done < <(split_csv "$2")
+      shift
+      ;;
+    --exclude-os)
+      while IFS= read -r -d '' value; do
+        EXCLUDE_OS+=("$value")
+      done < <(split_csv "$2")
+      shift
+      ;;
+    --include-ndb)
+      while IFS= read -r -d '' value; do
+        INCLUDE_NDB+=("$value")
+      done < <(split_csv "$2")
+      shift
+      ;;
+    --include-db-type)
+      INCLUDE_DB_TYPES=()
+      while IFS= read -r -d '' value; do
+        INCLUDE_DB_TYPES+=("$value")
+      done < <(split_csv "$2")
+      FILTER_DB_TYPES=true
+      shift
+      ;;
+    --all-db-types)
+      FILTER_DB_TYPES=false
+      INCLUDE_DB_TYPES=()
+      ;;
+    --max-parallel)
+      MAX_PARALLEL="$2"
+      shift
+      ;;
+    --allow-rhel)
+      ALLOW_RHEL=true
+      ;;
+    --validate)
+      VALIDATE_BUILDS=true
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 1
+      ;;
+  esac
+  shift
 done
 
-echo "--- All tests passed! ---"
+if ! [[ "$MAX_PARALLEL" =~ ^[0-9]+$ ]] || (( MAX_PARALLEL < 1 )); then
+  echo "Error: --max-parallel must be a positive integer." >&2
+  exit 1
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "Error: jq is required to run the tests." >&2
+  exit 1
+fi
+
+MATRIX_FILES=(ndb/*/matrix.json)
+if (( ${#MATRIX_FILES[@]} == 0 )); then
+  echo "Error: No matrix files found under ndb/." >&2
+  exit 1
+fi
+
+if [[ "${SKIP_MATRIX_VALIDATION:-false}" != "true" ]]; then
+  scripts/matrix_validate.sh "${MATRIX_FILES[@]}"
+fi
+
+declare -a ACTIVE_PIDS=()
+
+function wait_for_one() {
+  local pid=$1
+  wait "$pid"
+}
+
+function wait_for_all() {
+  for pid in "${ACTIVE_PIDS[@]}"; do
+    wait_for_one "$pid"
+  done
+  ACTIVE_PIDS=()
+}
+
+function throttle() {
+  if (( ${#ACTIVE_PIDS[@]} >= MAX_PARALLEL )); then
+    wait_for_one "${ACTIVE_PIDS[0]}"
+    ACTIVE_PIDS=("${ACTIVE_PIDS[@]:1}")
+  fi
+}
+
+function os_allowed() {
+  local os=$1
+  if (( ${#INCLUDE_OS[@]} > 0 )) && ! contains "$os" "${INCLUDE_OS[@]}"; then
+    return 1
+  fi
+  if contains "$os" "${EXCLUDE_OS[@]}"; then
+    return 1
+  fi
+  if [[ "$ALLOW_RHEL" != "true" ]]; then
+    case "$os" in
+      RHEL|"Red Hat Enterprise Linux (RHEL)")
+        return 1
+        ;;
+    esac
+  fi
+  return 0
+}
+
+function ndb_allowed() {
+  local version=$1
+  if (( ${#INCLUDE_NDB[@]} > 0 )) && ! contains "$version" "${INCLUDE_NDB[@]}"; then
+    return 1
+  fi
+  return 0
+}
+
+for matrix_file in "${MATRIX_FILES[@]}"; do
+  ndb_version=$(basename "$(dirname "$matrix_file")")
+  if [[ -n "$ndb_version" ]] && ! ndb_allowed "$ndb_version"; then
+    echo "--- Skipping NDB version ${ndb_version} (not selected) ---"
+    continue
+  fi
+
+  echo "--- Testing NDB version ${ndb_version} ---"
+
+  while IFS= read -r build; do
+    db_type=$(echo "$build" | jq -r '.db_type // ""')
+    if ! db_type_allowed "$db_type"; then
+      continue
+    fi
+    provisioning_role=$(echo "$build" | jq -r '.provisioning_role // "postgresql"')
+    if [[ "$provisioning_role" != "postgresql" ]]; then
+      continue
+    fi
+    os_type=$(echo "$build" | jq -r '.os_type')
+    if ! os_allowed "$os_type"; then
+      echo "--> Skipping ${os_type} build per filters."
+      continue
+    fi
+
+    os_version=$(echo "$build" | jq -r '.os_version')
+    db_version=$(echo "$build" | jq -r '.db_version')
+
+    echo "--> Testing build: ${db_type} on ${os_type} ${os_version} (DB ${db_version})"
+
+    (
+      set -euo pipefail
+      BUILD_ARGS=(./build.sh --ci --ndb-version "$ndb_version" --db-type "$db_type" --os "$os_type" --os-version "$os_version" --db-version "$db_version")
+      if [[ "$VALIDATE_BUILDS" == "true" ]]; then
+        BUILD_ARGS+=(--validate)
+      fi
+      "${BUILD_ARGS[@]}"
+    ) &
+
+    ACTIVE_PIDS+=($!)
+    throttle
+  done < <(jq -c '.[]' "$matrix_file")
+done
+
+wait_for_all
+
+echo "--- All requested tests completed successfully ---"
