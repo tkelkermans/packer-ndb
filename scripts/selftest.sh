@@ -167,10 +167,41 @@ run_prism_helper_tests
 run_source_image_tests() {
   # shellcheck source=/dev/null
   source "$ROOT_DIR/scripts/source_images.sh"
+  local tmpdir images_file
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  images_file="$tmpdir/images.json"
 
   [[ "$(source_image_key_for_os "Rocky Linux" "9.7")" == "rocky-linux-9.7" ]] || fail "Rocky image key"
   [[ "$(source_image_key_for_os "Red Hat Enterprise Linux (RHEL)" "9.7")" == "rhel-9.7" ]] || fail "RHEL image key"
   [[ "$(source_image_key_for_os "Ubuntu Linux" "24.04")" == "ubuntu-linux-24.04" ]] || fail "Ubuntu image key"
+  [[ "$(source_image_key_for_os "Oracle Linux" "9.4")" == "oracle-linux-9.4" ]] || fail "fallback image key"
+
+  cat > "$images_file" <<'JSON'
+{
+  "rocky-linux-9.7": "https://example.com/rocky.qcow2",
+  "rhel-9.7": {
+    "env_var": "NDB_TEST_RHEL_IMAGE_URI",
+    "description": "test rhel image"
+  }
+}
+JSON
+
+  [[ "$(source_image_resolve_from_images_json "$images_file" "rocky-linux-9.7")" == "https://example.com/rocky.qcow2" ]] || fail "string image resolution"
+
+  export NDB_TEST_RHEL_IMAGE_URI="file:///tmp/rhel.qcow2"
+  [[ "$(source_image_resolve_from_images_json "$images_file" "rhel-9.7")" == "file:///tmp/rhel.qcow2" ]] || fail "env image resolution"
+  unset NDB_TEST_RHEL_IMAGE_URI
+
+  if source_image_resolve_from_images_json "$images_file" "rhel-9.7" >"$tmpdir/missing-env.out" 2>&1; then
+    fail "missing image env unexpectedly passed"
+  fi
+  grep -q "NDB_TEST_RHEL_IMAGE_URI" "$tmpdir/missing-env.out" || fail "missing env output missed env var"
+
+  source_image_value_is_real "https://example.com/rocky.qcow2" || fail "real URI not detected"
+  ! source_image_value_is_real "<not used>" || fail "placeholder detected as real"
+  ! source_image_value_is_real "<temporary local file created at runtime>" || fail "temporary placeholder detected as real"
+  ! source_image_value_is_real "<unresolved until FOO is set>" || fail "unresolved placeholder detected as real"
 
   pass "source image helpers"
 }

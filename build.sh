@@ -438,7 +438,11 @@ require_commands "${COMMON_REQUIRED_COMMANDS[@]}"
 
 if [[ "$DRY_RUN" != "true" ]]; then
   require_env_vars
-  require_commands "${LIVE_REQUIRED_COMMANDS[@]}"
+  if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
+    require_commands "curl"
+  else
+    require_commands "${LIVE_REQUIRED_COMMANDS[@]}"
+  fi
 fi
 
 PUBLIC_KEY_PATH="packer/id_rsa.pub"
