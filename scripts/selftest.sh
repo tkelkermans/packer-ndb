@@ -96,3 +96,15 @@ assert_invalid_matrix() {
 }
 
 run_matrix_validator_tests
+
+run_prism_helper_tests() {
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/scripts/prism.sh"
+
+  [[ "$(prism_endpoint_from_host "pc.example.com")" == "https://pc.example.com:9440" ]] || fail "endpoint from host"
+  [[ "$(prism_endpoint_from_host "https://pc.example.com:9440")" == "https://pc.example.com:9440" ]] || fail "endpoint from URL"
+
+  pass "prism helper pure functions"
+}
+
+run_prism_helper_tests

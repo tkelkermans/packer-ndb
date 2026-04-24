@@ -222,6 +222,10 @@ To run the build in debug mode, use the `--debug` flag. This will produce a deta
 
 The script will find the matching configuration in the `matrix.json` and proceed with the build non-interactively.
 
+### Troubleshooting Prism Tasks
+
+Long-running Prism operations, such as image imports and VM power or delete actions, print the Prism task UUID they are waiting on. If a build appears stuck or fails during one of those steps, copy that UUID and search for it in Prism Central's task view. The task details usually show the current progress and any Prism-side error message.
+
 ## Image Naming Convention
 
 `ndb-<ndb_version>-<db_type>-<db_version>-<os_type>-<os_version>-<timestamp>`
