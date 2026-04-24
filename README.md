@@ -36,6 +36,7 @@ Before you begin, ensure you have the following installed:
 ├── README.md
 ├── scripts
 │   ├── matrix_validate.sh
+│   ├── release_scaffold.sh
 │   └── selftest.sh
 ├── source
 └── test.sh
@@ -326,6 +327,29 @@ scripts/matrix_validate.sh ndb/*/matrix.json
 ```
 
 Matrix validation uses shell and `jq`; Python is not required to operate this tool.
+
+## Release Onboarding
+
+When Nutanix publishes a new NDB release, start by scaffolding it from the previous supported release:
+
+```bash
+scripts/release_scaffold.sh 2.11 --from 2.10
+```
+
+The scaffold copies `ndb/2.10` to `ndb/2.11`, copies `ansible/2.10` to `ansible/2.11`, rewrites `ndb_version` values in the new matrix, and creates `ndb/2.11/REVIEW.md`.
+
+This is only a starting point. Before building the new version, read the new release notes and update the copied matrix so it matches the real support list. Then run:
+
+```bash
+scripts/matrix_validate.sh ndb/2.11/matrix.json
+ANSIBLE_CONFIG=ansible/2.11/ansible.cfg ansible-playbook -i ansible/2.11/inventory/hosts ansible/2.11/playbooks/site.yml --syntax-check
+```
+
+To see what would be created without touching the repo, add `--dry-run`:
+
+```bash
+scripts/release_scaffold.sh 2.11 --from 2.10 --dry-run
+```
 
 ## PostgreSQL Extensions
 

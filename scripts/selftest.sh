@@ -452,3 +452,15 @@ SH
 }
 
 run_artifact_validate_tests
+
+run_release_scaffold_tests() {
+  local output test_version
+  test_version="99.$(date +%s)"
+  output=$("$ROOT_DIR/scripts/release_scaffold.sh" "$test_version" --from 2.10 --dry-run)
+  grep -q "ansible/${test_version}" <<<"$output" || fail "release scaffold dry-run"
+  [[ ! -e "$ROOT_DIR/ndb/$test_version" ]] || fail "release scaffold dry-run created ndb/$test_version"
+  [[ ! -e "$ROOT_DIR/ansible/$test_version" ]] || fail "release scaffold dry-run created ansible/$test_version"
+  pass "release scaffold dry-run"
+}
+
+run_release_scaffold_tests
