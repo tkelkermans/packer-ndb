@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+SOURCE_IMAGES_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/prism.sh
-source "${SCRIPT_DIR}/prism.sh"
+source "${SOURCE_IMAGES_SCRIPT_DIR}/prism.sh"
 
 source_image_normalize_key_part() {
   printf '%s' "$1" \

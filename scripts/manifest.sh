@@ -19,6 +19,16 @@ require_jq_path() {
   fi
 }
 
+require_option_value() {
+  local option=$1
+  local remaining_args=$2
+  if (( remaining_args < 2 )); then
+    echo "Error: ${option} requires a value." >&2
+    usage >&2
+    exit 1
+  fi
+}
+
 write_json_atomically() {
   local file=$1
   local tmp_file
@@ -52,38 +62,47 @@ cmd_init() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --file)
+        require_option_value "$1" "$#"
         file=$2
         shift
         ;;
       --image-name)
+        require_option_value "$1" "$#"
         image_name=$2
         shift
         ;;
       --ndb-version)
+        require_option_value "$1" "$#"
         ndb_version=$2
         shift
         ;;
       --db-type)
+        require_option_value "$1" "$#"
         db_type=$2
         shift
         ;;
       --db-version)
+        require_option_value "$1" "$#"
         db_version=$2
         shift
         ;;
       --os-type)
+        require_option_value "$1" "$#"
         os_type=$2
         shift
         ;;
       --os-version)
+        require_option_value "$1" "$#"
         os_version=$2
         shift
         ;;
       --provisioning-role)
+        require_option_value "$1" "$#"
         provisioning_role=$2
         shift
         ;;
       --matrix-row-json)
+        require_option_value "$1" "$#"
         matrix_row_json=$2
         shift
         ;;
@@ -159,7 +178,7 @@ cmd_init() {
         commit: $git_commit,
         dirty: $git_dirty
       }
-    }' > "$file"
+    }' | write_json_atomically "$file"
 }
 
 cmd_set() {
@@ -168,14 +187,17 @@ cmd_set() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --file)
+        require_option_value "$1" "$#"
         file=$2
         shift
         ;;
       --key|--path|--field)
+        require_option_value "$1" "$#"
         path=$2
         shift
         ;;
       --value)
+        require_option_value "$1" "$#"
         value=$2
         shift
         ;;
@@ -204,14 +226,17 @@ cmd_set_json() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --file)
+        require_option_value "$1" "$#"
         file=$2
         shift
         ;;
       --key|--path|--field)
+        require_option_value "$1" "$#"
         path=$2
         shift
         ;;
       --json-value|--value-json|--json)
+        require_option_value "$1" "$#"
         value_json=$2
         shift
         ;;
@@ -240,14 +265,17 @@ cmd_finalize() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --file)
+        require_option_value "$1" "$#"
         file=$2
         shift
         ;;
       --status)
+        require_option_value "$1" "$#"
         status=$2
         shift
         ;;
       --artifact-image-uuid)
+        require_option_value "$1" "$#"
         artifact_image_uuid=$2
         shift
         ;;

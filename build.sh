@@ -39,6 +39,13 @@ function cleanup() {
 function on_exit() {
   local status=$?
   if [[ "$status" -ne 0 && "${MANIFEST_FINALIZED:-false}" != "true" && -n "${MANIFEST_FILE:-}" && -f "${MANIFEST_FILE:-}" ]]; then
+    if [[ -n "${PACKER_STARTED_EPOCH:-}" ]]; then
+      local failed_at failed_epoch
+      failed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+      failed_epoch=$(date +%s)
+      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".packer.finished_at" --value "$failed_at" >/dev/null 2>&1 || true
+      "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".packer.duration_seconds" --json-value "$((failed_epoch - PACKER_STARTED_EPOCH))" >/dev/null 2>&1 || true
+    fi
     "$MANIFEST_HELPER" finalize --file "$MANIFEST_FILE" --status failed >/dev/null 2>&1 || true
   fi
   cleanup
@@ -668,10 +675,6 @@ if [[ "$WRITE_MANIFEST" == "true" && "$DRY_RUN" != "true" && "$PREFLIGHT_ONLY" !
     --os-version "$OS_VERSION" \
     --provisioning-role "$PROVISIONING_ROLE" \
     --matrix-row-json "$CONFIG"
-  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --path ".source_image.name" --value "$PACKER_SOURCE_IMAGE_NAME"
-  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --path ".source_image.uri" --value "$PACKER_SOURCE_IMAGE_URI"
-  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --path ".source_image.path" --value "$PACKER_SOURCE_IMAGE_PATH"
-  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --path ".source_image.runtime_action" --value "$SOURCE_IMAGE_RUNTIME_ACTION"
 fi
 
 if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
@@ -705,6 +708,13 @@ if [[ "$STAGE_SOURCE" == "true" && -z "$PACKER_SOURCE_IMAGE_NAME" && "$PACKER_SO
   SOURCE_IMAGE_RUNTIME_ACTION="staged remote source image in Prism before live build"
 fi
 
+if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.name" --value "$PACKER_SOURCE_IMAGE_NAME"
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.uri" --value "$PACKER_SOURCE_IMAGE_URI"
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.path" --value "$PACKER_SOURCE_IMAGE_PATH"
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.runtime_action" --value "$SOURCE_IMAGE_RUNTIME_ACTION"
+fi
+
 if [[ "$DRY_RUN" == "true" ]]; then
   print_dry_run_summary
   exit 0
@@ -720,7 +730,7 @@ fi
 
 PACKER_STARTED_EPOCH=$(date +%s)
 if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
-  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --path ".packer.started_at" --value "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".packer.started_at" --value "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 fi
 
 "${PACKER_CMD[@]}" \
@@ -745,8 +755,8 @@ fi
 PACKER_FINISHED_EPOCH=$(date +%s)
 ARTIFACT_IMAGE_UUID=$(prism_image_uuid_by_name "$IMAGE_NAME" || true)
 if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
-  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --path ".packer.finished_at" --value "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-  "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --path ".packer.duration_seconds" --value-json "$((PACKER_FINISHED_EPOCH - PACKER_STARTED_EPOCH))"
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".packer.finished_at" --value "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".packer.duration_seconds" --json-value "$((PACKER_FINISHED_EPOCH - PACKER_STARTED_EPOCH))"
   "$MANIFEST_HELPER" finalize --file "$MANIFEST_FILE" --status success --artifact-image-uuid "$ARTIFACT_IMAGE_UUID"
   MANIFEST_FINALIZED=true
 fi
