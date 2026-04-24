@@ -34,7 +34,7 @@ Implementation plan approved for the next reliability pass:
 - [x] Capture approved design in `docs/superpowers/specs/2026-04-24-ndb-image-factory-reliability-design.md`
 - [x] Write detailed implementation plan in `docs/superpowers/plans/2026-04-24-ndb-image-factory-reliability-implementation.md`
 - [x] Confirm execution mode before implementation
-- [ ] Execute Task 1: shell matrix validator and self-test harness
+- [x] Execute Task 1: shell matrix validator and self-test harness
 - [ ] Execute Task 2: Prism shell helper library
 - [ ] Execute Task 3: source image preflight and staging
 - [ ] Execute Task 4: build manifest writer
