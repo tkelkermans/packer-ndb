@@ -250,3 +250,13 @@ run_manifest_tests() {
 }
 
 run_manifest_tests
+
+run_artifact_validate_tests() {
+  if "$ROOT_DIR/scripts/artifact_validate.sh" --help >/dev/null; then
+    pass "artifact validation help"
+  else
+    fail "artifact validation help"
+  fi
+}
+
+run_artifact_validate_tests

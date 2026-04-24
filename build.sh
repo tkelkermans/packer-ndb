@@ -63,6 +63,7 @@ Options:
   --preflight               Check live Prism/source-image readiness without invoking Packer
   --stage-source            Import a remote source image into Prism before invoking Packer
   --validate                Run in-guest validation checks after provisioning and fail the build on validation errors
+  --validate-artifact       Boot the saved image in a disposable VM and validate it after Packer succeeds
   --manifest                Write a build manifest under manifests/ for live builds
   --debug                   Enable PACKER_LOG and interactive Packer debug mode
   --ndb-version VERSION     NDB version to build
@@ -239,6 +240,14 @@ function print_dry_run_summary() {
       missing_items+=("command: ${cmd}")
     fi
   done
+  if [[ "$VALIDATE_ARTIFACT" == "true" ]]; then
+    for cmd in ssh ansible-playbook base64; do
+      if ! command_is_available "$cmd"; then
+        live_ready=false
+        missing_items+=("command: ${cmd}")
+      fi
+    done
+  fi
 
   for var_name in "${REQUIRED_ENV_VARS[@]}"; do
     if [[ -z "${!var_name:-}" ]]; then
@@ -265,6 +274,7 @@ function print_dry_run_summary() {
 Mode: ${MODE}
 Debug: ${DEBUG}
 Validate after provisioning: ${VALIDATE_BUILD}
+Validate saved artifact: ${VALIDATE_ARTIFACT}
 Ready for live build: $( [[ "$live_ready" == "true" ]] && echo "yes" || echo "no" )
 
 Selection:
@@ -345,6 +355,11 @@ EOF
   for cmd in "${COMMON_REQUIRED_COMMANDS[@]}" "${LIVE_REQUIRED_COMMANDS[@]}"; do
     printf '  %s=%s\n' "$cmd" "$( command_is_available "$cmd" && echo "present" || echo "missing" )"
   done
+  if [[ "$VALIDATE_ARTIFACT" == "true" ]]; then
+    for cmd in ssh ansible-playbook base64; do
+      printf '  %s=%s\n' "$cmd" "$( command_is_available "$cmd" && echo "present" || echo "missing" )"
+    done
+  fi
 
   if (( ${#missing_items[@]} > 0 )); then
     printf '\nMissing live-build prerequisites:\n'
@@ -381,6 +396,7 @@ DRY_RUN=false
 PREFLIGHT_ONLY=false
 STAGE_SOURCE=false
 VALIDATE_BUILD=false
+VALIDATE_ARTIFACT=false
 WRITE_MANIFEST=false
 MANIFEST_FILE=""
 MANIFEST_FINALIZED=false
@@ -397,6 +413,9 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --validate)
       VALIDATE_BUILD=true
+      ;;
+    --validate-artifact)
+      VALIDATE_ARTIFACT=true
       ;;
     --manifest)
       WRITE_MANIFEST=true
@@ -466,6 +485,9 @@ if [[ "$DRY_RUN" != "true" ]]; then
     require_commands "curl"
   else
     require_commands "${LIVE_REQUIRED_COMMANDS[@]}"
+    if [[ "$VALIDATE_ARTIFACT" == "true" ]]; then
+      require_commands "ssh" "ansible-playbook" "base64"
+    fi
   fi
 fi
 
@@ -754,6 +776,43 @@ fi
 
 PACKER_FINISHED_EPOCH=$(date +%s)
 ARTIFACT_IMAGE_UUID=$(prism_image_uuid_by_name "$IMAGE_NAME" || true)
+
+if [[ "$VALIDATE_ARTIFACT" == "true" ]]; then
+  ARTIFACT_RESULT_FILE=$(mktemp -t ndb-artifact-validation.XXXXXX.json)
+  TEMP_FILES+=("$ARTIFACT_RESULT_FILE")
+  ARTIFACT_VALIDATE_CMD=(
+    "$SCRIPT_DIR/scripts/artifact_validate.sh"
+    --image-name "$IMAGE_NAME"
+    --ndb-version "$NDB_VERSION"
+    --db-version "$DB_VERSION"
+    --db-type "$DB_TYPE"
+    --extensions "$POSTGRES_EXTENSIONS_JSON"
+    --result-file "$ARTIFACT_RESULT_FILE"
+  )
+  if [[ "$DEBUG" == "true" ]]; then
+    ARTIFACT_VALIDATE_CMD+=(--keep-on-failure)
+  fi
+
+  if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
+    "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact" --value "running"
+  fi
+
+  ARTIFACT_VALIDATION_STATUS=0
+  "${ARTIFACT_VALIDATE_CMD[@]}" || ARTIFACT_VALIDATION_STATUS=$?
+
+  if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" && -f "$ARTIFACT_RESULT_FILE" ]]; then
+    "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact" --value "$(jq -r '.status' "$ARTIFACT_RESULT_FILE")"
+    "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact_vm_name" --value "$(jq -r '.vm_name' "$ARTIFACT_RESULT_FILE")"
+    "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact_vm_uuid" --value "$(jq -r '.vm_uuid' "$ARTIFACT_RESULT_FILE")"
+    "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".cleanup.artifact_validation_vm" --value "$(jq -r '.cleanup_status' "$ARTIFACT_RESULT_FILE")"
+  fi
+  if [[ "$ARTIFACT_VALIDATION_STATUS" -ne 0 ]]; then
+    exit "$ARTIFACT_VALIDATION_STATUS"
+  fi
+elif [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact" --value "not-requested"
+fi
+
 if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".packer.finished_at" --value "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".packer.duration_seconds" --json-value "$((PACKER_FINISHED_EPOCH - PACKER_STARTED_EPOCH))"

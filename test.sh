@@ -10,6 +10,8 @@ ALLOW_RHEL=false
 INCLUDE_DB_TYPES=("pgsql")
 FILTER_DB_TYPES=true
 VALIDATE_BUILDS=false
+VALIDATE_ARTIFACTS=false
+WRITE_MANIFEST=false
 
 function usage() {
   cat <<EOF
@@ -24,6 +26,8 @@ Options:
   --max-parallel N      Number of concurrent builds to run (default: 1)
   --allow-rhel          Include RHEL builds (skipped by default)
   --validate            Run in-guest validation after provisioning for each build
+  --validate-artifact   Boot and validate each saved artifact after Packer succeeds
+  --manifest            Write build manifests for each live build
   -h, --help            Show this help and exit
 EOF
 }
@@ -95,6 +99,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --validate)
       VALIDATE_BUILDS=true
+      ;;
+    --validate-artifact)
+      VALIDATE_ARTIFACTS=true
+      ;;
+    --manifest)
+      WRITE_MANIFEST=true
       ;;
     -h|--help)
       usage
@@ -210,6 +220,12 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
       BUILD_ARGS=(./build.sh --ci --ndb-version "$ndb_version" --db-type "$db_type" --os "$os_type" --os-version "$os_version" --db-version "$db_version")
       if [[ "$VALIDATE_BUILDS" == "true" ]]; then
         BUILD_ARGS+=(--validate)
+      fi
+      if [[ "$VALIDATE_ARTIFACTS" == "true" ]]; then
+        BUILD_ARGS+=(--validate-artifact)
+      fi
+      if [[ "$WRITE_MANIFEST" == "true" ]]; then
+        BUILD_ARGS+=(--manifest)
       fi
       "${BUILD_ARGS[@]}"
     ) &

@@ -117,10 +117,28 @@
       - validate_postgres_server_version.stdout is regex("^" ~ validate_postgres_major_version ~ "(\\.|$)")
     fail_msg: "Expected PostgreSQL server version {{ validate_postgres_major_version }}, got {{ validate_postgres_server_version.stdout | default('') | trim }}"
 
-- name: Determine expected PostgreSQL extensions for validation
+- name: Use explicit PostgreSQL extension creation list when provided
   ansible.builtin.set_fact:
     validate_expected_postgres_extensions: "{{ postgres_extensions_to_create | default([]) | unique }}"
-  when: postgres_extensions | default([]) | length > 0
+  when:
+    - postgres_extensions_to_create | default([]) | length > 0
+
+- name: Derive expected PostgreSQL extensions from extension metadata
+  ansible.builtin.set_fact:
+    validate_expected_postgres_extensions: "{{ (validate_expected_postgres_extensions | default([])) + (version_supported | ternary([sql_extension_name], [])) }}"
+  loop: "{{ postgres_extensions | default([]) }}"
+  loop_control:
+    loop_var: extension_name
+  vars:
+    extension_metadata_family: "{{ postgres_extension_metadata.get(ansible_os_family, {}) }}"
+    extension_metadata: "{{ extension_metadata_family.get(extension_name, {}) }}"
+    unsupported_versions: "{{ extension_metadata.get('unsupported_versions', []) }}"
+    supported_versions: "{{ extension_metadata.get('supported_versions', []) }}"
+    version_supported: "{{ (supported_versions | length == 0 or validate_postgres_major_version in supported_versions) and (validate_postgres_major_version not in unsupported_versions) }}"
+    sql_extension_name: "{{ extension_metadata.get('sql_name', extension_name) }}"
+  when:
+    - validate_expected_postgres_extensions | default([]) | length == 0
+    - postgres_extensions | default([]) | length > 0
 
 - name: Check expected PostgreSQL extensions exist in target databases
   ansible.builtin.command:

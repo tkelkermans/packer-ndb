@@ -199,6 +199,12 @@ To write a JSON manifest for a live build, add `--manifest`:
 
 Manifest files are written under `manifests/` with one JSON file per image name. These files are ignored by git, so they are safe to keep locally as build records without accidentally committing environment-specific output.
 
+For a production build, run both validation stages and write a manifest:
+
+```bash
+./build.sh --ci --validate --validate-artifact --manifest --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+```
+
 ### Dry Run Mode
 
 To inspect the selected matrix row, resolved source-image plan, generated Ansible vars, and final Packer inputs without invoking Nutanix or Packer, use `--dry-run`:
@@ -240,7 +246,13 @@ When `--validate` is enabled, the `validate_postgres` role runs after provisioni
 - The NDB sudoers drop-in exists and the full sudoers configuration passes `visudo`.
 - Every PostgreSQL extension that is expected to be created for the selected platform/version exists in the target databases.
 
-This is an in-guest validation pass during provisioning. It does not yet launch a fresh VM from the finished image for a second artifact validation stage.
+This is an in-guest validation pass during provisioning.
+
+## Artifact Validation
+
+When `--validate-artifact` is enabled, `build.sh` waits for Packer to save the image, finds the saved image in Prism, and boots a fresh disposable VM from that image. It then connects over SSH with the repo key in `packer/id_rsa`, runs the `validate_postgres` role against the disposable VM, and removes the VM after validation.
+
+If artifact validation fails, the disposable VM is still removed by default. Add `--debug` to keep the validation VM on failure so you can inspect it in Prism.
 
 ### Debug Mode
 
@@ -282,6 +294,9 @@ You can fine-tune the suite with the following options:
 
 # Run the same suite with in-guest validation enabled for each build
 ./test.sh --include-os "Rocky Linux" --max-parallel 3 --validate
+
+# Run both validation stages and write manifests for each build
+./test.sh --include-os "Rocky Linux" --max-parallel 3 --validate --validate-artifact --manifest
 ```
 
 Use `./test.sh --help` for the complete list of filters (include/exclude OS, include NDB versions, control concurrency).
