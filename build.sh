@@ -611,7 +611,7 @@ else
     PACKER_SOURCE_IMAGE_PATH=""
   else
     PACKER_SOURCE_IMAGE_NAME=""
-    if [[ "$STAGE_SOURCE" == "true" && ! "$SOURCE_IMAGE_URI" =~ ^file:// && ! -f "$SOURCE_IMAGE_URI" ]]; then
+    if [[ "$STAGE_SOURCE" == "true" && "$SOURCE_IMAGE_URI" =~ ^https?:// ]]; then
       PACKER_SOURCE_IMAGE_URI="$SOURCE_IMAGE_URI"
       PACKER_SOURCE_IMAGE_PATH=""
     else
@@ -642,17 +642,18 @@ if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
     exit 1
   fi
 
+  PREFLIGHT_STATUS=0
   source_image_preflight \
     --source-image-name "$PACKER_SOURCE_IMAGE_NAME" \
     --source-image-uri "$PACKER_SOURCE_IMAGE_URI" \
     --source-image-path "$PACKER_SOURCE_IMAGE_PATH" \
     --cluster-name "$PKR_VAR_cluster_name" \
-    --subnet-name "$PKR_VAR_subnet_name"
+    --subnet-name "$PKR_VAR_subnet_name" || PREFLIGHT_STATUS=$?
   print_dry_run_summary
-  exit 0
+  exit "$PREFLIGHT_STATUS"
 fi
 
-if [[ "$STAGE_SOURCE" == "true" && -z "$PACKER_SOURCE_IMAGE_NAME" && -n "$PACKER_SOURCE_IMAGE_URI" ]]; then
+if [[ "$STAGE_SOURCE" == "true" && -z "$PACKER_SOURCE_IMAGE_NAME" && "$PACKER_SOURCE_IMAGE_URI" =~ ^https?:// ]]; then
   CLUSTER_UUID=$(prism_cluster_uuid_by_name "$PKR_VAR_cluster_name")
   if [[ -z "$CLUSTER_UUID" ]]; then
     echo "Error: could not find Prism cluster ${PKR_VAR_cluster_name}" >&2
