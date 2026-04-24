@@ -743,7 +743,7 @@ fi
   packer/
 
 PACKER_FINISHED_EPOCH=$(date +%s)
-ARTIFACT_IMAGE_UUID=""
+ARTIFACT_IMAGE_UUID=$(prism_image_uuid_by_name "$IMAGE_NAME" || true)
 if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --path ".packer.finished_at" --value "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --path ".packer.duration_seconds" --value-json "$((PACKER_FINISHED_EPOCH - PACKER_STARTED_EPOCH))"

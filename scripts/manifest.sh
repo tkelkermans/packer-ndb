@@ -5,8 +5,8 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/manifest.sh init --file FILE --image-name NAME --ndb-version VERSION --db-type TYPE --db-version VERSION --os-type NAME --os-version VERSION --provisioning-role ROLE --matrix-row-json JSON
-  scripts/manifest.sh set --file FILE --path JQ_PATH --value VALUE
-  scripts/manifest.sh set-json --file FILE --path JQ_PATH --value-json JSON
+  scripts/manifest.sh set --file FILE --key JQ_PATH --value VALUE
+  scripts/manifest.sh set-json --file FILE --key JQ_PATH --json-value JSON
   scripts/manifest.sh finalize --file FILE --status STATUS [--artifact-image-uuid UUID]
 EOF
 }
@@ -149,12 +149,12 @@ cmd_init() {
         image_uuid: null
       },
       validation: {
-        preflight: null,
-        in_guest: null
+        in_guest: "not-requested",
+        artifact: "not-requested",
+        artifact_vm_name: null,
+        artifact_vm_uuid: null
       },
-      cleanup: {
-        status: null
-      },
+      cleanup: {},
       git: {
         commit: $git_commit,
         dirty: $git_dirty
@@ -171,7 +171,7 @@ cmd_set() {
         file=$2
         shift
         ;;
-      --path|--field)
+      --key|--path|--field)
         path=$2
         shift
         ;;
@@ -189,7 +189,7 @@ cmd_set() {
   done
 
   if [[ -z "$file" || -z "$path" ]]; then
-    echo "Error: set requires --file and --path." >&2
+    echo "Error: set requires --file and --key." >&2
     usage >&2
     exit 1
   fi
@@ -207,11 +207,11 @@ cmd_set_json() {
         file=$2
         shift
         ;;
-      --path|--field)
+      --key|--path|--field)
         path=$2
         shift
         ;;
-      --value-json|--json)
+      --json-value|--value-json|--json)
         value_json=$2
         shift
         ;;
@@ -225,7 +225,7 @@ cmd_set_json() {
   done
 
   if [[ -z "$file" || -z "$path" || -z "$value_json" ]]; then
-    echo "Error: set-json requires --file, --path, and --value-json." >&2
+    echo "Error: set-json requires --file, --key, and --json-value." >&2
     usage >&2
     exit 1
   fi

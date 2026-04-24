@@ -226,6 +226,19 @@ run_manifest_tests() {
     --matrix-row-json '{"ndb_version":"2.10","provisioning_role":"postgresql"}'
 
   jq -e '.image_name == "ndb-test" and .status == "running" and .selection.provisioning_role == "postgresql" and .matrix_row.ndb_version == "2.10"' "$manifest" >/dev/null || fail "manifest init JSON"
+  jq -e '.validation.in_guest == "not-requested" and .validation.artifact == "not-requested" and (.cleanup | type) == "object"' "$manifest" >/dev/null || fail "manifest default status JSON"
+
+  "$ROOT_DIR/scripts/manifest.sh" set \
+    --file "$manifest" \
+    --key ".source_image.name" \
+    --value "rocky"
+
+  "$ROOT_DIR/scripts/manifest.sh" set-json \
+    --file "$manifest" \
+    --key ".packer.duration_seconds" \
+    --json-value "12"
+
+  jq -e '.source_image.name == "rocky" and .packer.duration_seconds == 12' "$manifest" >/dev/null || fail "manifest set JSON"
 
   "$ROOT_DIR/scripts/manifest.sh" finalize \
     --file "$manifest" \
