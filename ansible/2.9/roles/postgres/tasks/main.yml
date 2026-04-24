@@ -56,6 +56,37 @@
   when: ansible_os_family == "Debian"
   become: yes
 
+- name: Download TimescaleDB GPG key (Debian/Ubuntu)
+  ansible.builtin.get_url:
+    url: https://packagecloud.io/timescale/timescaledb/gpgkey
+    dest: /etc/apt/keyrings/timescale_timescaledb.asc
+    owner: root
+    group: root
+    mode: "0644"
+  when: ansible_os_family == "Debian" and 'timescaledb' in postgres_extensions
+  become: yes
+
+- name: Install TimescaleDB GPG keyring (Debian/Ubuntu)
+  ansible.builtin.command:
+    argv:
+      - gpg
+      - --dearmor
+      - --yes
+      - --output
+      - /etc/apt/keyrings/timescale_timescaledb-archive-keyring.gpg
+      - /etc/apt/keyrings/timescale_timescaledb.asc
+    creates: /etc/apt/keyrings/timescale_timescaledb-archive-keyring.gpg
+  when: ansible_os_family == "Debian" and 'timescaledb' in postgres_extensions
+  become: yes
+
+- name: Add TimescaleDB repository (Debian/Ubuntu)
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/timescale_timescaledb-archive-keyring.gpg] https://packagecloud.io/timescale/timescaledb/ubuntu/ {{ ansible_distribution_release }} main"
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian" and 'timescaledb' in postgres_extensions
+  become: yes
+
 - name: Disable the built-in PostgreSQL module (RHEL/Rocky)
   ansible.builtin.command:
     cmd: "dnf -qy module disable postgresql"
@@ -74,6 +105,11 @@
   ansible.builtin.apt:
     name: "postgresql-{{ postgres_version_map[db_version] }}"
     state: present
+    lock_timeout: 600
+  register: apt_postgresql_install_result
+  retries: 6
+  delay: 10
+  until: apt_postgresql_install_result is succeeded
   when: ansible_os_family == "Debian"
   notify: Start PostgreSQL service
   become: yes
@@ -111,16 +147,29 @@
         (
           'postgresql' + postgres_major_version + '-contrib' + contrib_suffix
         ) if ansible_os_family == 'RedHat'
-        else 'postgresql-' + postgres_major_version + '-contrib'
+        else 'postgresql-contrib-' + postgres_major_version
       }}
   vars:
     contrib_override: "{{ (postgres_contrib_version_overrides.get(ansible_os_family, {})).get(postgres_major_version, '') }}"
     contrib_suffix: "{{ '-' + contrib_override if contrib_override | length > 0 else '' }}"
 
-- name: Install PostgreSQL contrib package
+- name: Install PostgreSQL contrib package (RHEL/Rocky)
   ansible.builtin.package:
     name: "{{ postgres_contrib_package_name }}"
     state: present
+  when: ansible_os_family == "RedHat"
+  become: yes
+
+- name: Install PostgreSQL contrib package (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ postgres_contrib_package_name }}"
+    state: present
+    lock_timeout: 600
+  register: apt_postgresql_contrib_result
+  retries: 6
+  delay: 10
+  until: apt_postgresql_contrib_result is succeeded
+  when: ansible_os_family == "Debian"
   become: yes
 
 - name: Ensure PostgreSQL service is enabled and running
@@ -179,6 +228,14 @@
           - "{{ postgres_extensions_skipped }}"
       when: postgres_extensions_skipped | length > 0
 
+    - name: Assert all requested PostgreSQL extensions are installable
+      ansible.builtin.assert:
+        that:
+          - postgres_extensions_skipped | length == 0
+        fail_msg: "Requested PostgreSQL extensions were skipped and will not be installed: {{ postgres_extensions_skipped | join(', ') }}"
+      when:
+        - not postgres_extensions_allow_skips | default(false) | bool
+
     - name: Deduplicate extension dependency packages
       ansible.builtin.set_fact:
         postgres_extension_dependencies_to_install: "{{ postgres_extension_dependencies_to_install | reject('equalto', '') | list | unique }}"
@@ -201,11 +258,27 @@
         postgres_extension_preload_libraries: "{{ postgres_extension_preload_libraries | reject('equalto', '') | list | unique }}"
       when: postgres_extension_preload_libraries | length > 0
 
-    - name: Install requested PostgreSQL extension packages
+    - name: Install requested PostgreSQL extension packages (RHEL/Rocky)
       ansible.builtin.package:
         name: "{{ postgres_extension_packages_to_install }}"
         state: present
-      when: postgres_extension_packages_to_install | length > 0
+      when:
+        - ansible_os_family == "RedHat"
+        - postgres_extension_packages_to_install | length > 0
+      become: yes
+
+    - name: Install requested PostgreSQL extension packages (Debian/Ubuntu)
+      ansible.builtin.apt:
+        name: "{{ postgres_extension_packages_to_install }}"
+        state: present
+        lock_timeout: 600
+      register: apt_postgres_extension_packages_result
+      retries: 6
+      delay: 10
+      until: apt_postgres_extension_packages_result is succeeded
+      when:
+        - ansible_os_family == "Debian"
+        - postgres_extension_packages_to_install | length > 0
       become: yes
 
     - name: Configure shared_preload_libraries for requested PostgreSQL extensions

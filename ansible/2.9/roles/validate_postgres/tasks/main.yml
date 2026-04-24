@@ -22,7 +22,10 @@
   loop: "{{ validate_service_checks }}"
   loop_control:
     label: "{{ item.label }}"
-  register: validate_service_active_results
+  register: validate_service_active_result
+  retries: "{{ validate_service_active_retries }}"
+  delay: "{{ validate_service_active_delay }}"
+  until: validate_service_active_result.stdout == "active"
   changed_when: false
   failed_when: false
   become: yes
@@ -32,7 +35,7 @@
     that:
       - item.stdout == "active"
     fail_msg: "Expected service {{ item.item.unit }} to be active, got {{ item.stdout | default('') | trim }}"
-  loop: "{{ validate_service_active_results.results }}"
+  loop: "{{ validate_service_active_result.results }}"
   loop_control:
     label: "{{ item.item.label }}"
 
@@ -117,6 +120,13 @@
       - validate_postgres_server_version.stdout is regex("^" ~ validate_postgres_major_version ~ "(\\.|$)")
     fail_msg: "Expected PostgreSQL server version {{ validate_postgres_major_version }}, got {{ validate_postgres_server_version.stdout | default('') | trim }}"
 
+- name: Initialize PostgreSQL extension validation planning
+  ansible.builtin.set_fact:
+    validate_expected_postgres_extensions: []
+    validate_postgres_extensions_skipped: []
+  when:
+    - postgres_extensions | default([]) | length > 0 or postgres_extensions_to_create | default([]) | length > 0
+
 - name: Use explicit PostgreSQL extension creation list when provided
   ansible.builtin.set_fact:
     validate_expected_postgres_extensions: "{{ postgres_extensions_to_create | default([]) | unique }}"
@@ -126,6 +136,7 @@
 - name: Derive expected PostgreSQL extensions from extension metadata
   ansible.builtin.set_fact:
     validate_expected_postgres_extensions: "{{ ((validate_expected_postgres_extensions | default([])) + (version_supported | ternary([sql_extension_name], []))) | unique }}"
+    validate_postgres_extensions_skipped: "{{ (validate_postgres_extensions_skipped | default([])) + (version_supported | ternary([], [extension_name ~ ': ' ~ skip_reason])) }}"
   loop: "{{ postgres_extensions | default([]) }}"
   loop_control:
     loop_var: extension_name
@@ -136,9 +147,20 @@
     supported_versions: "{{ extension_metadata.get('supported_versions', []) }}"
     version_supported: "{{ (supported_versions | length == 0 or validate_postgres_major_version in supported_versions) and (validate_postgres_major_version not in unsupported_versions) }}"
     sql_extension_name: "{{ extension_metadata.get('sql_name', extension_name) }}"
+    skip_reason: "{{ extension_metadata.get('reason', 'unsupported on PostgreSQL ' ~ validate_postgres_major_version) }}"
   when:
     - postgres_extensions_to_create | default([]) | length == 0
     - postgres_extensions | default([]) | length > 0
+
+- name: Assert all requested PostgreSQL extensions are validated
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_extensions_skipped | default([]) | length == 0
+    fail_msg: "Requested PostgreSQL extensions were skipped and cannot be validated: {{ validate_postgres_extensions_skipped | default([]) | join(', ') }}"
+  when:
+    - postgres_extensions_to_create | default([]) | length == 0
+    - postgres_extensions | default([]) | length > 0
+    - not validate_postgres_extensions_allow_skips | default(postgres_extensions_allow_skips | default(false)) | bool
 
 - name: Check expected PostgreSQL extensions exist in target databases
   ansible.builtin.command:

@@ -1,5 +1,8 @@
 validate_build: false
 validate_sudoers_path: /etc/sudoers.d/ndb
+validate_postgres_extensions_allow_skips: false
+validate_service_active_retries: 12
+validate_service_active_delay: 5
 validate_enabled_status_values:
   - enabled
   - enabled-runtime

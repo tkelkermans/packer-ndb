@@ -1,6 +1,7 @@
 postgres_extensions: []
 postgres_extensions_databases:
   - postgres
+postgres_extensions_allow_skips: false
 postgres_extension_package_map:
   RedHat:
     pg_cron: "pg_cron_%s"
@@ -8,20 +9,20 @@ postgres_extension_package_map:
     pg_partman: "pg_partman_%s"
     pg_stat_statements: "postgresql%s-contrib"
     pgvector: "pgvector_%s"
-    pgaudit: "pgaudit%s"
+    pgaudit: "pgaudit_%s"
     postgis: "postgis33_%s"
     set_user: "set_user_%s"
-    timescaledb: "timescaledb-2-postgresql-%s"
+    timescaledb: "timescaledb_%s"
   Debian:
     pg_cron: "postgresql-%s-cron"
     pglogical: "postgresql-%s-pglogical"
     pg_partman: "postgresql-%s-partman"
-    pg_stat_statements: "postgresql-%s-contrib"
+    pg_stat_statements: "postgresql-contrib-%s"
     pgvector: "postgresql-%s-pgvector"
     pgaudit: "postgresql-%s-pgaudit"
     postgis: "postgresql-%s-postgis-3"
     set_user: "postgresql-%s-set-user"
-    timescaledb: "postgresql-%s-timescaledb-2"
+    timescaledb: "timescaledb-2-postgresql-%s"
 postgres_psql_bin_map:
   RedHat: "/usr/pgsql-%s/bin/psql"
   Debian: "/usr/lib/postgresql/%s/bin/psql"
@@ -52,9 +53,9 @@ postgres_extension_metadata:
     pgaudit:
       preload_libraries:
         - pgaudit
-      unsupported_versions:
-        - "17"
-      reason: "PGDG does not yet publish the pgaudit extension for PostgreSQL 17 on EL9"
+      package_overrides:
+        "14": "pgaudit16_14"
+        "15": "pgaudit17_15"
     postgis:
       dependencies:
         default:
@@ -66,9 +67,6 @@ postgres_extension_metadata:
     timescaledb:
       preload_libraries:
         - timescaledb
-      unsupported_versions:
-        - "17"
-      reason: "TimescaleDB packages for PostgreSQL 17 are not yet available on RHEL/Rocky repositories"
   Debian:
     pg_cron:
       preload_libraries:

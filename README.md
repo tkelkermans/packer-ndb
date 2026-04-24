@@ -28,6 +28,14 @@ Install these commands on your workstation:
 - `ssh`
 - `base64`
 
+For long live validation runs, prefer `ansible-core` 2.18.x. Newer Ansible controller versions can fail on some targets with module result deserialization errors before the build reaches extension validation. A temporary local runtime is enough:
+
+```bash
+python3.11 -m venv /tmp/ndb-ansible-2.18
+/tmp/ndb-ansible-2.18/bin/python -m pip install 'ansible-core>=2.18,<2.19'
+export PATH="/tmp/ndb-ansible-2.18/bin:$PATH"
+```
+
 The build also needs an SSH keypair in `packer/id_rsa` and `packer/id_rsa.pub`. If you need to create one:
 
 ```bash
@@ -96,6 +104,26 @@ Run the Rocky Linux NDB 2.10 build suite with both validation stages and manifes
 ```bash
 ./test.sh --include-ndb 2.10 --include-os "Rocky Linux" --validate --validate-artifact --manifest
 ```
+
+Run every buildable PostgreSQL row that requests extension installation. This is the full extension coverage command for the matrix. It includes RHEL rows, validates the temporary build VM, validates the saved artifact, writes manifests, and keeps going after failures so you get a complete report. Each background build runs with stdin isolated from the matrix reader so every selected row is tested.
+
+```bash
+./test.sh --extensions-only --continue-on-error --allow-rhel --validate --validate-artifact --manifest --max-parallel 1
+```
+
+If you use 1Password to provide `.env`, wrap the same command with `op run`:
+
+```bash
+op run --env-file .env -- ./test.sh --extensions-only --continue-on-error --allow-rhel --validate --validate-artifact --manifest --max-parallel 1
+```
+
+Failed Packer builder VMs are deleted automatically. Add `--debug` to `build.sh` only when you intentionally want to keep a failed builder VM for troubleshooting.
+
+Ubuntu images can start background package work just after boot. The Ansible roles wait for apt/dpkg locks on Debian-family package tasks, so transient first-boot apt activity should slow a build down instead of failing it immediately.
+
+At the end of every build, the final image preparation role resets cloud-init state before Packer captures the image. On Ubuntu it also removes the generated cloud-init netplan file so a VM cloned from the saved image can regenerate first-boot networking and accept the validation SSH key.
+
+Post-build artifact validation waits for required services to become active after SSH is reachable. This matters on first boot: SSH can be ready before `firewalld`, `chrony`, `cron`, or PostgreSQL have fully settled.
 
 Show interactive prompts for buildable matrix rows:
 
@@ -176,6 +204,12 @@ export NDB_RHEL_9_7_IMAGE_URI="/path/to/rhel-9.7.qcow2"
 export NDB_RHEL_9_6_IMAGE_URI="/path/to/rhel-9.6.qcow2"
 ```
 
+If you use 1Password to provide `.env`, check that required values resolve as non-empty before launching a long RHEL run:
+
+```bash
+op run --env-file .env -- bash -lc 'if [ -n "${NDB_RHEL_9_6_IMAGE_URI:-}" ]; then echo "RHEL 9.6 image is configured"; else echo "RHEL 9.6 image is missing"; fi'
+```
+
 Leave matrix validation enabled unless you are deliberately debugging the validator:
 
 ```bash
@@ -241,7 +275,7 @@ Add `--debug` to keep the validation VM on failure:
 ./build.sh --debug --ci --validate-artifact --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
-The validation role maps matrix extension names to SQL extension names. For example, `pgvector` is validated as SQL extension `vector`, and extensions that are unsupported for the selected PostgreSQL version are not expected.
+The validation role maps matrix extension names to SQL extension names. For example, `pgvector` is validated as SQL extension `vector`. By default, every extension listed in a buildable matrix row must be installable and must exist in PostgreSQL after provisioning. If a listed extension is marked unsupported by the Ansible metadata, the build or artifact validation fails instead of silently skipping it.
 
 ## Manifests
 
@@ -450,7 +484,11 @@ The PostgreSQL role can install and enable these NDB-qualified extensions when t
 - `set_user`
 - `timescaledb`
 
-The role installs the matching PGDG packages and runs `CREATE EXTENSION IF NOT EXISTS ...` in the `postgres` database by default. Override target databases with `postgres_extensions_databases` if needed.
+The role installs the matching packages and runs `CREATE EXTENSION IF NOT EXISTS ...` in the `postgres` database by default. Red Hat family systems use PGDG packages for these extensions. Ubuntu systems use PGDG for the PostgreSQL extension packages and add the official TimescaleDB packagecloud repository when `timescaledb` is requested, including the dearmored packagecloud keyring apt expects. Override target databases with `postgres_extensions_databases` if needed.
+
+Package names are not always obvious. For example, Red Hat family systems use `pgaudit_16` and `timescaledb_16`, while Ubuntu uses `postgresql-16-pgaudit`, `postgresql-contrib-16`, and `timescaledb-2-postgresql-16`.
+
+Requested extension skips fail by default. This keeps the matrix honest: if an extension is listed in a buildable row, the automation must install it and validation must find it in PostgreSQL.
 
 The matrix validator fails buildable PostgreSQL rows that have no extension list unless `extensions_empty_reason` is present. This keeps extension gaps visible before a long Packer run starts.
 

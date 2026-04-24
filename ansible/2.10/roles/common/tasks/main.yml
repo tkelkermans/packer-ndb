@@ -19,6 +19,11 @@
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: yes
+    lock_timeout: 600
+  register: apt_cache_update_result
+  retries: 6
+  delay: 10
+  until: apt_cache_update_result is succeeded
   when: ansible_os_family == "Debian"
   become: yes
 
@@ -37,6 +42,11 @@
       - openssl
       - libssl3
     state: latest
+    lock_timeout: 600
+  register: apt_openssl_result
+  retries: 6
+  delay: 10
+  until: apt_openssl_result is succeeded
   when: ansible_os_family == "Debian"
   become: yes
 
@@ -68,10 +78,23 @@
   when: ansible_os_family == "RedHat"
   become: yes
 
-- name: Install common packages
+- name: Install common packages (RedHat family)
   ansible.builtin.package:
     name: "{{ common_packages }}"
     state: present
+  when: ansible_os_family == "RedHat"
+  become: yes
+
+- name: Install common packages (Debian family)
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    lock_timeout: 600
+  register: apt_common_packages_result
+  retries: 6
+  delay: 10
+  until: apt_common_packages_result is succeeded
+  when: ansible_os_family == "Debian"
   become: yes
 
 - name: Install Red Hat specific packages
@@ -82,16 +105,26 @@
   become: yes
 
 - name: Install Debian specific packages
-  ansible.builtin.package:
+  ansible.builtin.apt:
     name: "{{ debian_packages }}"
     state: present
+    lock_timeout: 600
+  register: apt_debian_packages_result
+  retries: 6
+  delay: 10
+  until: apt_debian_packages_result is succeeded
   when: ansible_os_family == "Debian"
   become: yes
 
 - name: Remove UFW on Debian systems
-  ansible.builtin.package:
+  ansible.builtin.apt:
     name: ufw
     state: absent
+    lock_timeout: 600
+  register: apt_remove_ufw_result
+  retries: 6
+  delay: 10
+  until: apt_remove_ufw_result is succeeded
   when: ansible_os_family == "Debian"
   become: yes
 

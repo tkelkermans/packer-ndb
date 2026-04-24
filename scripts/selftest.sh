@@ -531,3 +531,241 @@ SH
 }
 
 run_test_harness_tests
+
+run_test_harness_extensions_only_tests() {
+  local tmpdir build_log harness_stderr
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  build_log="$tmpdir/builds.log"
+  harness_stderr="$tmpdir/test-harness.err"
+
+  mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
+  cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
+
+  cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
+[
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.99",
+    "db_version": "1",
+    "provisioning_role": "postgresql",
+    "extensions": ["pg_stat_statements"]
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.99",
+    "db_version": "2",
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "self-test row without extension coverage"
+  }
+]
+JSON
+
+  cat > "$tmpdir/build.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+db_version=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --db-version)
+      db_version=$2
+      shift
+      ;;
+  esac
+  shift
+done
+printf '%s\n' "$db_version" >> "${NDB_SELFTEST_BUILD_LOG:?}"
+SH
+  chmod +x "$tmpdir/test.sh" "$tmpdir/build.sh"
+
+  (
+    cd "$tmpdir"
+    SKIP_MATRIX_VALIDATION=true NDB_SELFTEST_BUILD_LOG="$build_log" ./test.sh --include-ndb 9.99 --extensions-only >/dev/null 2>"$harness_stderr"
+  ) || fail "test harness extensions-only run failed"
+
+  [[ "$(cat "$build_log")" == "1" ]] || fail "test harness extensions-only did not limit builds to extension rows"
+  [[ ! -s "$harness_stderr" ]] || fail "test harness extensions-only wrote unexpected stderr: $(cat "$harness_stderr")"
+  pass "test harness extensions-only filter"
+}
+
+run_test_harness_extensions_only_tests
+
+run_test_harness_build_stdin_isolation_tests() {
+  local tmpdir build_log
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  build_log="$tmpdir/builds.log"
+
+  mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
+  cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
+
+  cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
+[
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.99",
+    "db_version": "1",
+    "provisioning_role": "postgresql",
+    "extensions": ["pg_stat_statements"]
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.99",
+    "db_version": "2",
+    "provisioning_role": "postgresql",
+    "extensions": ["pg_stat_statements"]
+  }
+]
+JSON
+
+  cat > "$tmpdir/build.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+db_version=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --db-version)
+      db_version=$2
+      shift
+      ;;
+  esac
+  shift
+done
+cat >/dev/null
+printf '%s\n' "$db_version" >> "${NDB_SELFTEST_BUILD_LOG:?}"
+SH
+  chmod +x "$tmpdir/test.sh" "$tmpdir/build.sh"
+
+  (
+    cd "$tmpdir"
+    SKIP_MATRIX_VALIDATION=true NDB_SELFTEST_BUILD_LOG="$build_log" ./test.sh --include-ndb 9.99 --extensions-only --max-parallel 1 >/dev/null 2>&1
+  ) || fail "test harness stdin isolation run failed"
+
+  [[ "$(tr '\n' ',' < "$build_log")" == "1,2," ]] || fail "test harness let a build consume remaining matrix rows"
+  pass "test harness isolates build stdin"
+}
+
+run_test_harness_build_stdin_isolation_tests
+
+run_test_harness_continue_on_error_tests() {
+  local tmpdir build_log
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  build_log="$tmpdir/builds.log"
+
+  mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
+  cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
+
+  cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
+[
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.99",
+    "db_version": "1",
+    "provisioning_role": "postgresql",
+    "extensions": ["pg_stat_statements"]
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.99",
+    "db_version": "2",
+    "provisioning_role": "postgresql",
+    "extensions": ["pg_stat_statements"]
+  }
+]
+JSON
+
+  cat > "$tmpdir/build.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+db_version=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --db-version)
+      db_version=$2
+      shift
+      ;;
+  esac
+  shift
+done
+printf '%s\n' "$db_version" >> "${NDB_SELFTEST_BUILD_LOG:?}"
+if [[ "$db_version" == "1" ]]; then
+  exit 17
+fi
+SH
+  chmod +x "$tmpdir/test.sh" "$tmpdir/build.sh"
+
+  if (
+    cd "$tmpdir"
+    SKIP_MATRIX_VALIDATION=true NDB_SELFTEST_BUILD_LOG="$build_log" ./test.sh --include-ndb 9.99 --extensions-only --continue-on-error >/dev/null 2>&1
+  ); then
+    fail "test harness continue-on-error unexpectedly passed despite one failed build"
+  fi
+
+  [[ "$(tr '\n' ',' < "$build_log")" == "1,2," ]] || fail "test harness continue-on-error did not run all requested rows"
+  pass "test harness continue-on-error coverage"
+}
+
+run_test_harness_continue_on_error_tests
+
+run_extension_strictness_tests() {
+  local version
+  for version in 2.9 2.10; do
+    grep -q "Assert all requested PostgreSQL extensions are installable" "$ROOT_DIR/ansible/$version/roles/postgres/tasks/main.yml" || fail "postgres role $version does not fail skipped requested extensions"
+    grep -q "Assert all requested PostgreSQL extensions are validated" "$ROOT_DIR/ansible/$version/roles/validate_postgres/tasks/main.yml" || fail "validate_postgres role $version does not fail skipped requested extensions"
+    grep -q "until: validate_service_active_result.stdout == \"active\"" "$ROOT_DIR/ansible/$version/roles/validate_postgres/tasks/main.yml" || fail "validate_postgres role $version does not wait for services to become active"
+    grep -q 'pgaudit: "pgaudit_%s"' "$ROOT_DIR/ansible/$version/roles/postgres/defaults/main.yml" || fail "postgres role $version uses the wrong RedHat pgaudit package template"
+    grep -q '"14": "pgaudit16_14"' "$ROOT_DIR/ansible/$version/roles/postgres/defaults/main.yml" || fail "postgres role $version is missing the RedHat PG14 pgaudit override"
+    grep -q '"15": "pgaudit17_15"' "$ROOT_DIR/ansible/$version/roles/postgres/defaults/main.yml" || fail "postgres role $version is missing the RedHat PG15 pgaudit override"
+    grep -q 'timescaledb: "timescaledb_%s"' "$ROOT_DIR/ansible/$version/roles/postgres/defaults/main.yml" || fail "postgres role $version uses the wrong RedHat TimescaleDB package template"
+    grep -q 'timescaledb: "timescaledb-2-postgresql-%s"' "$ROOT_DIR/ansible/$version/roles/postgres/defaults/main.yml" || fail "postgres role $version uses the wrong Debian TimescaleDB package template"
+    grep -q 'pg_stat_statements: "postgresql-contrib-%s"' "$ROOT_DIR/ansible/$version/roles/postgres/defaults/main.yml" || fail "postgres role $version uses the wrong Debian contrib package template"
+    grep -q "postgresql-contrib-' + postgres_major_version" "$ROOT_DIR/ansible/$version/roles/postgres/tasks/main.yml" || fail "postgres role $version computes the wrong Debian contrib package name"
+    grep -q "Add TimescaleDB repository (Debian/Ubuntu)" "$ROOT_DIR/ansible/$version/roles/postgres/tasks/main.yml" || fail "postgres role $version does not add the TimescaleDB Ubuntu repository"
+    grep -q "timescale_timescaledb-archive-keyring.gpg" "$ROOT_DIR/ansible/$version/roles/postgres/tasks/main.yml" || fail "postgres role $version does not install the dearmored TimescaleDB keyring"
+    grep -q "lock_timeout: 600" "$ROOT_DIR/ansible/$version/roles/common/tasks/main.yml" || fail "common role $version does not wait for apt locks"
+    grep -q "apt_postgres_extension_packages_result" "$ROOT_DIR/ansible/$version/roles/postgres/tasks/main.yml" || fail "postgres role $version does not retry Debian extension package installs"
+  done
+  pass "strict extension package mapping, apt locking, and skip guards"
+}
+
+run_extension_strictness_tests
+
+run_image_prepare_tests() {
+  local version
+  for version in 2.9 2.10; do
+    grep -q -- "- image_prepare" "$ROOT_DIR/ansible/$version/playbooks/site.yml" || fail "playbook $version does not run final image preparation"
+    grep -q "/usr/bin/cloud-init clean --logs --machine-id" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not reset cloud-init state"
+    grep -q "/etc/netplan/50-cloud-init.yaml" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not remove generated Ubuntu netplan"
+  done
+  pass "final image preparation guard"
+}
+
+run_image_prepare_tests
+
+run_build_cleanup_guard_tests() {
+  grep -q "cleanup_failed_builder_vm" "$ROOT_DIR/build.sh" || fail "build script does not define failed builder VM cleanup"
+  grep -q "prism_delete_vm" "$ROOT_DIR/build.sh" || fail "build script does not delete failed builder VMs"
+  pass "failed builder VM cleanup guard"
+}
+
+run_build_cleanup_guard_tests

@@ -36,6 +36,31 @@ function cleanup() {
   fi
 }
 
+function cleanup_failed_builder_vm() {
+  local vm_uuid response task_uuid
+
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    echo "Debug mode enabled; retaining failed Packer builder VM: ${VM_NAME}" >&2
+    return 0
+  fi
+
+  vm_uuid=$(prism_vm_uuid_by_name "$VM_NAME" 2>/dev/null || true)
+  if [[ -z "$vm_uuid" ]]; then
+    return 0
+  fi
+
+  echo "Cleaning up failed Packer builder VM: ${VM_NAME}" >&2
+  if ! response=$(prism_delete_vm "$vm_uuid" 2>/dev/null); then
+    echo "Warning: failed to delete Packer builder VM ${VM_NAME}" >&2
+    return 0
+  fi
+
+  task_uuid=$(jq -r '(.status.execution_context.task_uuid // .status.execution_context.task_uuid_list // empty) | if type == "array" then .[0] else . end // ""' <<<"$response" 2>/dev/null || true)
+  if [[ -n "$task_uuid" && "$task_uuid" != "null" ]]; then
+    prism_wait_task "$task_uuid" 600 5 >/dev/null || echo "Warning: timed out deleting Packer builder VM ${VM_NAME}" >&2
+  fi
+}
+
 function on_exit() {
   local status=$?
   if [[ "$status" -ne 0 && "${MANIFEST_FINALIZED:-false}" != "true" && -n "${MANIFEST_FILE:-}" && -f "${MANIFEST_FILE:-}" ]]; then
@@ -794,6 +819,7 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
   fi
 fi
 
+PACKER_STATUS=0
 "${PACKER_CMD[@]}" \
   -var "ansible_site_playbook=${ANSIBLE_SITE_PLAYBOOK}" \
   -var "ansible_config_path=${ANSIBLE_CONFIG_PATH}" \
@@ -811,7 +837,12 @@ fi
   -var "image_name=${IMAGE_NAME}" \
   -var "vm_name=${VM_NAME}" \
   -var "ssh_public_key=$(cat "$PUBLIC_KEY_PATH")" \
-  packer/
+  packer/ || PACKER_STATUS=$?
+
+if [[ "$PACKER_STATUS" -ne 0 ]]; then
+  cleanup_failed_builder_vm
+  exit "$PACKER_STATUS"
+fi
 
 PACKER_FINISHED_EPOCH=$(date +%s)
 if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then

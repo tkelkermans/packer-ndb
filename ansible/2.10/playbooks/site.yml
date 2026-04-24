@@ -5,3 +5,4 @@
     - postgres
     - role: validate_postgres
       when: validate_build | default(false) | bool
+    - image_prepare

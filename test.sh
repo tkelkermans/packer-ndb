@@ -12,6 +12,8 @@ FILTER_DB_TYPES=true
 VALIDATE_BUILDS=false
 VALIDATE_ARTIFACTS=false
 WRITE_MANIFEST=false
+EXTENSIONS_ONLY=false
+CONTINUE_ON_ERROR=false
 
 function usage() {
   cat <<EOF
@@ -28,6 +30,8 @@ Options:
   --validate            Run in-guest validation after provisioning for each build
   --validate-artifact   Boot and validate each saved artifact after Packer succeeds
   --manifest            Write build manifests for each live build
+  --extensions-only     Only run rows that request PostgreSQL extensions
+  --continue-on-error   Run all selected rows even if one build fails
   -h, --help            Show this help and exit
 EOF
 }
@@ -106,6 +110,12 @@ while [[ $# -gt 0 ]]; do
     --manifest)
       WRITE_MANIFEST=true
       ;;
+    --extensions-only)
+      EXTENSIONS_ONLY=true
+      ;;
+    --continue-on-error)
+      CONTINUE_ON_ERROR=true
+      ;;
     -h|--help)
       usage
       exit 0
@@ -144,6 +154,9 @@ TEST_FAILURES=0
 
 function terminate_active_builds() {
   local pid
+  if (( ${#ACTIVE_PIDS[@]} == 0 )); then
+    return 0
+  fi
   for pid in "${ACTIVE_PIDS[@]}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
@@ -178,6 +191,9 @@ function wait_for_one() {
 }
 
 function wait_for_all() {
+  if (( ${#ACTIVE_PIDS[@]} == 0 )); then
+    return 0
+  fi
   for pid in "${ACTIVE_PIDS[@]}"; do
     wait_for_one "$pid"
   done
@@ -227,7 +243,7 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
   echo "--- Testing NDB version ${ndb_version} ---"
 
   while IFS= read -r build; do
-    if (( TEST_FAILURES > 0 )); then
+    if (( TEST_FAILURES > 0 )) && [[ "$CONTINUE_ON_ERROR" != "true" ]]; then
       break
     fi
     db_type=$(echo "$build" | jq -r '.db_type // ""')
@@ -241,6 +257,11 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
     os_type=$(echo "$build" | jq -r '.os_type')
     if ! os_allowed "$os_type"; then
       echo "--> Skipping ${os_type} build per filters."
+      continue
+    fi
+
+    extensions_count=$(echo "$build" | jq -r '(.extensions // []) | length')
+    if [[ "$EXTENSIONS_ONLY" == "true" && "$extensions_count" -eq 0 ]]; then
       continue
     fi
 
@@ -262,13 +283,13 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
         BUILD_ARGS+=(--manifest)
       fi
       "${BUILD_ARGS[@]}"
-    ) &
+    ) </dev/null &
 
     ACTIVE_PIDS+=($!)
     throttle
   done < <(jq -c '.[]' "$matrix_file")
 
-  if (( TEST_FAILURES > 0 )); then
+  if (( TEST_FAILURES > 0 )) && [[ "$CONTINUE_ON_ERROR" != "true" ]]; then
     break
   fi
 done
