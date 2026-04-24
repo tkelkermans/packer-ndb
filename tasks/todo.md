@@ -42,7 +42,7 @@ Implementation plan approved for the next reliability pass:
 - [x] Execute Task 6: manifest status and failure integration
 - [x] Execute Task 7: release scaffolding
 - [x] Execute Task 8: beginner README restructure
-- [ ] Run final verification and document results
+- [x] Run final verification and document results
 
 # Active Plan Review
 
@@ -54,3 +54,4 @@ Implementation plan approved for the next reliability pass:
 - Task 6 completed manifest source, Packer, artifact, validation, cleanup, and failed-status reporting. Code-quality review found empty artifact result files could bypass the failed fallback; fixed with `manifest.sh record-artifact-validation`, valid-JSON checks, and self-test coverage.
 - Task 7 added `scripts/release_scaffold.sh`, release onboarding README guidance, and a dry-run self-test. Code-quality review found partial scaffold cleanup risks; fixed by staging under the repo, rolling back incomplete publishes, always cleaning staging, and using a generated dry-run test version.
 - Task 8 restructured README into a beginner operator guide. Quality review found missing `packer init packer/` guidance and an under-warned live `test.sh` example; both were added before approval.
+- Final verification found only Packer formatting drift in `packer/database.pkr.hcl` and `packer/variables.pkr.hcl`; fixed with `packer fmt packer` and added README offline verification commands. Live Prism smoke was skipped because the current shell has no `PKR_VAR_*` credentials and `.env` is a named pipe, not a readable env file.

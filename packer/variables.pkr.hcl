@@ -27,12 +27,12 @@ variable "source_image_name" {
 }
 
 variable "source_image_uri" {
-  type = string
+  type    = string
   default = ""
 }
 
 variable "source_image_path" {
-  type = string
+  type    = string
   default = ""
 }
 

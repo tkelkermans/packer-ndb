@@ -26,11 +26,11 @@ source "nutanix" "ndb" {
   boot_wait = "5m"
 
   vm_disks {
-    image_type       = "DISK_IMAGE"
+    image_type        = "DISK_IMAGE"
     source_image_name = var.source_image_name != "" ? var.source_image_name : null
-    source_image_uri = var.source_image_uri != "" ? var.source_image_uri : null
+    source_image_uri  = var.source_image_uri != "" ? var.source_image_uri : null
     source_image_path = var.source_image_path != "" ? var.source_image_path : null
-    disk_size_gb     = var.vm_disk_size_gb
+    disk_size_gb      = var.vm_disk_size_gb
   }
 
   vm_nics {

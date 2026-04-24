@@ -115,6 +115,15 @@ Run the local shell self-tests:
 bash scripts/selftest.sh
 ```
 
+Run the core offline verification checks before handing off changes:
+
+```bash
+bash -n build.sh test.sh scripts/*.sh
+bash scripts/selftest.sh
+scripts/matrix_validate.sh ndb/*/matrix.json
+packer fmt -check packer
+```
+
 ## What Happens During A Build
 
 `build.sh` performs these steps in order:
