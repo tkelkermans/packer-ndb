@@ -1,396 +1,456 @@
 # NDB Packer Image Builder
 
-This project provides a CI/CD-oriented workflow for building Nutanix Database Services (NDB) images using HashiCorp Packer. The workflow is driven by a curated `matrix.json` file derived from the markdown release notes and validated before each build.
+## What This Tool Does
 
-## Prerequisites
+This repository builds Nutanix Database Service (NDB) image artifacts with Packer, Ansible, Terraform-backed Packer plugins, and shell scripts.
 
-Before you begin, ensure you have the following installed:
+The normal workflow is:
 
-- [HashiCorp Packer](https://www.packer.io/downloads)
-- [jq](https://stedolan.github.io/jq/download/)
-- `ansible-playbook` (Ansible Core)
-- An SSH keypair in the `packer/` directory named `id_rsa` and `id_rsa.pub`. You can generate one with `ssh-keygen -t rsa -b 4096 -C "packer@nutanix" -f packer/id_rsa -N ""`
+- Choose one supported row from an NDB `matrix.json` file.
+- Resolve the matching operating-system source image from `images.json`.
+- Build a Prism image with Packer.
+- Optionally validate the temporary build VM before Packer saves the image.
+- Optionally boot the saved image as a disposable VM and validate the final artifact.
+- Optionally write a JSON manifest under `manifests/` so the build can be audited later.
 
-> ℹ️ Ansible output now relies on the built-in `default` callback (with `result_format=yaml`), and the Rocky CRB enablement no longer depends on the `community.general` collection.
+Today, the build-ready rows are PostgreSQL Community Edition rows with `provisioning_role=postgresql`. Other matrix rows may exist as release-note metadata so the support list is documented, but `build.sh` will reject them until matching Packer/Ansible roles exist.
 
-## Project Structure
+## Quick Start
 
-```
-.
-├── ansible
-│   ├── 2.9/
-│   └── 2.10/
-├── build.sh
-├── images.json
-├── ndb
-│   ├── 2.9
-│   │   ├── matrix.json
-│   │   └── ndb-2.9-pgsql.md
-│   └── 2.10
-│       ├── matrix.json
-│       └── ndb-2.10-pgsql.md
-├── packer
-│   ├── database.pkr.hcl
-│   ├── http/user-data
-│   └── variables.pkr.hcl
-├── README.md
-├── scripts
-│   ├── matrix_validate.sh
-│   ├── release_scaffold.sh
-│   └── selftest.sh
-├── source
-└── test.sh
+### 1. Install The Local Tools
+
+Install these commands on your workstation:
+
+- `packer`
+- `ansible-playbook`
+- `jq`
+- `curl`
+- `ssh`
+- `base64`
+
+The build also needs an SSH keypair in `packer/id_rsa` and `packer/id_rsa.pub`. If you need to create one:
+
+```bash
+ssh-keygen -t rsa -b 4096 -C "packer@nutanix" -f packer/id_rsa -N ""
 ```
 
-- **`build.sh`**: The master build script.
-- **`images.json`**: Contains the source-image definitions for each supported OS/version. Entries may be direct URIs or environment-variable lookups for licensed artifacts such as RHEL.
-- **`ndb/`**: Contains subdirectories for each NDB version, holding the markdown release notes and the `matrix.json` file.
-- **`packer/`**: Contains the Packer HCL templates.
-- **`ansible/`**: Contains version-specific playbooks, inventory, roles, and defaults used during provisioning.
+Initialize the Packer plugins once on a new workstation:
 
-## `matrix.json`
-
-The `matrix.json` file is the core of this workflow. It defines both buildable and roadmap combinations for each NDB version. The file is still curated manually from the markdown release notes, but every build now validates it before provisioning begins.
-
-### Structure
-
-The `matrix.json` file is an array of JSON objects, where each object represents a unique buildable image configuration. Here is an example structure:
-
-```json
-[
-  {
-    "ndb_version": "2.10",
-    "engine": "PostgreSQL Community Edition",
-    "os_type": "Rocky Linux",
-    "os_version": "9.6",
-    "db_type": "pgsql",
-    "db_version": "17",
-    "provisioning_role": "postgresql",
-    "patroni_version": "4.0.5",
-    "etcd_version": "3.5.12",
-    "ha_components": {
-      "patroni": [
-        "4.0.5"
-      ],
-      "etcd": [
-        "3.5.12"
-      ]
-    },
-    "extensions": [
-      "pg_cron",
-      "pglogical",
-      "pg_partman",
-      "pg_stat_statements",
-      "pgvector",
-      "pgaudit",
-      "postgis",
-      "set_user",
-      "timescaledb"
-    ]
-  },
-  {
-    "ndb_version": "2.10",
-    "engine": "PostgreSQL Community Edition",
-    "os_type": "Red Hat Enterprise Linux (RHEL)",
-    "os_version": "9.6",
-    "db_type": "pgsql",
-    "db_version": "17",
-    "provisioning_role": "postgresql",
-    "patroni_version": "4.0.5",
-    "etcd_version": "3.5.12",
-    "extensions": [
-      "pg_cron",
-      "pglogical",
-      "pg_partman",
-      "pg_stat_statements",
-      "pgvector",
-      "pgaudit",
-      "postgis",
-      "set_user",
-      "timescaledb"
-    ]
-  }
-]
+```bash
+packer init packer/
 ```
 
-If the `extensions` array is omitted, no PostgreSQL extensions are provisioned. When present, the list is forwarded to Ansible as `postgres_extensions` so that all packages are installed (via PGDG repositories) and `CREATE EXTENSION IF NOT EXISTS ...` is executed for every entry.
+### 2. Create Your Environment File
 
-### Generation Prompt
-
-You can use the following prompt with a large language model to draft the `matrix.json` from the markdown release notes:
-
-"Please create a JSON array of all possible build combinations from the provided markdown file. Each object must include `ndb_version`, `engine`, `db_type`, `os_type`, `os_version`, `db_version`, and `provisioning_role`. Add `patroni_version`, `etcd_version`, and `ha_components` when the release notes include HA component data. Use `provisioning_role=postgresql` only for combinations that are actually buildable by the current PostgreSQL pipeline, and use `provisioning_role=metadata` for documentation-only rows."
-
-## Environment Variables
-
-The Packer build requires the following environment variables for connecting to Nutanix Prism Central:
-
-You can bootstrap them from the tracked template file:
+Copy the template and edit `.env` with your Prism Central details:
 
 ```bash
 cp .env.example .env
 source .env
 ```
 
+### 3. Run A Safe Dry Run
+
+Dry-run mode does not start Packer and does not require live Prism credentials to be valid. It shows the selected matrix row, source image plan, generated Ansible variables, final Packer variables, and missing live-build prerequisites.
+
 ```bash
-export PKR_VAR_pc_username="<your_pc_username>"
-export PKR_VAR_pc_password="<your_pc_password>"
-export PKR_VAR_pc_ip="<your_pc_ip>"
-export PKR_VAR_cluster_name="<your_cluster_name>"
-export PKR_VAR_subnet_name="<your_subnet_name>"
-export PKR_VAR_nutanix_insecure=true
+./build.sh --dry-run --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
-RHEL source images are resolved differently because licensed download links are usually short-lived. Set the environment variable that matches the selected RHEL row before starting a build:
+### 4. Run A Production Build
+
+This is the recommended production command. It builds the image, validates during provisioning, validates the saved artifact in a disposable VM, and writes a manifest.
+
+```bash
+./build.sh --ci --validate --validate-artifact --manifest --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+```
+
+## Common Commands
+
+Validate every matrix file before you trust a new release edit:
+
+```bash
+scripts/matrix_validate.sh ndb/*/matrix.json
+```
+
+Check Prism readiness and source-image readiness without starting Packer:
+
+```bash
+./build.sh --preflight --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+```
+
+Stage a remote source image into Prism before the long build starts:
+
+```bash
+./build.sh --stage-source --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+```
+
+Reuse a source image that is already present in Prism:
+
+```bash
+./build.sh --ci --source-image-name "Rocky-9-GenericCloud-LVM-9.7-20251123.2.x86_64.qcow2" --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+```
+
+Run the Rocky Linux NDB 2.10 build suite with both validation stages and manifests. This is a live Prism build suite, not a local unit test; it can create several build VMs, disposable validation VMs, saved images, and manifest files.
+
+```bash
+./test.sh --include-ndb 2.10 --include-os "Rocky Linux" --validate --validate-artifact --manifest
+```
+
+Show interactive prompts for buildable matrix rows:
+
+```bash
+./build.sh
+```
+
+List available `db_type` values for one NDB version:
+
+```bash
+jq -r '.[].db_type' ndb/2.10/matrix.json | sort -u
+```
+
+Run the local shell self-tests:
+
+```bash
+bash scripts/selftest.sh
+```
+
+## What Happens During A Build
+
+`build.sh` performs these steps in order:
+
+1. Reads your selected `ndb/<version>/matrix.json`.
+2. Rejects combinations that are not currently buildable.
+3. Validates the matrix unless `SKIP_MATRIX_VALIDATION=true`.
+4. Resolves a source image from `images.json` or from `--source-image-uri` / `--source-image-name`.
+5. Generates a temporary Ansible vars file for the selected row.
+6. Runs Packer against `packer/database.pkr.hcl`.
+7. If `--validate` is set, runs in-guest validation before the image is saved.
+8. Resolves the saved image UUID in Prism after Packer succeeds.
+9. If `--validate-artifact` is set, boots a disposable VM from the saved image and validates the final artifact.
+10. If `--manifest` is set, writes a JSON manifest under `manifests/`.
+
+Temporary files are removed automatically. Manifests are ignored by git because they contain environment-specific build records.
+
+## Environment Variables
+
+The easiest setup is:
+
+```bash
+cp .env.example .env
+source .env
+```
+
+The important Prism variables are:
+
+```bash
+export PKR_VAR_pc_username="<your-prism-username>"
+export PKR_VAR_pc_password="<your-prism-password>"
+export PKR_VAR_pc_ip="<your-prism-central-ip-or-hostname>"
+export PKR_VAR_cluster_name="<your-cluster-name>"
+export PKR_VAR_subnet_name="<your-subnet-name>"
+export PKR_VAR_nutanix_insecure="true"
+```
+
+Optional build VM sizing overrides:
+
+```bash
+export PKR_VAR_vm_cpu="2"
+export PKR_VAR_vm_memory_mb="4096"
+export PKR_VAR_vm_disk_size_gb="40"
+```
+
+Optional licensed RHEL source image overrides:
 
 ```bash
 export NDB_RHEL_9_7_IMAGE_URI="/path/to/rhel-9.7.qcow2"
 export NDB_RHEL_9_6_IMAGE_URI="/path/to/rhel-9.6.qcow2"
 ```
 
-The template also includes the optional VM sizing overrides and `SKIP_MATRIX_VALIDATION` toggle that the current build/test scripts understand.
-
-## How to Run
-
-### Interactive Mode
-
-To run the build in interactive mode, simply execute the `build.sh` script without any arguments:
+Leave matrix validation enabled unless you are deliberately debugging the validator:
 
 ```bash
-./build.sh
+export SKIP_MATRIX_VALIDATION="false"
 ```
 
-The script prompts you to select the NDB version, database type (`db_type`), OS, OS version, and DB version from the buildable entries in `matrix.json`. A temporary Ansible vars file is generated on the fly and removed automatically when the build finishes, so you no longer need to maintain `ansible/vars.json` by hand.
+## Source Images
 
-Currently, only the `db_type=pgsql` entries with `provisioning_role=postgresql` are build-ready. Interactive mode only shows those buildable rows, while CI mode rejects metadata-only combinations explicitly.
+Source images are defined in `images.json`.
 
-### CI/CD Mode
+Each entry can be:
 
-To run the build in CI/CD mode, use the `--ci` flag and provide the desired build parameters:
+- A direct URI, usually for public Rocky Linux or Ubuntu cloud images.
+- An object with `env_var` for licensed or short-lived downloads such as RHEL images.
+- An object with `prefetch: true` when the image should be downloaded locally before Packer starts.
+
+`build.sh` can use a source image in four ways:
+
+- Remote URI: pass the URI directly to Packer.
+- Local path: upload a local qcow2 file through Packer.
+- Existing Prism image: pass `--source-image-name`.
+- Pre-staged Prism image: pass `--stage-source` first, then rerun with the staged image name if needed.
+
+If a remote import is slow over VPN, staging or reusing an existing Prism image is usually faster and more reliable than asking Packer to import the remote URI every time.
+
+## Validation
+
+### In-Guest Validation
+
+Use `--validate` to check the temporary build VM before Packer saves the image:
 
 ```bash
-./build.sh --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+./build.sh --ci --validate --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
-The same transient Ansible vars file is produced in CI/CD mode, ensuring deterministic provisioning for each invocation. To inspect all available `db_type` values in the matrix, run for example:
+The `validate_postgres` role checks:
+
+- `firewalld`, `chrony`, `cron`, and PostgreSQL services are active and enabled.
+- PostgreSQL client and server versions match the selected `db_version`.
+- The NDB sudoers drop-in exists and the full sudoers configuration passes `visudo`.
+- Expected PostgreSQL extensions exist in the target databases.
+
+### Artifact Validation
+
+Use `--validate-artifact` to validate the saved Prism image:
 
 ```bash
-jq -r '.[].db_type' ndb/2.10/matrix.json | sort -u
+./build.sh --ci --validate-artifact --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
-> ℹ️ Entries with `provisioning_role=metadata` (Oracle, SQL Server, MySQL, MongoDB, etc.) are informational only and do not yet have Packer/Ansible roles. `build.sh` rejects those combinations to avoid confusion.
+Artifact validation:
 
-If you need to override the source image for a one-off build, pass `--source-image-uri` with either a remote URI or a local qcow2 path:
+- Finds the saved image in Prism.
+- Boots a disposable `validate-...` VM from that image.
+- Injects the repo SSH key with cloud-init.
+- Connects as `packer` with `packer/id_rsa`.
+- Runs the same `validate_postgres` role against the disposable VM.
+- Deletes the disposable VM after validation by default.
+
+Add `--debug` to keep the validation VM on failure:
 
 ```bash
-./build.sh --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18 --source-image-uri /tmp/custom-rocky-9.7.qcow2
+./build.sh --debug --ci --validate-artifact --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
-To make the build fail if the provisioned VM does not match the selected matrix row, add `--validate`:
+The validation role maps matrix extension names to SQL extension names. For example, `pgvector` is validated as SQL extension `vector`, and extensions that are unsupported for the selected PostgreSQL version are not expected.
 
-```bash
-./build.sh --validate --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
-```
+## Manifests
 
-To write a JSON manifest for a live build, add `--manifest`:
-
-```bash
-./build.sh --ci --validate --manifest --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
-```
-
-Manifest files are written under `manifests/` with one JSON file per image name. These files are ignored by git, so they are safe to keep locally as build records without accidentally committing environment-specific output. The `source_image` section records how the source image was used, including whether it came from an existing Prism image, a remote URI, or a local path. The `packer.finished_at` and `packer.duration_seconds` fields measure the Packer image build itself; artifact validation runs after that and is recorded separately under `validation.artifact` and `cleanup.artifact_validation_vm`.
-
-For a production build, run both validation stages and write a manifest:
+Add `--manifest` to write a build record:
 
 ```bash
 ./build.sh --ci --validate --validate-artifact --manifest --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
-### Dry Run Mode
+Manifest files are written under `manifests/` and are ignored by git.
 
-To inspect the selected matrix row, resolved source-image plan, generated Ansible vars, and final Packer inputs without invoking Nutanix or Packer, use `--dry-run`:
+Useful fields:
 
-```bash
-./build.sh --dry-run --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
-```
+- `status`: final build status, usually `success` or `failed`.
+- `selection`: the matrix selection used for the build.
+- `source_image`: whether the source came from a remote URI, local path, staged image, or existing Prism image.
+- `packer.started_at`, `packer.finished_at`, `packer.duration_seconds`: the Packer phase only.
+- `artifact.image_name`, `artifact.image_uuid`: the saved Prism image.
+- `validation.in_guest`: in-guest validation status.
+- `validation.artifact`: final artifact validation status.
+- `cleanup.artifact_validation_vm`: whether the disposable validation VM was deleted, retained, or cleanup failed.
 
-Dry-run mode does not require the Prism `PKR_VAR_*` environment variables, `packer`, `curl`, or the SSH public key to be present up front. Instead, it prints a readiness summary and explicitly lists any missing live-build prerequisites.
-
-### Preflight and Source Image Staging
-
-Before starting a long build, run a live preflight check. This contacts Prism, verifies the configured cluster and subnet, and checks that the selected source image plan is ready, but it does not start Packer:
-
-```bash
-./build.sh --preflight --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
-```
-
-If your selected source image is a remote URI, you can stage it into Prism first. This is useful when a remote image import may take a long time:
-
-```bash
-./build.sh --stage-source --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
-```
-
-`--stage-source` is only for remote source image URIs. Local qcow2 file paths still go through Packer's local upload path.
-
-If the source image is already present in Prism, point the build at that image by name:
-
-```bash
-./build.sh --ci --source-image-name "Rocky-9-GenericCloud-LVM-9.7-20251123.2.x86_64.qcow2" --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
-```
-
-## In-Guest Validation
-
-When `--validate` is enabled, the `validate_postgres` role runs after provisioning and fails the build if the VM does not satisfy the expected PostgreSQL/NDB baseline. The current validation pass checks:
-
-- `firewalld`, `chrony`, `cron`, and PostgreSQL services are active and enabled.
-- The PostgreSQL client and server versions match the selected `db_version`.
-- The NDB sudoers drop-in exists and the full sudoers configuration passes `visudo`.
-- Every PostgreSQL extension that is expected to be created for the selected platform/version exists in the target databases.
-
-This is an in-guest validation pass during provisioning.
-
-## Artifact Validation
-
-When `--validate-artifact` is enabled, `build.sh` waits for Packer to save the image, finds the saved image in Prism, and boots a fresh disposable VM from that image. It then connects over SSH with the repo key in `packer/id_rsa`, runs the `validate_postgres` role against the disposable VM, and removes the VM after validation.
-
-The validation role checks every PostgreSQL extension that should exist for the selected platform. It uses the same extension metadata as provisioning, so `pgvector` is checked as SQL extension `vector`, and extensions that are unsupported for the selected PostgreSQL version are not expected.
-
-If artifact validation passes, the manifest records `validation.artifact` as `passed`. If artifact validation fails, it records `failed` and the disposable VM is still removed by default. Add `--debug` to keep the validation VM on failure so you can inspect it in Prism. If validation succeeds but the disposable VM cannot be removed, the build fails instead of hiding the leaked VM; check the manifest `cleanup.artifact_validation_vm` field for the cleanup status.
-
-### Debug Mode
-
-To run the build in debug mode, use the `--debug` flag. This will produce a detailed Packer log file and, in case of an error, will leave the temporary VM running so you can inspect it.
-
-```bash
-./build.sh --debug
-```
-
-The script will find the matching configuration in the `matrix.json` and proceed with the build non-interactively.
-
-### Troubleshooting Prism Tasks
-
-Long-running Prism operations, such as image imports and VM power or delete actions, print the Prism task UUID they are waiting on. If a build appears stuck or fails during one of those steps, copy that UUID and search for it in Prism Central's task view. The task details usually show the current progress and any Prism-side error message.
-
-### Source Image Import Timed Out
-
-If Packer times out while importing a source image, first check Prism Central's task view. The import may still finish after Packer stops waiting. When that happens, rerun the build with `--source-image-name` and the completed Prism image name so the next attempt reuses the existing image instead of starting another import.
-
-### Artifact Validation VM Was Left Behind
-
-If a disposable `validate-...` VM remains in Prism, open the latest manifest and check `cleanup.artifact_validation_vm`. A value such as `delete-request-failed`, `delete-task-failed`, or `kept-on-failure` explains why it stayed behind. If you used `--debug`, the VM may have been intentionally kept for inspection; otherwise delete it manually after you finish checking it.
-
-### Artifact Validation Cannot SSH
-
-Artifact validation connects as `packer` with `packer/id_rsa` and ignores your local SSH agent. Confirm that `packer/id_rsa` matches `packer/id_rsa.pub`, the validation VM has an IP address, and the subnet allows SSH from your workstation. Rerun with `--debug` if you need the validation VM to remain available for manual SSH testing.
-
-### Manifest Status Is `failed`
-
-A manifest status of `failed` means the build exited before all requested stages completed. Check the `packer`, `validation`, and `cleanup` sections to see where it stopped. Common causes are Packer provisioning errors, in-guest validation failures, artifact validation failures, or cleanup failures after artifact validation. If `cleanup.artifact_validation_vm` is `result-unavailable`, the artifact validation helper did not write a usable result file, so check the terminal log around the validation step.
-
-## Image Naming Convention
-
-`ndb-<ndb_version>-<db_type>-<db_version>-<os_type>-<os_version>-<timestamp>`
-
-For example:
-
-`ndb-2.10-pgsql-18-Rocky-Linux-9.7-20240101120000`
-
-## Automated Tests
-
-The project includes a test script that iterates through the buildable combinations defined in the `matrix.json` files and runs a full Packer build for each one. This is a comprehensive end-to-end test to ensure that supported configurations keep working.
-
-To run the tests, execute the `test.sh` script:
-
-```bash
-./test.sh
-```
-
-You can fine-tune the suite with the following options:
-
-```bash
-# Only test Rocky builds and run 3 builds in parallel
-./test.sh --include-os "Rocky Linux" --max-parallel 3
-
-# Run the same suite with in-guest validation enabled for each build
-./test.sh --include-os "Rocky Linux" --max-parallel 3 --validate
-
-# Run both validation stages and write manifests for each build
-./test.sh --include-os "Rocky Linux" --max-parallel 3 --validate --validate-artifact --manifest
-```
-
-Use `./test.sh --help` for the complete list of filters (include/exclude OS, include NDB versions, control concurrency).
-
-Before launching any build, `build.sh` validates the selected matrix file and `test.sh` validates every discovered `ndb/*/matrix.json`. The validator ensures required fields are non-empty strings, `ndb_version` matches the directory name, extensions are well formed, versions no longer contain `/`, and `ha_components` blocks are structurally valid. You can run it manually with:
-
-```bash
-scripts/matrix_validate.sh ndb/*/matrix.json
-```
-
-Matrix validation uses shell and `jq`; Python is not required to operate this tool.
+If artifact validation succeeds but the validation VM cannot be deleted, the build fails instead of hiding a leaked VM.
 
 ## Release Onboarding
 
-When Nutanix publishes a new NDB release, start by scaffolding it from the previous supported release:
+When Nutanix publishes a new NDB release, scaffold it from the previous supported release:
 
 ```bash
 scripts/release_scaffold.sh 2.11 --from 2.10
 ```
 
-The scaffold copies `ndb/2.10` to `ndb/2.11`, copies `ansible/2.10` to `ansible/2.11`, rewrites `ndb_version` values in the new matrix, and creates `ndb/2.11/REVIEW.md`.
+The scaffold:
 
-This is only a starting point. Before building the new version, read the new release notes and update the copied matrix so it matches the real support list. Then run:
+- Copies `ndb/2.10` to `ndb/2.11`.
+- Copies `ansible/2.10` to `ansible/2.11`.
+- Rewrites `ndb_version` values in the copied matrix.
+- Creates `ndb/2.11/REVIEW.md`.
+- Runs matrix validation and Ansible syntax checks.
+
+This is only a starting point. You must still compare the copied matrix with the new release notes before building.
+
+After editing the new matrix, run:
 
 ```bash
 scripts/matrix_validate.sh ndb/2.11/matrix.json
 ANSIBLE_CONFIG=ansible/2.11/ansible.cfg ansible-playbook -i ansible/2.11/inventory/hosts ansible/2.11/playbooks/site.yml --syntax-check
 ```
 
-To see what would be created without touching the repo, add `--dry-run`:
+Preview the scaffold without creating files:
 
 ```bash
 scripts/release_scaffold.sh 2.11 --from 2.10 --dry-run
 ```
 
-## PostgreSQL Extensions
+## Troubleshooting
 
-The Ansible `postgres` role can install and enable the extensions called out in `source/NDB-2.9-postgreSQL-documentation.md` (`pg_cron`, `pglogical`, `pg_partman`, `pg_stat_statements`, `pgvector`, `pgaudit`, `postgis`, `set_user`, `timescaledb`). Declare the desired list per build entry by adding an `extensions` array to `matrix.json` (as shown above). These values populate the `postgres_extensions` variable, which installs the matching PGDG packages and issues `CREATE EXTENSION IF NOT EXISTS ...` in the `postgres` database by default. You can override the target databases via `postgres_extensions_databases`.
+### Source image import timed out
 
-Builds where the `extensions` array is omitted (or empty) leave the core PostgreSQL installation untouched: no extension packages are installed and Ansible simply logs that the step was skipped.
+The Prism import may still be running even after Packer gives up. Find the task UUID in the output, wait for it to finish in Prism, then rerun the build with `--source-image-name`.
 
-## Current PostgreSQL Prerequisites Coverage
-
-- `packer/http/user-data` and the `common` Ansible role now apply the documented OS prerequisites automatically (firewalld + chrony on every OS, UFW removal on Debian/Ubuntu, sudo secure paths, drop-in sudoers policy for the NDB drive user, and chrony/firewalld services enabled).
-- The `postgres` role installs the contrib package unconditionally and can provision the NDB-qualified extensions through the `postgres_extensions` variable.
-- `ansible/2.10` also applies the Ubuntu 24.04 rsyslog AppArmor workaround called out in the NDB 2.10 known issues, so PostgreSQL 18 images can be built from that base image without manual prep.
-- Additional tunables (`ndb_drive_user`, `configure_ndb_sudoers`, `postgres_extensions`, etc.) can be supplied via `matrix.json` or overridden inside Ansible to accommodate custom scenarios.
-
-## Source Image Resolution
-
-`images.json` supports two entry styles:
-
-- A direct string URI for public images, for example Rocky Linux or Ubuntu cloud images.
-- An object with `env_var` and optional `prefetch` for artifacts that should not be committed as long-lived URLs. This is the default pattern for RHEL.
-
-When `prefetch` is `true`, `build.sh` downloads the source image to a local temporary file before invoking Packer. This avoids relying on short-lived remote links during the actual Nutanix image import step.
-
-## Customizing Build Resources
-
-The default Nutanix VM launched by Packer uses 2 vCPUs, 4 GiB RAM, and a 40 GiB disk. You can override these defaults via environment variables:
+Example:
 
 ```bash
-export PKR_VAR_vm_cpu=4
-export PKR_VAR_vm_memory_mb=8192
-export PKR_VAR_vm_disk_size_gb=80
+./build.sh --ci --source-image-name "Rocky-9-GenericCloud-LVM-9.7-20251123.2.x86_64.qcow2" --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
-This allows you to adapt image builds to heavier workloads without modifying the HCL templates.
+### Artifact validation cannot SSH
 
-## Multi-engine roadmap
+The validation helper forces the repo key and disables the local SSH agent. Confirm the validation VM has an IP, then rerun with debug retention if inspection is needed.
 
-`ndb/2.10/matrix.json` also tracks the Oracle, SQL Server, MySQL/MariaDB and MongoDB combinations listed in the NDB 2.10 release notes. Each entry exposes:
+```bash
+./build.sh --debug --ci --validate-artifact --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+```
 
-- `db_type` / `engine` to distinguish each family
-- `provisioning_role`, currently `postgresql` for build-ready configurations and `metadata` for documentary rows
-- optional `ha_components` (Patroni/etcd/HAProxy/Keepalived versions) and `deployment` hints (single-instance, AG, FCI, etc.)
+### A validation VM was left behind
 
-To make additional engines buildable, add the corresponding Packer/Ansible roles and flip `provisioning_role` to something meaningful (for example `oracle`, `sqlserver`). The matrix validator already enforces the structure of these new fields, which makes extending the pipeline safe.
+The failed command prints the VM name and UUID. Delete it from Prism after inspection.
+
+If a manifest was written, also check `cleanup.artifact_validation_vm`:
+
+- `kept-on-failure`: expected when `--debug` keeps the VM after failure.
+- `delete-request-failed`: Prism rejected the delete request.
+- `delete-task-failed`: Prism accepted the delete request, but the task failed.
+- `result-unavailable`: artifact validation did not write usable result JSON.
+
+### Manifest status is `failed`
+
+A failed manifest means the build exited before every requested stage completed. Check these sections:
+
+- `packer`: Packer timing and whether the image build finished.
+- `validation`: in-guest and artifact validation status.
+- `cleanup`: cleanup status for disposable validation VMs.
+
+### Prism task appears stuck
+
+Long-running Prism operations print task UUIDs. Search for the UUID in Prism Central's task view to see Prism-side progress or errors.
+
+### RHEL source image is missing
+
+RHEL downloads are licensed and often short-lived. Set the matching environment variable before building:
+
+```bash
+export NDB_RHEL_9_7_IMAGE_URI="/path/to/rhel-9.7.qcow2"
+export NDB_RHEL_9_6_IMAGE_URI="/path/to/rhel-9.6.qcow2"
+```
+
+## Reference
+
+### Project Structure
+
+```text
+.
+|-- ansible/
+|   |-- 2.9/
+|   `-- 2.10/
+|-- build.sh
+|-- images.json
+|-- manifests/
+|-- ndb/
+|   |-- 2.9/
+|   `-- 2.10/
+|-- packer/
+|   |-- database.pkr.hcl
+|   |-- http/user-data
+|   `-- variables.pkr.hcl
+|-- scripts/
+|   |-- artifact_validate.sh
+|   |-- manifest.sh
+|   |-- matrix_validate.sh
+|   |-- prism.sh
+|   |-- release_scaffold.sh
+|   |-- selftest.sh
+|   `-- source_images.sh
+|-- source/
+|-- tasks/
+`-- test.sh
+```
+
+### Matrix Files
+
+The matrix file is the support contract for one NDB version. Each buildable PostgreSQL row should include:
+
+```json
+{
+  "ndb_version": "2.10",
+  "engine": "PostgreSQL Community Edition",
+  "db_type": "pgsql",
+  "os_type": "Rocky Linux",
+  "os_version": "9.7",
+  "db_version": "18",
+  "provisioning_role": "postgresql",
+  "patroni_version": "4.0.5",
+  "etcd_version": "3.5.12",
+  "ha_components": {
+    "patroni": ["4.0.5"],
+    "etcd": ["3.5.12"],
+    "haproxy": ["2.8.9"],
+    "keepalived": ["2.2.8"]
+  },
+  "extensions": ["pg_stat_statements", "pgvector"]
+}
+```
+
+If `extensions` is omitted or empty, the PostgreSQL role does not install extension packages or create extensions.
+
+Use `provisioning_role=metadata` for combinations that should be documented but are not buildable yet.
+
+### Matrix Drafting Prompt
+
+You can use this prompt with a language model to draft a new matrix from release notes:
+
+```text
+Please create a JSON array of all possible build combinations from the provided markdown file. Each object must include ndb_version, engine, db_type, os_type, os_version, db_version, and provisioning_role. Add patroni_version, etcd_version, and ha_components when the release notes include HA component data. Use provisioning_role=postgresql only for combinations that are actually buildable by the current PostgreSQL pipeline, and use provisioning_role=metadata for documentation-only rows.
+```
+
+Always review the generated matrix manually against the release notes before building.
+
+### PostgreSQL Extensions
+
+The PostgreSQL role can install and enable these NDB-qualified extensions when they are listed in a matrix row:
+
+- `pg_cron`
+- `pglogical`
+- `pg_partman`
+- `pg_stat_statements`
+- `pgvector`
+- `pgaudit`
+- `postgis`
+- `set_user`
+- `timescaledb`
+
+The role installs the matching PGDG packages and runs `CREATE EXTENSION IF NOT EXISTS ...` in the `postgres` database by default. Override target databases with `postgres_extensions_databases` if needed.
+
+### Current PostgreSQL Coverage
+
+- `packer/http/user-data` and the `common` role apply documented OS prerequisites.
+- Rocky CRB is enabled before Red Hat package installation.
+- EPEL is enabled when PostGIS is requested on Red Hat family systems.
+- PostgreSQL contrib packages are installed unconditionally.
+- `ansible/2.10` applies the Ubuntu 24.04 rsyslog AppArmor workaround from the NDB 2.10 known issues.
+
+### Image Naming
+
+Images use this pattern:
+
+```text
+ndb-<ndb_version>-<db_type>-<db_version>-<os_type>-<os_version>-<timestamp>
+```
+
+Example:
+
+```text
+ndb-2.10-pgsql-18-Rocky Linux-9.7-20260424000000
+```
+
+### Multi-Engine Roadmap
+
+`ndb/2.10/matrix.json` also tracks Oracle, SQL Server, MySQL, MariaDB, and MongoDB combinations from the NDB 2.10 release notes.
+
+To make those buildable, add matching Packer and Ansible roles, then change their matrix rows from `provisioning_role=metadata` to a real role such as `oracle` or `sqlserver`.

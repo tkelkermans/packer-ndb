@@ -41,7 +41,7 @@ Implementation plan approved for the next reliability pass:
 - [x] Execute Task 5: artifact validation helper
 - [x] Execute Task 6: manifest status and failure integration
 - [x] Execute Task 7: release scaffolding
-- [ ] Execute Task 8: beginner README restructure
+- [x] Execute Task 8: beginner README restructure
 - [ ] Run final verification and document results
 
 # Active Plan Review
@@ -53,3 +53,4 @@ Implementation plan approved for the next reliability pass:
 - Code-quality review found Packer manifest timing could drift into artifact validation; fixed `build.sh` so `packer.finished_at` and `packer.duration_seconds` are written immediately when Packer exits.
 - Task 6 completed manifest source, Packer, artifact, validation, cleanup, and failed-status reporting. Code-quality review found empty artifact result files could bypass the failed fallback; fixed with `manifest.sh record-artifact-validation`, valid-JSON checks, and self-test coverage.
 - Task 7 added `scripts/release_scaffold.sh`, release onboarding README guidance, and a dry-run self-test. Code-quality review found partial scaffold cleanup risks; fixed by staging under the repo, rolling back incomplete publishes, always cleaning staging, and using a generated dry-run test version.
+- Task 8 restructured README into a beginner operator guide. Quality review found missing `packer init packer/` guidance and an under-warned live `test.sh` example; both were added before approval.
