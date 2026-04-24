@@ -43,8 +43,10 @@ function on_exit() {
       local failed_at failed_epoch
       failed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
       failed_epoch=$(date +%s)
-      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".packer.finished_at" --value "$failed_at" >/dev/null 2>&1 || true
-      "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".packer.duration_seconds" --json-value "$((failed_epoch - PACKER_STARTED_EPOCH))" >/dev/null 2>&1 || true
+      if [[ -z "${PACKER_FINISHED_EPOCH:-}" ]]; then
+        "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".packer.finished_at" --value "$failed_at" >/dev/null 2>&1 || true
+        "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".packer.duration_seconds" --json-value "$((failed_epoch - PACKER_STARTED_EPOCH))" >/dev/null 2>&1 || true
+      fi
     fi
     "$MANIFEST_HELPER" finalize --file "$MANIFEST_FILE" --status failed >/dev/null 2>&1 || true
   fi
@@ -775,6 +777,10 @@ fi
   packer/
 
 PACKER_FINISHED_EPOCH=$(date +%s)
+if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".packer.finished_at" --value "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".packer.duration_seconds" --json-value "$((PACKER_FINISHED_EPOCH - PACKER_STARTED_EPOCH))"
+fi
 ARTIFACT_IMAGE_UUID=$(prism_image_uuid_by_name "$IMAGE_NAME" || true)
 
 if [[ "$VALIDATE_ARTIFACT" == "true" ]]; then
@@ -814,8 +820,6 @@ elif [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
 fi
 
 if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
-  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".packer.finished_at" --value "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-  "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".packer.duration_seconds" --json-value "$((PACKER_FINISHED_EPOCH - PACKER_STARTED_EPOCH))"
   "$MANIFEST_HELPER" finalize --file "$MANIFEST_FILE" --status success --artifact-image-uuid "$ARTIFACT_IMAGE_UUID"
   MANIFEST_FINALIZED=true
 fi

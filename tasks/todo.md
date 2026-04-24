@@ -38,8 +38,16 @@ Implementation plan approved for the next reliability pass:
 - [x] Execute Task 2: Prism shell helper library
 - [x] Execute Task 3: source image preflight and staging
 - [x] Execute Task 4: build manifest writer
-- [ ] Execute Task 5: artifact validation helper
+- [x] Execute Task 5: artifact validation helper
 - [ ] Execute Task 6: manifest status and failure integration
 - [ ] Execute Task 7: release scaffolding
 - [ ] Execute Task 8: beginner README restructure
 - [ ] Run final verification and document results
+
+# Active Plan Review
+
+- Task 5 added `scripts/artifact_validate.sh`, `--validate-artifact` build/test wiring, README guidance, and self-tests for artifact validation failure handling.
+- Spec review found the artifact-validation trap could mask failures after temp-directory creation; fixed by preserving the original exit status inside one EXIT handler before cleanup.
+- Code-quality review found extension validation only derived the first expected extension; fixed both NDB 2.9 and 2.10 validation roles so all supported expected SQL extensions are checked.
+- Code-quality review found VM cleanup failures could be hidden; fixed artifact validation so successful validation plus failed VM deletion fails the run and records the cleanup status.
+- Code-quality review found Packer manifest timing could drift into artifact validation; fixed `build.sh` so `packer.finished_at` and `packer.duration_seconds` are written immediately when Packer exits.

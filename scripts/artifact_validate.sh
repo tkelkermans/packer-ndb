@@ -17,6 +17,7 @@ VM_UUID=""
 IMAGE_UUID=""
 CLEANUP_STATUS="not-started"
 FINAL_STATUS="failed"
+TMPDIR=""
 
 usage() {
   cat <<'EOF'
@@ -152,12 +153,20 @@ cleanup_vm() {
 
 on_exit() {
   local status=$?
+  local cleanup_status=0
   if [[ "$status" -eq 0 ]]; then
     FINAL_STATUS="success"
   fi
 
-  cleanup_vm || true
+  cleanup_vm || cleanup_status=$?
+  if [[ "$status" -eq 0 && "$cleanup_status" -ne 0 ]]; then
+    FINAL_STATUS="failed"
+    status="$cleanup_status"
+  fi
   write_result "$FINAL_STATUS" || true
+  if [[ -n "$TMPDIR" ]]; then
+    rm -rf "$TMPDIR"
+  fi
   exit "$status"
 }
 trap on_exit EXIT
@@ -259,7 +268,6 @@ fi
 TIMESTAMP=$(date +%Y%m%d%H%M%S)
 VM_NAME="validate-${IMAGE_NAME:0:45}-${TIMESTAMP}"
 TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"; on_exit' EXIT
 
 SSH_PUBLIC_KEY=$(tr -d '\n' < "$PUBLIC_KEY_PATH")
 USER_DATA_B64=$(sed "s|\${ssh_public_key}|${SSH_PUBLIC_KEY}|g" "$USER_DATA_TEMPLATE" | base64_no_wrap)

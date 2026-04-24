@@ -252,11 +252,143 @@ run_manifest_tests() {
 run_manifest_tests
 
 run_artifact_validate_tests() {
+  local tmpdir failure_result cleanup_result
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  failure_result="$tmpdir/failure-result.json"
+  cleanup_result="$tmpdir/cleanup-result.json"
+
   if "$ROOT_DIR/scripts/artifact_validate.sh" --help >/dev/null; then
     pass "artifact validation help"
   else
     fail "artifact validation help"
   fi
+
+  mkdir -p "$tmpdir/bin"
+  cat > "$tmpdir/bin/curl" <<'SH'
+#!/usr/bin/env bash
+output_file=""
+url=""
+method=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -X)
+      method=$2
+      shift
+      ;;
+    -o)
+      output_file=$2
+      shift
+      ;;
+    -w)
+      shift
+      ;;
+    http*://*)
+      url=$1
+      ;;
+  esac
+  shift
+done
+
+case "$url" in
+  */api/nutanix/v3/images/list)
+    body='{"entities":[{"spec":{"name":"test-image"},"metadata":{"uuid":"image-uuid"}}]}'
+    ;;
+  */api/nutanix/v3/clusters/list)
+    body='{"entities":[{"spec":{"name":"mock-cluster"},"metadata":{"uuid":"cluster-uuid"}}]}'
+    ;;
+  */api/nutanix/v3/subnets/list)
+    body='{"entities":[{"spec":{"name":"mock-subnet"},"metadata":{"uuid":"subnet-uuid"}}]}'
+    ;;
+  */api/nutanix/v3/vms)
+    body='{"metadata":{"uuid":"vm-uuid"},"status":{"execution_context":{"task_uuid":"create-task"}}}'
+    ;;
+  */api/nutanix/v3/tasks/create-task|*/api/nutanix/v3/tasks/power-task)
+    body='{"status":"SUCCEEDED","percentage_complete":100}'
+    ;;
+  */api/nutanix/v3/tasks/delete-task)
+    body="{\"status\":\"${NDB_SELFTEST_DELETE_TASK_STATUS:-SUCCEEDED}\",\"percentage_complete\":100}"
+    ;;
+  */api/nutanix/v3/vms/vm-uuid)
+    if [[ "$method" == "DELETE" ]]; then
+      touch "${NDB_SELFTEST_DELETE_MARKER:?}"
+      body='{"status":{"execution_context":{"task_uuid":"delete-task"}}}'
+    elif [[ "$method" == "PUT" ]]; then
+      body='{"status":{"execution_context":{"task_uuid":"power-task"}}}'
+    else
+      body='{"api_version":"3.1","metadata":{"uuid":"vm-uuid","kind":"vm"},"spec":{"name":"vm","resources":{"power_state":"OFF"}},"status":{"resources":{"nic_list":[{"ip_endpoint_list":[{"ip":"192.0.2.10"}]}]}}}'
+    fi
+    ;;
+  *)
+    body='{"status":"SUCCEEDED","percentage_complete":100}'
+    ;;
+esac
+
+if [[ -n "$output_file" ]]; then
+  printf '%s' "$body" > "$output_file"
+else
+  printf '%s' "$body"
+fi
+printf '200'
+SH
+
+  cat > "$tmpdir/bin/ssh" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+
+  cat > "$tmpdir/bin/ansible-playbook" <<'SH'
+#!/usr/bin/env bash
+exit "${NDB_SELFTEST_ANSIBLE_RC:-42}"
+SH
+
+  chmod +x "$tmpdir/bin/curl" "$tmpdir/bin/ssh" "$tmpdir/bin/ansible-playbook"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    export PKR_VAR_cluster_name=mock-cluster
+    export PKR_VAR_subnet_name=mock-subnet
+    export NDB_SELFTEST_DELETE_MARKER="$tmpdir/delete-called"
+    if "$ROOT_DIR/scripts/artifact_validate.sh" \
+      --image-name test-image \
+      --ndb-version 2.10 \
+      --db-version 18 \
+      --result-file "$failure_result" \
+      --keep-on-failure >/dev/null 2>&1; then
+      fail "artifact validation failure unexpectedly exited successfully"
+    fi
+  )
+
+  jq -e '.status == "failed" and .cleanup_status == "kept-on-failure" and .vm_uuid == "vm-uuid"' "$failure_result" >/dev/null || fail "artifact validation failure result JSON"
+  [[ ! -e "$tmpdir/delete-called" ]] || fail "artifact validation deleted VM despite --keep-on-failure"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    export PKR_VAR_cluster_name=mock-cluster
+    export PKR_VAR_subnet_name=mock-subnet
+    export NDB_SELFTEST_DELETE_MARKER="$tmpdir/delete-called"
+    export NDB_SELFTEST_ANSIBLE_RC=0
+    export NDB_SELFTEST_DELETE_TASK_STATUS=FAILED
+    if "$ROOT_DIR/scripts/artifact_validate.sh" \
+      --image-name test-image \
+      --ndb-version 2.10 \
+      --db-version 18 \
+      --result-file "$cleanup_result" >/dev/null 2>&1; then
+      fail "artifact validation cleanup failure unexpectedly exited successfully"
+    fi
+  )
+
+  jq -e '.status == "failed" and .cleanup_status == "delete-task-failed" and .vm_uuid == "vm-uuid"' "$cleanup_result" >/dev/null || fail "artifact validation cleanup failure result JSON"
+  [[ -e "$tmpdir/delete-called" ]] || fail "artifact validation cleanup failure did not request VM delete"
+
+  pass "artifact validation failure handling"
 }
 
 run_artifact_validate_tests

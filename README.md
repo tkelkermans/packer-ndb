@@ -197,7 +197,7 @@ To write a JSON manifest for a live build, add `--manifest`:
 ./build.sh --ci --validate --manifest --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
-Manifest files are written under `manifests/` with one JSON file per image name. These files are ignored by git, so they are safe to keep locally as build records without accidentally committing environment-specific output.
+Manifest files are written under `manifests/` with one JSON file per image name. These files are ignored by git, so they are safe to keep locally as build records without accidentally committing environment-specific output. The `packer.finished_at` and `packer.duration_seconds` fields measure the Packer image build itself; artifact validation runs after that and is recorded separately under `validation.artifact` and `cleanup.artifact_validation_vm`.
 
 For a production build, run both validation stages and write a manifest:
 
@@ -252,7 +252,9 @@ This is an in-guest validation pass during provisioning.
 
 When `--validate-artifact` is enabled, `build.sh` waits for Packer to save the image, finds the saved image in Prism, and boots a fresh disposable VM from that image. It then connects over SSH with the repo key in `packer/id_rsa`, runs the `validate_postgres` role against the disposable VM, and removes the VM after validation.
 
-If artifact validation fails, the disposable VM is still removed by default. Add `--debug` to keep the validation VM on failure so you can inspect it in Prism.
+The validation role checks every PostgreSQL extension that should exist for the selected platform. It uses the same extension metadata as provisioning, so `pgvector` is checked as SQL extension `vector`, and extensions that are unsupported for the selected PostgreSQL version are not expected.
+
+If artifact validation fails, the disposable VM is still removed by default. Add `--debug` to keep the validation VM on failure so you can inspect it in Prism. If validation succeeds but the disposable VM cannot be removed, the build fails instead of hiding the leaked VM; check the manifest `cleanup.artifact_validation_vm` field for the cleanup status.
 
 ### Debug Mode
 
