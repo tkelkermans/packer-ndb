@@ -7,6 +7,7 @@ TEMP_FILES=()
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+MANIFEST_HELPER="${SCRIPT_DIR}/scripts/manifest.sh"
 # shellcheck source=scripts/source_images.sh
 source "${SCRIPT_DIR}/scripts/source_images.sh"
 
@@ -34,7 +35,16 @@ function cleanup() {
     done
   fi
 }
-trap cleanup EXIT
+
+function on_exit() {
+  local status=$?
+  if [[ "$status" -ne 0 && "${MANIFEST_FINALIZED:-false}" != "true" && -n "${MANIFEST_FILE:-}" && -f "${MANIFEST_FILE:-}" ]]; then
+    "$MANIFEST_HELPER" finalize --file "$MANIFEST_FILE" --status failed >/dev/null 2>&1 || true
+  fi
+  cleanup
+  exit "$status"
+}
+trap on_exit EXIT
 
 function usage() {
   cat <<'EOF'
@@ -46,6 +56,7 @@ Options:
   --preflight               Check live Prism/source-image readiness without invoking Packer
   --stage-source            Import a remote source image into Prism before invoking Packer
   --validate                Run in-guest validation checks after provisioning and fail the build on validation errors
+  --manifest                Write a build manifest under manifests/ for live builds
   --debug                   Enable PACKER_LOG and interactive Packer debug mode
   --ndb-version VERSION     NDB version to build
   --db-type TYPE            Database type to build
@@ -363,6 +374,9 @@ DRY_RUN=false
 PREFLIGHT_ONLY=false
 STAGE_SOURCE=false
 VALIDATE_BUILD=false
+WRITE_MANIFEST=false
+MANIFEST_FILE=""
+MANIFEST_FINALIZED=false
 
 declare NDB_VERSION=""
 declare OS_TYPE=""
@@ -376,6 +390,9 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --validate)
       VALIDATE_BUILD=true
+      ;;
+    --manifest)
+      WRITE_MANIFEST=true
       ;;
     --dry-run)
       DRY_RUN=true
@@ -639,6 +656,24 @@ IMAGE_NAME="ndb-${NDB_VERSION}-${DB_TYPE}-${DB_VERSION}-${OS_TYPE}-${OS_VERSION}
 VM_NAME_BASE=$(slugify "${NDB_VERSION}-${DB_TYPE}-${DB_VERSION}-${OS_TYPE}-${OS_VERSION}")
 VM_NAME="ndb-${VM_NAME_BASE:0:40}-${TIMESTAMP}"
 
+if [[ "$WRITE_MANIFEST" == "true" && "$DRY_RUN" != "true" && "$PREFLIGHT_ONLY" != "true" ]]; then
+  MANIFEST_FILE="${SCRIPT_DIR}/manifests/${IMAGE_NAME}.json"
+  "$MANIFEST_HELPER" init \
+    --file "$MANIFEST_FILE" \
+    --image-name "$IMAGE_NAME" \
+    --ndb-version "$NDB_VERSION" \
+    --db-type "$DB_TYPE" \
+    --db-version "$DB_VERSION" \
+    --os-type "$OS_TYPE" \
+    --os-version "$OS_VERSION" \
+    --provisioning-role "$PROVISIONING_ROLE" \
+    --matrix-row-json "$CONFIG"
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --path ".source_image.name" --value "$PACKER_SOURCE_IMAGE_NAME"
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --path ".source_image.uri" --value "$PACKER_SOURCE_IMAGE_URI"
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --path ".source_image.path" --value "$PACKER_SOURCE_IMAGE_PATH"
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --path ".source_image.runtime_action" --value "$SOURCE_IMAGE_RUNTIME_ACTION"
+fi
+
 if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
   if [[ "$SOURCE_IMAGE_RESOLUTION_STATUS" == "missing-env" ]]; then
     echo "Error: source image environment variable is missing: ${SOURCE_IMAGE_REQUIRED_ENV_VAR}" >&2
@@ -683,6 +718,11 @@ if [[ "$DEBUG" == "true" ]]; then
   PACKER_CMD+=( -debug )
 fi
 
+PACKER_STARTED_EPOCH=$(date +%s)
+if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --path ".packer.started_at" --value "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+fi
+
 "${PACKER_CMD[@]}" \
   -var "ansible_site_playbook=${ANSIBLE_SITE_PLAYBOOK}" \
   -var "ansible_config_path=${ANSIBLE_CONFIG_PATH}" \
@@ -701,3 +741,12 @@ fi
   -var "vm_name=${VM_NAME}" \
   -var "ssh_public_key=$(cat "$PUBLIC_KEY_PATH")" \
   packer/
+
+PACKER_FINISHED_EPOCH=$(date +%s)
+ARTIFACT_IMAGE_UUID=""
+if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --path ".packer.finished_at" --value "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --path ".packer.duration_seconds" --value-json "$((PACKER_FINISHED_EPOCH - PACKER_STARTED_EPOCH))"
+  "$MANIFEST_HELPER" finalize --file "$MANIFEST_FILE" --status success --artifact-image-uuid "$ARTIFACT_IMAGE_UUID"
+  MANIFEST_FINALIZED=true
+fi

@@ -55,3 +55,7 @@ packer.log
 packer/id_rsa
 packer/id_rsa.pub
 ansible/vars*.json
+
+# Build manifests
+manifests/*.json
+!manifests/.gitkeep

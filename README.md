@@ -191,6 +191,14 @@ To make the build fail if the provisioned VM does not match the selected matrix 
 ./build.sh --validate --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
+To write a JSON manifest for a live build, add `--manifest`:
+
+```bash
+./build.sh --ci --validate --manifest --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+```
+
+Manifest files are written under `manifests/` with one JSON file per image name. These files are ignored by git, so they are safe to keep locally as build records without accidentally committing environment-specific output.
+
 ### Dry Run Mode
 
 To inspect the selected matrix row, resolved source-image plan, generated Ansible vars, and final Packer inputs without invoking Nutanix or Packer, use `--dry-run`:

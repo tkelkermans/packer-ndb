@@ -207,3 +207,33 @@ JSON
 }
 
 run_source_image_tests
+
+run_manifest_tests() {
+  local tmpdir manifest
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  manifest="$tmpdir/manifest.json"
+
+  "$ROOT_DIR/scripts/manifest.sh" init \
+    --file "$manifest" \
+    --image-name "ndb-test" \
+    --ndb-version "2.10" \
+    --db-type "pgsql" \
+    --db-version "18" \
+    --os-type "Rocky Linux" \
+    --os-version "9.7" \
+    --provisioning-role "postgresql" \
+    --matrix-row-json '{"ndb_version":"2.10","provisioning_role":"postgresql"}'
+
+  jq -e '.image_name == "ndb-test" and .status == "running" and .selection.provisioning_role == "postgresql" and .matrix_row.ndb_version == "2.10"' "$manifest" >/dev/null || fail "manifest init JSON"
+
+  "$ROOT_DIR/scripts/manifest.sh" finalize \
+    --file "$manifest" \
+    --status success \
+    --artifact-image-uuid "image-uuid-1"
+
+  jq -e '.status == "success" and .artifact.image_uuid == "image-uuid-1"' "$manifest" >/dev/null || fail "manifest finalize JSON"
+  pass "manifest helper"
+}
+
+run_manifest_tests
