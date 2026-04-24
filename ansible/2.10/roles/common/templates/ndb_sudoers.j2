@@ -1,0 +1,5 @@
+Defaults:{{ ndb_drive_user }} secure_path = /sbin:/bin:/usr/sbin:/usr/bin
+{{ ndb_drive_user }} ALL=(ALL) NOPASSWD:SETENV: /opt/era_base/era_priv_cmd.sh,/home/{{ ndb_drive_user }}/era_priv_cmd.sh,/sbin/su - postgres
+{{ ndb_drive_user }} ALL=(postgres:postgres) NOPASSWD:ALL
+{{ ndb_drive_user }} ALL=(etcd:etcd) NOPASSWD:ALL
+

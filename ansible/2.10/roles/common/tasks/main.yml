@@ -95,6 +95,25 @@
   when: ansible_os_family == "Debian"
   become: yes
 
+- name: Ensure AppArmor disable directory exists (Ubuntu 24.04 workaround)
+  ansible.builtin.file:
+    path: /etc/apparmor.d/disable
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ansible_distribution == "Ubuntu" and ansible_distribution_version == "24.04"
+  become: yes
+
+- name: Disable rsyslogd AppArmor profile for Ubuntu 24.04
+  ansible.builtin.file:
+    src: /etc/apparmor.d/usr.sbin.rsyslogd
+    dest: /etc/apparmor.d/disable/usr.sbin.rsyslogd
+    state: link
+    force: true
+  when: ansible_distribution == "Ubuntu" and ansible_distribution_version == "24.04"
+  become: yes
+
 - name: Ensure firewalld service is enabled
   ansible.builtin.service:
     name: firewalld

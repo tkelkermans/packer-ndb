@@ -11,21 +11,33 @@ package_update: true
 packages:
   - openssh-server
   - firewalld
-  - ufw
+  - chrony
 runcmd:
   - |
     if [ -f /etc/redhat-release ]; then
+        yum install -y firewalld chrony
         systemctl enable sshd
         systemctl start sshd
+        systemctl enable chronyd
+        systemctl start chronyd
         systemctl start firewalld
         systemctl enable firewalld
         firewall-cmd --zone=public --add-service=ssh --permanent
         firewall-cmd --zone=public --add-protocol=icmp --permanent
         firewall-cmd --reload
     elif [ -f /etc/debian_version ]; then
+        apt-get update
+        apt-get install -y firewalld chrony
         systemctl enable ssh
         systemctl start ssh
-        ufw allow ssh
-        ufw allow icmp
-        ufw --force enable
+        systemctl enable chrony
+        systemctl start chrony
+        systemctl stop ufw || true
+        systemctl disable ufw || true
+        ufw --force disable || true
+        systemctl enable firewalld
+        systemctl start firewalld
+        firewall-cmd --zone=public --add-service=ssh --permanent
+        firewall-cmd --zone=public --add-protocol=icmp --permanent
+        firewall-cmd --reload
     fi

@@ -1,0 +1,150 @@
+---
+- name: Derive PostgreSQL validation facts
+  ansible.builtin.set_fact:
+    validate_postgres_major_version: "{{ postgres_major_version | default(db_version) }}"
+    validate_postgres_psql_binary: "{{ (postgres_psql_bin_map | default(validate_postgres_psql_bin_map)).get(ansible_os_family, 'psql') | replace('%s', (postgres_major_version | default(db_version))) }}"
+    validate_service_checks:
+      - label: firewalld
+        unit: firewalld.service
+      - label: chrony
+        unit: "{{ 'chronyd.service' if ansible_os_family == 'RedHat' else 'chrony.service' }}"
+      - label: cron
+        unit: "{{ 'crond.service' if ansible_os_family == 'RedHat' else 'cron.service' }}"
+      - label: postgresql
+        unit: "{{ 'postgresql-' + (postgres_major_version | default(db_version)) + '.service' if ansible_os_family == 'RedHat' else 'postgresql.service' }}"
+
+- name: Check required services are active
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ item.unit }}"
+  loop: "{{ validate_service_checks }}"
+  loop_control:
+    label: "{{ item.label }}"
+  register: validate_service_active_results
+  changed_when: false
+  failed_when: false
+  become: yes
+
+- name: Assert required services are active
+  ansible.builtin.assert:
+    that:
+      - item.stdout == "active"
+    fail_msg: "Expected service {{ item.item.unit }} to be active, got {{ item.stdout | default('') | trim }}"
+  loop: "{{ validate_service_active_results.results }}"
+  loop_control:
+    label: "{{ item.item.label }}"
+
+- name: Check required services are enabled
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - "{{ item.unit }}"
+  loop: "{{ validate_service_checks }}"
+  loop_control:
+    label: "{{ item.label }}"
+  register: validate_service_enabled_results
+  changed_when: false
+  failed_when: false
+  become: yes
+
+- name: Assert required services are enabled
+  ansible.builtin.assert:
+    that:
+      - item.stdout in validate_enabled_status_values
+    fail_msg: "Expected service {{ item.item.unit }} to be enabled, got {{ item.stdout | default('') | trim }}"
+  loop: "{{ validate_service_enabled_results.results }}"
+  loop_control:
+    label: "{{ item.item.label }}"
+
+- name: Check NDB sudoers drop-in exists
+  ansible.builtin.stat:
+    path: "{{ validate_sudoers_path }}"
+  register: validate_ndb_sudoers_stat
+  when: configure_ndb_sudoers | default(false) | bool
+  become: yes
+
+- name: Assert NDB sudoers drop-in exists
+  ansible.builtin.assert:
+    that:
+      - validate_ndb_sudoers_stat.stat.exists
+      - validate_ndb_sudoers_stat.stat.mode | default('') == "0440"
+    fail_msg: "Expected sudoers drop-in {{ validate_sudoers_path }} with mode 0440"
+  when: configure_ndb_sudoers | default(false) | bool
+
+- name: Validate sudoers configuration
+  ansible.builtin.command:
+    argv:
+      - visudo
+      - -cf
+      - /etc/sudoers
+  register: validate_sudoers_check
+  changed_when: false
+  when: configure_ndb_sudoers | default(false) | bool
+  become: yes
+
+- name: Check PostgreSQL client version
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_postgres_psql_binary }}"
+      - --version
+  register: validate_psql_version
+  changed_when: false
+  become: yes
+
+- name: Assert PostgreSQL client version matches matrix selection
+  ansible.builtin.assert:
+    that:
+      - validate_psql_version.stdout is regex("(^|\\s)" ~ validate_postgres_major_version ~ "(\\.|\\s|$)")
+    fail_msg: "Expected psql version {{ validate_postgres_major_version }}, got {{ validate_psql_version.stdout | default('') | trim }}"
+
+- name: Check PostgreSQL server version
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_postgres_psql_binary }}"
+      - -Atqc
+      - SHOW server_version;
+  register: validate_postgres_server_version
+  changed_when: false
+  become: yes
+  become_user: postgres
+
+- name: Assert PostgreSQL server version matches matrix selection
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_server_version.stdout is regex("^" ~ validate_postgres_major_version ~ "(\\.|$)")
+    fail_msg: "Expected PostgreSQL server version {{ validate_postgres_major_version }}, got {{ validate_postgres_server_version.stdout | default('') | trim }}"
+
+- name: Determine expected PostgreSQL extensions for validation
+  ansible.builtin.set_fact:
+    validate_expected_postgres_extensions: "{{ postgres_extensions_to_create | default([]) | unique }}"
+  when: postgres_extensions | default([]) | length > 0
+
+- name: Check expected PostgreSQL extensions exist in target databases
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_postgres_psql_binary }}"
+      - -Atq
+      - -d
+      - "{{ item.0 }}"
+      - -c
+      - "SELECT 1 FROM pg_extension WHERE extname = '{{ item.1 }}';"
+  loop: "{{ (postgres_extensions_databases | default(['postgres'])) | product(validate_expected_postgres_extensions | default([])) | list }}"
+  register: validate_extension_presence_results
+  changed_when: false
+  become: yes
+  become_user: postgres
+  when:
+    - postgres_extensions_databases | default([]) | length > 0
+    - validate_expected_postgres_extensions | default([]) | length > 0
+
+- name: Assert expected PostgreSQL extensions exist in target databases
+  ansible.builtin.assert:
+    that:
+      - item.stdout | trim == "1"
+    fail_msg: "Expected extension {{ item.item.1 }} in database {{ item.item.0 }}, but it was not found"
+  loop: "{{ validate_extension_presence_results.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.0 }} -> {{ item.item.1 }}"

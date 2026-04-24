@@ -1,0 +1,94 @@
+postgres_extensions: []
+postgres_extensions_databases:
+  - postgres
+postgres_extension_package_map:
+  RedHat:
+    pg_cron: "pg_cron_%s"
+    pglogical: "pglogical_%s"
+    pg_partman: "pg_partman_%s"
+    pg_stat_statements: "postgresql%s-contrib"
+    pgvector: "pgvector_%s"
+    pgaudit: "pgaudit%s"
+    postgis: "postgis33_%s"
+    set_user: "set_user_%s"
+    timescaledb: "timescaledb-2-postgresql-%s"
+  Debian:
+    pg_cron: "postgresql-%s-cron"
+    pglogical: "postgresql-%s-pglogical"
+    pg_partman: "postgresql-%s-partman"
+    pg_stat_statements: "postgresql-%s-contrib"
+    pgvector: "postgresql-%s-pgvector"
+    pgaudit: "postgresql-%s-pgaudit"
+    postgis: "postgresql-%s-postgis-3"
+    set_user: "postgresql-%s-set-user"
+    timescaledb: "postgresql-%s-timescaledb-2"
+postgres_psql_bin_map:
+  RedHat: "/usr/pgsql-%s/bin/psql"
+  Debian: "/usr/lib/postgresql/%s/bin/psql"
+postgres_conf_path_map:
+  RedHat: "/var/lib/pgsql/%s/data/postgresql.conf"
+  Debian: "/etc/postgresql/%s/main/postgresql.conf"
+
+postgres_contrib_version_overrides:
+  RedHat:
+    "17": "17.6-1PGDG.rhel9"
+  Debian: {}
+
+postgres_extension_metadata:
+  RedHat:
+    pg_cron:
+      preload_libraries:
+        - pg_cron
+      config:
+        cron.database_name: postgres
+    pglogical:
+      preload_libraries:
+        - pglogical
+    pg_stat_statements:
+      preload_libraries:
+        - pg_stat_statements
+    pgvector:
+      sql_name: vector
+    pgaudit:
+      preload_libraries:
+        - pgaudit
+      unsupported_versions:
+        - "17"
+      reason: "PGDG does not yet publish the pgaudit extension for PostgreSQL 17 on EL9"
+    postgis:
+      dependencies:
+        default:
+          - hdf5
+          - xerces-c
+    set_user:
+      preload_libraries:
+        - set_user
+    timescaledb:
+      preload_libraries:
+        - timescaledb
+      unsupported_versions:
+        - "17"
+      reason: "TimescaleDB packages for PostgreSQL 17 are not yet available on RHEL/Rocky repositories"
+  Debian:
+    pg_cron:
+      preload_libraries:
+        - pg_cron
+      config:
+        cron.database_name: postgres
+    pglogical:
+      preload_libraries:
+        - pglogical
+    pg_stat_statements:
+      preload_libraries:
+        - pg_stat_statements
+    pgvector:
+      sql_name: vector
+    pgaudit:
+      preload_libraries:
+        - pgaudit
+    set_user:
+      preload_libraries:
+        - set_user
+    timescaledb:
+      preload_libraries:
+        - timescaledb

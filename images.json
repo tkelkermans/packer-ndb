@@ -1,5 +1,17 @@
 {
-  "rocky-linux-9.6": "https://dl.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-LVM-9.6-20250531.0.x86_64.qcow2",
-  "rhel-9.6": "https://image-builder-service-production-2.s3.us-east-1.amazonaws.com/composer-api-2be98430-3ebb-49c6-9f75-f4855fbb3db9-disk.qcow2?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Checksum-Mode=ENABLED&X-Amz-Credential=ASIAWX4I7AK33WNDL7CF%2F20251021%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251021T132958Z&X-Amz-Expires=604800&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEF4aCXVzLWVhc3QtMSJIMEYCIQDKJrcGn9JN%2FoqDG%2FsRYA%2FvQQORFdc%2FY9b%2FBiEGZ3%2FH%2FAIhANtsShWl7U%2FCGxZhKMCU3ENz2AifHf5O12fEghgE%2BpdYKr0FCBcQAhoMNDYzNjA2ODQyMDM5IgwG9A3LTLRdJIhvXrkqmgV1n76qyBaq5aKRH9YIaPC858g1rVblwKB7BWb2NVYALXm9Y11oGLk55zXQTZgo2FCZvaapeXzdQ0yq%2Biw%2B3wQHZp5HzF4Ky2pNCwEQsel7BMQNkLmmoG5JORx1qc7TeFbhj1lW9xBFNIKwxi6jITQdl0ZeXLMfocKU7iZT1BBcNWBtVdyIqYHjSPi758Gouc1EQpiUN1kNn8A5TK%2BqSu6qZ3KYd2bF77C6IQVOCSbcSAXhh1c1MbqNh2IUr3Xujq93S%2BLdoyyGwbHWCuhAHU5cbES1F1utH7LR2bDpR2QExEEa88WPjFhrTI3%2FP9bjSbLXc%2BZJkOqpCIeoydDZUUor6WTIV3HVYKowmmorv5pDiMzkhxBqTQmGGcpYHCQhbN1pSiEktATCABPuUj7DYacmCHgQnk03BLQiUpYfaNW8Lid4Tkhc080tYKNgN0R9koGABmM%2FG6%2FuzRJUoIrwwKdI1TyFjzegzMPpT35btBAWxhAO29rx5spIni%2BDCjG4aE4lSc2uA%2F1E766S%2F9ySSiH73sOM%2B6SbTwz82OyzLehp8N%2BMqSnKON5eFB3ZC2F4bDUZELdS37on5L8ZHI6hDaf9yHSIp%2FARX5U1xdZZILij0GRIfxayJypKeFyOAjGqZPhbex5SStlaDwgDJDMxwJoba9AEBMPy3XQXA4on8PmCtxql6negzeNlNwMQq9WDY3Qidpi9V8dxULswwOURllQFIoqBDx5NNJifvRC%2Fxzbkj2B1fTOwPJh7RnSsjtdpAiqxx3uyf5ReCV1IdRspMfSAa25Kv%2BKmA84ODC5xxvUsd1pIoqDDvtPvGSrg9%2BaW6riLblAiGaJaZvOjUGu3V9RECdZePNq4HaDXC0TIfiatI80TQrbrG%2FSBrSYwmJLexwY6sAFFA9Iic7EJq36ZBhSkmSwmURa8xOIldYzK%2BG2MytAPE3Za4sFJefexu2Chr9S8bf2JBbht9R86m7JVJzOcsTosBzS31Rfm%2B7RNtuNLn3coMJAZlKZ%2BwDirqQwbc5z%2BJJ9VkKJ1eoKJSZXQK6qGJZ0lsqxM8aOrsnCZx6XnGdoAHHVG7ABM9Wa76GLh6SG%2BwYIP1cxjrhiQICc6Ofll5jTP85153KvSRnWaulwVoUvUFQ%3D%3D&X-Amz-SignedHeaders=host&x-id=GetObject&X-Amz-Signature=bba77d41dc0f1be097773b40105e0502aead056b902d90ca996f6592ea8f4f07",
-  "ubuntu-linux-22.04": "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64-disk-kvm.img"
+  "rocky-linux-9.7": "https://dl.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-LVM-9.7-20251123.2.x86_64.qcow2",
+  "rocky-linux-9.6": "https://dl.rockylinux.org/vault/rocky/9.6/images/x86_64/Rocky-9-GenericCloud-LVM-9.6-20250531.0.x86_64.qcow2",
+  "rhel-9.7": {
+    "env_var": "NDB_RHEL_9_7_IMAGE_URI",
+    "prefetch": true,
+    "description": "Set NDB_RHEL_9_7_IMAGE_URI to a durable RHEL 9.7 qcow2 URL or a local qcow2 path before starting the build."
+  },
+  "rhel-9.6": {
+    "env_var": "NDB_RHEL_9_6_IMAGE_URI",
+    "prefetch": true,
+    "description": "Set NDB_RHEL_9_6_IMAGE_URI to a durable RHEL 9.6 qcow2 URL or a local qcow2 path before starting the build."
+  },
+  "ubuntu-linux-24.04": "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img",
+  "ubuntu-linux-22.04": "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64-disk-kvm.img",
+  "debian-12": "https://cdimage.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2"
 }

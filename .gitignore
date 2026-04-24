@@ -50,5 +50,8 @@ __pycache__/
 packer.log
 
 # Secrets
+.env
+.env.local
 packer/id_rsa
 packer/id_rsa.pub
+ansible/vars*.json

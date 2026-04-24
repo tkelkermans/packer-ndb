@@ -1,0 +1,11 @@
+validate_build: false
+validate_sudoers_path: /etc/sudoers.d/ndb
+validate_enabled_status_values:
+  - enabled
+  - enabled-runtime
+  - static
+  - indirect
+  - generated
+validate_postgres_psql_bin_map:
+  RedHat: "/usr/pgsql-%s/bin/psql"
+  Debian: "/usr/lib/postgresql/%s/bin/psql"

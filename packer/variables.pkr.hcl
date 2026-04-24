@@ -21,12 +21,43 @@ variable "subnet_name" {
   type = string
 }
 
+variable "source_image_name" {
+  type    = string
+  default = ""
+}
+
 variable "source_image_uri" {
   type = string
+  default = ""
+}
+
+variable "source_image_path" {
+  type = string
+  default = ""
 }
 
 variable "image_name" {
   type = string
+}
+
+variable "vm_name" {
+  type    = string
+  default = "ndb-packer-vm"
+}
+
+variable "vm_cpu" {
+  type    = number
+  default = 2
+}
+
+variable "vm_memory_mb" {
+  type    = number
+  default = 4096
+}
+
+variable "vm_disk_size_gb" {
+  type    = number
+  default = 40
 }
 
 variable "ndb_version" {
@@ -58,7 +89,7 @@ variable "etcd_version" {
 }
 
 variable "ssh_public_key" {
-  type = string
+  type    = string
   default = ""
 }
 
@@ -68,11 +99,16 @@ variable "nutanix_insecure" {
 }
 
 variable "ansible_site_playbook" {
-  type = string
+  type    = string
   default = ""
 }
 
 variable "ansible_config_path" {
-  type = string
+  type    = string
   default = ""
+}
+
+variable "ansible_extra_vars_file" {
+  type    = string
+  default = "ansible/vars.json"
 }
