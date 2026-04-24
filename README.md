@@ -284,7 +284,7 @@ Artifact validation connects as `packer` with `packer/id_rsa` and ignores your l
 
 ### Manifest Status Is `failed`
 
-A manifest status of `failed` means the build exited before all requested stages completed. Check the `packer`, `validation`, and `cleanup` sections to see where it stopped. Common causes are Packer provisioning errors, in-guest validation failures, artifact validation failures, or cleanup failures after artifact validation.
+A manifest status of `failed` means the build exited before all requested stages completed. Check the `packer`, `validation`, and `cleanup` sections to see where it stopped. Common causes are Packer provisioning errors, in-guest validation failures, artifact validation failures, or cleanup failures after artifact validation. If `cleanup.artifact_validation_vm` is `result-unavailable`, the artifact validation helper did not write a usable result file, so check the terminal log around the validation step.
 
 ## Image Naming Convention
 

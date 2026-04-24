@@ -39,7 +39,7 @@ Implementation plan approved for the next reliability pass:
 - [x] Execute Task 3: source image preflight and staging
 - [x] Execute Task 4: build manifest writer
 - [x] Execute Task 5: artifact validation helper
-- [ ] Execute Task 6: manifest status and failure integration
+- [x] Execute Task 6: manifest status and failure integration
 - [ ] Execute Task 7: release scaffolding
 - [ ] Execute Task 8: beginner README restructure
 - [ ] Run final verification and document results
@@ -51,3 +51,4 @@ Implementation plan approved for the next reliability pass:
 - Code-quality review found extension validation only derived the first expected extension; fixed both NDB 2.9 and 2.10 validation roles so all supported expected SQL extensions are checked.
 - Code-quality review found VM cleanup failures could be hidden; fixed artifact validation so successful validation plus failed VM deletion fails the run and records the cleanup status.
 - Code-quality review found Packer manifest timing could drift into artifact validation; fixed `build.sh` so `packer.finished_at` and `packer.duration_seconds` are written immediately when Packer exits.
+- Task 6 completed manifest source, Packer, artifact, validation, cleanup, and failed-status reporting. Code-quality review found empty artifact result files could bypass the failed fallback; fixed with `manifest.sh record-artifact-validation`, valid-JSON checks, and self-test coverage.

@@ -841,15 +841,11 @@ if [[ "$VALIDATE_ARTIFACT" == "true" ]]; then
   "${ARTIFACT_VALIDATE_CMD[@]}" || ARTIFACT_VALIDATION_STATUS=$?
 
   if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
-    if [[ -f "$ARTIFACT_RESULT_FILE" ]]; then
-      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact" --value "$(jq -r '.status // "failed"' "$ARTIFACT_RESULT_FILE")"
-      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact_vm_name" --value "$(jq -r '.artifact_vm_name // .vm_name // ""' "$ARTIFACT_RESULT_FILE")"
-      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact_vm_uuid" --value "$(jq -r '.artifact_vm_uuid // .vm_uuid // ""' "$ARTIFACT_RESULT_FILE")"
-      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".cleanup.artifact_validation_vm" --value "$(jq -r '.cleanup.artifact_validation_vm // .cleanup_status // ""' "$ARTIFACT_RESULT_FILE")"
-    elif [[ "$ARTIFACT_VALIDATION_STATUS" -eq 0 ]]; then
-      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact" --value "passed"
-    else
-      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact" --value "failed"
+    if ! "$MANIFEST_HELPER" record-artifact-validation \
+      --file "$MANIFEST_FILE" \
+      --result-file "$ARTIFACT_RESULT_FILE" \
+      --exit-status "$ARTIFACT_VALIDATION_STATUS"; then
+      ARTIFACT_VALIDATION_STATUS=1
     fi
   fi
   if [[ "$ARTIFACT_VALIDATION_STATUS" -ne 0 ]]; then

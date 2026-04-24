@@ -7,6 +7,7 @@ Usage:
   scripts/manifest.sh init --file FILE --image-name NAME --ndb-version VERSION --db-type TYPE --db-version VERSION --os-type NAME --os-version VERSION --provisioning-role ROLE --matrix-row-json JSON
   scripts/manifest.sh set --file FILE --key JQ_PATH --value VALUE
   scripts/manifest.sh set-json --file FILE --key JQ_PATH --json-value JSON
+  scripts/manifest.sh record-artifact-validation --file FILE --result-file FILE --exit-status STATUS
   scripts/manifest.sh finalize --file FILE --status STATUS [--artifact-image-uuid UUID]
 EOF
 }
@@ -308,6 +309,83 @@ cmd_finalize() {
     "$file" | write_json_atomically "$file"
 }
 
+cmd_record_artifact_validation() {
+  local file="" result_file="" exit_status=""
+  local artifact_status artifact_vm_name artifact_vm_uuid cleanup_status
+  local result_is_valid=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --file)
+        require_option_value "$1" "$#"
+        file=$2
+        shift
+        ;;
+      --result-file)
+        require_option_value "$1" "$#"
+        result_file=$2
+        shift
+        ;;
+      --exit-status)
+        require_option_value "$1" "$#"
+        exit_status=$2
+        shift
+        ;;
+      *)
+        echo "Unknown record-artifact-validation parameter: $1" >&2
+        usage >&2
+        exit 1
+        ;;
+    esac
+    shift
+  done
+
+  if [[ -z "$file" || -z "$result_file" || -z "$exit_status" ]]; then
+    echo "Error: record-artifact-validation requires --file, --result-file, and --exit-status." >&2
+    usage >&2
+    exit 1
+  fi
+
+  if [[ -s "$result_file" ]] && jq -e 'type == "object"' "$result_file" >/dev/null 2>&1; then
+    result_is_valid=true
+  fi
+
+  if [[ "$result_is_valid" == "true" ]]; then
+    artifact_status=$(jq -r '.status // empty' "$result_file")
+    artifact_vm_name=$(jq -r '.artifact_vm_name // .vm_name // ""' "$result_file")
+    artifact_vm_uuid=$(jq -r '.artifact_vm_uuid // .vm_uuid // ""' "$result_file")
+    cleanup_status=$(jq -r '.cleanup.artifact_validation_vm // .cleanup_status // ""' "$result_file")
+    if [[ -z "$artifact_status" ]]; then
+      if [[ "$exit_status" -eq 0 ]]; then
+        artifact_status="passed"
+      else
+        artifact_status="failed"
+      fi
+    fi
+  else
+    artifact_status="failed"
+    artifact_vm_name=""
+    artifact_vm_uuid=""
+    cleanup_status="result-unavailable"
+  fi
+
+  jq \
+    --arg artifact_status "$artifact_status" \
+    --arg artifact_vm_name "$artifact_vm_name" \
+    --arg artifact_vm_uuid "$artifact_vm_uuid" \
+    --arg cleanup_status "$cleanup_status" \
+    '.validation.artifact = $artifact_status
+      | .validation.artifact_vm_name = $artifact_vm_name
+      | .validation.artifact_vm_uuid = $artifact_vm_uuid
+      | .cleanup.artifact_validation_vm = $cleanup_status' \
+    "$file" | write_json_atomically "$file"
+
+  if [[ "$result_is_valid" != "true" && "$exit_status" -eq 0 ]]; then
+    echo "Error: artifact validation reported success but did not write valid result JSON: ${result_file}" >&2
+    return 1
+  fi
+}
+
 if [[ $# -lt 1 ]]; then
   usage >&2
   exit 1
@@ -325,6 +403,9 @@ case "$command" in
     ;;
   set-json)
     cmd_set_json "$@"
+    ;;
+  record-artifact-validation)
+    cmd_record_artifact_validation "$@"
     ;;
   finalize)
     cmd_finalize "$@"

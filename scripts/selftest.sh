@@ -260,6 +260,21 @@ run_manifest_tests() {
 
   jq -e '.source_image.name == "rocky" and .source_image.mode == "existing-prism-image" and .source_image.uuid == "source-image-uuid-1" and .artifact.image_name == "ndb-test" and .validation.in_guest == "passed" and .packer.duration_seconds == 12' "$manifest" >/dev/null || fail "manifest set JSON"
 
+  printf '' > "$tmpdir/empty-artifact-result.json"
+  "$ROOT_DIR/scripts/manifest.sh" record-artifact-validation \
+    --file "$manifest" \
+    --result-file "$tmpdir/empty-artifact-result.json" \
+    --exit-status 7
+
+  jq -e '.validation.artifact == "failed" and .cleanup.artifact_validation_vm == "result-unavailable"' "$manifest" >/dev/null || fail "manifest empty artifact result fallback"
+
+  if "$ROOT_DIR/scripts/manifest.sh" record-artifact-validation \
+    --file "$manifest" \
+    --result-file "$tmpdir/empty-artifact-result.json" \
+    --exit-status 0 >/dev/null 2>&1; then
+    fail "manifest empty artifact success unexpectedly passed"
+  fi
+
   "$ROOT_DIR/scripts/manifest.sh" finalize \
     --file "$manifest" \
     --status success \
