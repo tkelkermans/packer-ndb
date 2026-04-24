@@ -154,9 +154,11 @@ cmd_init() {
       },
       matrix_row: $matrix_row,
       source_image: {
+        mode: null,
         name: null,
         uri: null,
         path: null,
+        uuid: null,
         runtime_action: null
       },
       packer: {
@@ -165,6 +167,7 @@ cmd_init() {
         duration_seconds: null
       },
       artifact: {
+        image_name: null,
         image_uuid: null
       },
       validation: {

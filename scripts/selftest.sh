@@ -233,29 +233,50 @@ run_manifest_tests() {
     --key ".source_image.name" \
     --value "rocky"
 
+  "$ROOT_DIR/scripts/manifest.sh" set \
+    --file "$manifest" \
+    --key ".source_image.mode" \
+    --value "existing-prism-image"
+
+  "$ROOT_DIR/scripts/manifest.sh" set \
+    --file "$manifest" \
+    --key ".source_image.uuid" \
+    --value "source-image-uuid-1"
+
+  "$ROOT_DIR/scripts/manifest.sh" set \
+    --file "$manifest" \
+    --key ".artifact.image_name" \
+    --value "ndb-test"
+
+  "$ROOT_DIR/scripts/manifest.sh" set \
+    --file "$manifest" \
+    --key ".validation.in_guest" \
+    --value "passed"
+
   "$ROOT_DIR/scripts/manifest.sh" set-json \
     --file "$manifest" \
     --key ".packer.duration_seconds" \
     --json-value "12"
 
-  jq -e '.source_image.name == "rocky" and .packer.duration_seconds == 12' "$manifest" >/dev/null || fail "manifest set JSON"
+  jq -e '.source_image.name == "rocky" and .source_image.mode == "existing-prism-image" and .source_image.uuid == "source-image-uuid-1" and .artifact.image_name == "ndb-test" and .validation.in_guest == "passed" and .packer.duration_seconds == 12' "$manifest" >/dev/null || fail "manifest set JSON"
 
   "$ROOT_DIR/scripts/manifest.sh" finalize \
     --file "$manifest" \
     --status success \
     --artifact-image-uuid "image-uuid-1"
 
-  jq -e '.status == "success" and .artifact.image_uuid == "image-uuid-1"' "$manifest" >/dev/null || fail "manifest finalize JSON"
+  jq -e '.status == "success" and .artifact.image_name == "ndb-test" and .artifact.image_uuid == "image-uuid-1"' "$manifest" >/dev/null || fail "manifest finalize JSON"
   pass "manifest helper"
 }
 
 run_manifest_tests
 
 run_artifact_validate_tests() {
-  local tmpdir failure_result cleanup_result
+  local tmpdir failure_result success_result cleanup_result
   tmpdir=$(mktemp -d)
   trap 'rm -rf "$tmpdir"' RETURN
   failure_result="$tmpdir/failure-result.json"
+  success_result="$tmpdir/success-result.json"
   cleanup_result="$tmpdir/cleanup-result.json"
 
   if "$ROOT_DIR/scripts/artifact_validate.sh" --help >/dev/null; then
@@ -365,6 +386,30 @@ SH
 
   jq -e '.status == "failed" and .cleanup_status == "kept-on-failure" and .vm_uuid == "vm-uuid"' "$failure_result" >/dev/null || fail "artifact validation failure result JSON"
   [[ ! -e "$tmpdir/delete-called" ]] || fail "artifact validation deleted VM despite --keep-on-failure"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    export PKR_VAR_cluster_name=mock-cluster
+    export PKR_VAR_subnet_name=mock-subnet
+    export NDB_SELFTEST_DELETE_MARKER="$tmpdir/delete-called"
+    export NDB_SELFTEST_ANSIBLE_RC=0
+    if "$ROOT_DIR/scripts/artifact_validate.sh" \
+      --image-name test-image \
+      --ndb-version 2.10 \
+      --db-version 18 \
+      --result-file "$success_result" >/dev/null 2>&1; then
+      :
+    else
+      fail "artifact validation success path unexpectedly failed"
+    fi
+  )
+
+  jq -e '.status == "passed" and .cleanup_status == "deleted" and .artifact_vm_name != "" and .artifact_vm_uuid == "vm-uuid" and .cleanup.artifact_validation_vm == "deleted"' "$success_result" >/dev/null || fail "artifact validation success result JSON"
+  [[ -e "$tmpdir/delete-called" ]] || fail "artifact validation success did not request VM delete"
+  rm -f "$tmpdir/delete-called"
 
   (
     export PATH="$tmpdir/bin:$PATH"

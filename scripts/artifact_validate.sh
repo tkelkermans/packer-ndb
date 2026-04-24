@@ -120,8 +120,13 @@ write_result() {
       image_uuid: $image_uuid,
       vm_name: $vm_name,
       vm_uuid: $vm_uuid,
+      artifact_vm_name: $vm_name,
+      artifact_vm_uuid: $vm_uuid,
       status: $status,
-      cleanup_status: $cleanup_status
+      cleanup_status: $cleanup_status,
+      cleanup: {
+        artifact_validation_vm: $cleanup_status
+      }
     }' > "$RESULT_FILE"
 }
 
@@ -133,7 +138,7 @@ cleanup_vm() {
     return 0
   fi
 
-  if [[ "$FINAL_STATUS" != "success" && "$KEEP_ON_FAILURE" == "true" ]]; then
+  if [[ "$FINAL_STATUS" != "passed" && "$KEEP_ON_FAILURE" == "true" ]]; then
     CLEANUP_STATUS="kept-on-failure"
     return 0
   fi
@@ -155,7 +160,7 @@ on_exit() {
   local status=$?
   local cleanup_status=0
   if [[ "$status" -eq 0 ]]; then
-    FINAL_STATUS="success"
+    FINAL_STATUS="passed"
   fi
 
   cleanup_vm || cleanup_status=$?
@@ -404,4 +409,4 @@ ANSIBLE_CONFIG="$ANSIBLE_CFG_PATH" ANSIBLE_ROLES_PATH="$ANSIBLE_DIR/roles" ansib
   -e "@${POSTGRES_DEFAULTS}" \
   -e "@${TMPDIR}/vars.json"
 
-FINAL_STATUS="success"
+FINAL_STATUS="passed"

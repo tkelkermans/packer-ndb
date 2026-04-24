@@ -300,6 +300,7 @@ Source image:
   Resolution status: ${SOURCE_IMAGE_RESOLUTION_STATUS}
   Raw source image input: ${SOURCE_IMAGE_RAW_DISPLAY}
   Prefetch before packer: ${PREFETCH_SOURCE_IMAGE}
+  Source image mode: ${SOURCE_IMAGE_MODE}
   Effective packer source_image_name: ${PACKER_SOURCE_IMAGE_NAME}
   Effective packer source_image_uri: ${PACKER_SOURCE_IMAGE_URI}
   Effective packer source_image_path: ${PACKER_SOURCE_IMAGE_PATH}
@@ -591,6 +592,7 @@ SOURCE_IMAGE_RAW_DISPLAY=""
 PACKER_SOURCE_IMAGE_NAME=""
 PACKER_SOURCE_IMAGE_URI=""
 PACKER_SOURCE_IMAGE_PATH=""
+SOURCE_IMAGE_MODE=""
 if [[ -n "$SOURCE_IMAGE_NAME_OVERRIDE" ]]; then
   PREFETCH_SOURCE_IMAGE=false
   SOURCE_IMAGE_RAW_DISPLAY="$SOURCE_IMAGE_NAME_OVERRIDE"
@@ -629,31 +631,37 @@ if [[ "$DRY_RUN" == "true" || "$PREFLIGHT_ONLY" == "true" ]]; then
     PACKER_SOURCE_IMAGE_NAME="$SOURCE_IMAGE_NAME_OVERRIDE"
     PACKER_SOURCE_IMAGE_URI="<not used>"
     PACKER_SOURCE_IMAGE_PATH="<not used>"
+    SOURCE_IMAGE_MODE="existing-prism-image"
     SOURCE_IMAGE_RUNTIME_ACTION="reuse the existing Prism image by name"
   elif [[ "$SOURCE_IMAGE_RESOLUTION_STATUS" == "missing-env" ]]; then
     PACKER_SOURCE_IMAGE_URI="<unresolved until ${SOURCE_IMAGE_REQUIRED_ENV_VAR} is set>"
     PACKER_SOURCE_IMAGE_NAME="<not used>"
     PACKER_SOURCE_IMAGE_PATH="<not used>"
+    SOURCE_IMAGE_MODE="unresolved"
     SOURCE_IMAGE_RUNTIME_ACTION="source image env var required before live build"
   elif [[ "$SOURCE_IMAGE_URI" =~ ^file:// ]]; then
     PACKER_SOURCE_IMAGE_NAME="<not used>"
     PACKER_SOURCE_IMAGE_URI="<not used>"
     PACKER_SOURCE_IMAGE_PATH="${SOURCE_IMAGE_URI#file://}"
+    SOURCE_IMAGE_MODE="local-path"
     SOURCE_IMAGE_RUNTIME_ACTION="use the provided local file path via source_image_path"
   elif [[ -n "$SOURCE_IMAGE_URI" && -f "$SOURCE_IMAGE_URI" ]]; then
     PACKER_SOURCE_IMAGE_NAME="<not used>"
     PACKER_SOURCE_IMAGE_URI="<not used>"
     PACKER_SOURCE_IMAGE_PATH="${SOURCE_IMAGE_URI}"
+    SOURCE_IMAGE_MODE="local-path"
     SOURCE_IMAGE_RUNTIME_ACTION="use the provided local file path via source_image_path"
   elif [[ "$PREFETCH_SOURCE_IMAGE" == "true" ]]; then
     PACKER_SOURCE_IMAGE_NAME="<not used>"
     PACKER_SOURCE_IMAGE_URI="<not used>"
     PACKER_SOURCE_IMAGE_PATH="<temporary local file created at runtime>"
+    SOURCE_IMAGE_MODE="prefetched-local-path"
     SOURCE_IMAGE_RUNTIME_ACTION="download the remote source image to a local temp file and pass it via source_image_path"
   else
     PACKER_SOURCE_IMAGE_NAME="<not used>"
     PACKER_SOURCE_IMAGE_URI="$SOURCE_IMAGE_URI"
     PACKER_SOURCE_IMAGE_PATH="<not used>"
+    SOURCE_IMAGE_MODE="remote-uri"
     SOURCE_IMAGE_RUNTIME_ACTION="pass the resolved remote URI directly to Packer"
   fi
 else
@@ -661,23 +669,35 @@ else
     PACKER_SOURCE_IMAGE_NAME="$SOURCE_IMAGE_NAME_OVERRIDE"
     PACKER_SOURCE_IMAGE_URI=""
     PACKER_SOURCE_IMAGE_PATH=""
+    SOURCE_IMAGE_MODE="existing-prism-image"
+    SOURCE_IMAGE_RUNTIME_ACTION="reuse the existing Prism image by name"
   else
     PACKER_SOURCE_IMAGE_NAME=""
     if [[ "$STAGE_SOURCE" == "true" && "$SOURCE_IMAGE_URI" =~ ^https?:// ]]; then
       PACKER_SOURCE_IMAGE_URI="$SOURCE_IMAGE_URI"
       PACKER_SOURCE_IMAGE_PATH=""
+      SOURCE_IMAGE_MODE="remote-uri"
+      SOURCE_IMAGE_RUNTIME_ACTION="stage the remote source image in Prism before Packer"
     else
       SOURCE_IMAGE_URI=$(materialize_source_image "$SOURCE_IMAGE_URI" "$PREFETCH_SOURCE_IMAGE")
       if [[ "$SOURCE_IMAGE_URI" =~ ^file:// ]]; then
         PACKER_SOURCE_IMAGE_PATH="${SOURCE_IMAGE_URI#file://}"
         PACKER_SOURCE_IMAGE_URI=""
+        if [[ "$PREFETCH_SOURCE_IMAGE" == "true" ]]; then
+          SOURCE_IMAGE_MODE="prefetched-local-path"
+          SOURCE_IMAGE_RUNTIME_ACTION="downloaded the remote source image to a local temp file for Packer"
+        else
+          SOURCE_IMAGE_MODE="local-path"
+          SOURCE_IMAGE_RUNTIME_ACTION="use the local source image path via source_image_path"
+        fi
       else
         PACKER_SOURCE_IMAGE_URI="$SOURCE_IMAGE_URI"
         PACKER_SOURCE_IMAGE_PATH=""
+        SOURCE_IMAGE_MODE="remote-uri"
+        SOURCE_IMAGE_RUNTIME_ACTION="pass the resolved remote URI directly to Packer"
       fi
     fi
   fi
-  SOURCE_IMAGE_RUNTIME_ACTION="resolved for live build"
   ANSIBLE_VARS_FILE=$(write_ansible_vars_file "$ANSIBLE_VARS_JSON")
 fi
 
@@ -729,13 +749,20 @@ if [[ "$STAGE_SOURCE" == "true" && -z "$PACKER_SOURCE_IMAGE_NAME" && "$PACKER_SO
   PACKER_SOURCE_IMAGE_NAME=$(source_image_stage_remote_uri "$PACKER_SOURCE_IMAGE_URI" "$CLUSTER_UUID")
   PACKER_SOURCE_IMAGE_URI=""
   PACKER_SOURCE_IMAGE_PATH=""
+  SOURCE_IMAGE_MODE="staged-prism-image"
   SOURCE_IMAGE_RUNTIME_ACTION="staged remote source image in Prism before live build"
 fi
 
 if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
+  SOURCE_IMAGE_UUID=""
+  if [[ -n "$PACKER_SOURCE_IMAGE_NAME" ]]; then
+    SOURCE_IMAGE_UUID=$(prism_image_uuid_by_name "$PACKER_SOURCE_IMAGE_NAME" || true)
+  fi
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.mode" --value "$SOURCE_IMAGE_MODE"
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.name" --value "$PACKER_SOURCE_IMAGE_NAME"
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.uri" --value "$PACKER_SOURCE_IMAGE_URI"
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.path" --value "$PACKER_SOURCE_IMAGE_PATH"
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.uuid" --value "$SOURCE_IMAGE_UUID"
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.runtime_action" --value "$SOURCE_IMAGE_RUNTIME_ACTION"
 fi
 
@@ -782,6 +809,13 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
   "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".packer.duration_seconds" --json-value "$((PACKER_FINISHED_EPOCH - PACKER_STARTED_EPOCH))"
 fi
 ARTIFACT_IMAGE_UUID=$(prism_image_uuid_by_name "$IMAGE_NAME" || true)
+if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".artifact.image_name" --value "$IMAGE_NAME"
+  "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".artifact.image_uuid" --value "$ARTIFACT_IMAGE_UUID"
+  if [[ "$VALIDATE_BUILD" == "true" ]]; then
+    "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.in_guest" --value "passed"
+  fi
+fi
 
 if [[ "$VALIDATE_ARTIFACT" == "true" ]]; then
   ARTIFACT_RESULT_FILE=$(mktemp -t ndb-artifact-validation.XXXXXX.json)
@@ -806,11 +840,17 @@ if [[ "$VALIDATE_ARTIFACT" == "true" ]]; then
   ARTIFACT_VALIDATION_STATUS=0
   "${ARTIFACT_VALIDATE_CMD[@]}" || ARTIFACT_VALIDATION_STATUS=$?
 
-  if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" && -f "$ARTIFACT_RESULT_FILE" ]]; then
-    "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact" --value "$(jq -r '.status' "$ARTIFACT_RESULT_FILE")"
-    "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact_vm_name" --value "$(jq -r '.vm_name' "$ARTIFACT_RESULT_FILE")"
-    "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact_vm_uuid" --value "$(jq -r '.vm_uuid' "$ARTIFACT_RESULT_FILE")"
-    "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".cleanup.artifact_validation_vm" --value "$(jq -r '.cleanup_status' "$ARTIFACT_RESULT_FILE")"
+  if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
+    if [[ -f "$ARTIFACT_RESULT_FILE" ]]; then
+      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact" --value "$(jq -r '.status // "failed"' "$ARTIFACT_RESULT_FILE")"
+      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact_vm_name" --value "$(jq -r '.artifact_vm_name // .vm_name // ""' "$ARTIFACT_RESULT_FILE")"
+      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact_vm_uuid" --value "$(jq -r '.artifact_vm_uuid // .vm_uuid // ""' "$ARTIFACT_RESULT_FILE")"
+      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".cleanup.artifact_validation_vm" --value "$(jq -r '.cleanup.artifact_validation_vm // .cleanup_status // ""' "$ARTIFACT_RESULT_FILE")"
+    elif [[ "$ARTIFACT_VALIDATION_STATUS" -eq 0 ]]; then
+      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact" --value "passed"
+    else
+      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact" --value "failed"
+    fi
   fi
   if [[ "$ARTIFACT_VALIDATION_STATUS" -ne 0 ]]; then
     exit "$ARTIFACT_VALIDATION_STATUS"

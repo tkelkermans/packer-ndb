@@ -197,7 +197,7 @@ To write a JSON manifest for a live build, add `--manifest`:
 ./build.sh --ci --validate --manifest --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
-Manifest files are written under `manifests/` with one JSON file per image name. These files are ignored by git, so they are safe to keep locally as build records without accidentally committing environment-specific output. The `packer.finished_at` and `packer.duration_seconds` fields measure the Packer image build itself; artifact validation runs after that and is recorded separately under `validation.artifact` and `cleanup.artifact_validation_vm`.
+Manifest files are written under `manifests/` with one JSON file per image name. These files are ignored by git, so they are safe to keep locally as build records without accidentally committing environment-specific output. The `source_image` section records how the source image was used, including whether it came from an existing Prism image, a remote URI, or a local path. The `packer.finished_at` and `packer.duration_seconds` fields measure the Packer image build itself; artifact validation runs after that and is recorded separately under `validation.artifact` and `cleanup.artifact_validation_vm`.
 
 For a production build, run both validation stages and write a manifest:
 
@@ -254,7 +254,7 @@ When `--validate-artifact` is enabled, `build.sh` waits for Packer to save the i
 
 The validation role checks every PostgreSQL extension that should exist for the selected platform. It uses the same extension metadata as provisioning, so `pgvector` is checked as SQL extension `vector`, and extensions that are unsupported for the selected PostgreSQL version are not expected.
 
-If artifact validation fails, the disposable VM is still removed by default. Add `--debug` to keep the validation VM on failure so you can inspect it in Prism. If validation succeeds but the disposable VM cannot be removed, the build fails instead of hiding the leaked VM; check the manifest `cleanup.artifact_validation_vm` field for the cleanup status.
+If artifact validation passes, the manifest records `validation.artifact` as `passed`. If artifact validation fails, it records `failed` and the disposable VM is still removed by default. Add `--debug` to keep the validation VM on failure so you can inspect it in Prism. If validation succeeds but the disposable VM cannot be removed, the build fails instead of hiding the leaked VM; check the manifest `cleanup.artifact_validation_vm` field for the cleanup status.
 
 ### Debug Mode
 
@@ -269,6 +269,22 @@ The script will find the matching configuration in the `matrix.json` and proceed
 ### Troubleshooting Prism Tasks
 
 Long-running Prism operations, such as image imports and VM power or delete actions, print the Prism task UUID they are waiting on. If a build appears stuck or fails during one of those steps, copy that UUID and search for it in Prism Central's task view. The task details usually show the current progress and any Prism-side error message.
+
+### Source Image Import Timed Out
+
+If Packer times out while importing a source image, first check Prism Central's task view. The import may still finish after Packer stops waiting. When that happens, rerun the build with `--source-image-name` and the completed Prism image name so the next attempt reuses the existing image instead of starting another import.
+
+### Artifact Validation VM Was Left Behind
+
+If a disposable `validate-...` VM remains in Prism, open the latest manifest and check `cleanup.artifact_validation_vm`. A value such as `delete-request-failed`, `delete-task-failed`, or `kept-on-failure` explains why it stayed behind. If you used `--debug`, the VM may have been intentionally kept for inspection; otherwise delete it manually after you finish checking it.
+
+### Artifact Validation Cannot SSH
+
+Artifact validation connects as `packer` with `packer/id_rsa` and ignores your local SSH agent. Confirm that `packer/id_rsa` matches `packer/id_rsa.pub`, the validation VM has an IP address, and the subnet allows SSH from your workstation. Rerun with `--debug` if you need the validation VM to remain available for manual SSH testing.
+
+### Manifest Status Is `failed`
+
+A manifest status of `failed` means the build exited before all requested stages completed. Check the `packer`, `validation`, and `cleanup` sections to see where it stopped. Common causes are Packer provisioning errors, in-guest validation failures, artifact validation failures, or cleanup failures after artifact validation.
 
 ## Image Naming Convention
 
