@@ -1390,7 +1390,8 @@
     "os_version": "9.7",
     "db_version": "8.0",
     "extensions": [],
-    "provisioning_role": "metadata",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
     "deployment": [
       "single-instance",
       "replica-set"
@@ -1404,7 +1405,8 @@
     "os_version": "9.7",
     "db_version": "7.0",
     "extensions": [],
-    "provisioning_role": "metadata",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
     "deployment": [
       "single-instance",
       "replica-set"
@@ -1418,7 +1420,8 @@
     "os_version": "9.7",
     "db_version": "6.0",
     "extensions": [],
-    "provisioning_role": "metadata",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
     "deployment": [
       "single-instance",
       "replica-set"
@@ -1432,11 +1435,14 @@
     "os_version": "9.7",
     "db_version": "8.0",
     "extensions": [],
-    "provisioning_role": "metadata",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "enterprise",
     "deployment": [
       "single-instance",
-      "replica-set"
-    ]
+      "replica-set",
+      "sharded-cluster"
+    ],
+    "notes": "Enterprise packages required for NDB 2.10 sharded-cluster readiness"
   },
   {
     "ndb_version": "2.10",
@@ -1446,11 +1452,14 @@
     "os_version": "9.7",
     "db_version": "7.0",
     "extensions": [],
-    "provisioning_role": "metadata",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "enterprise",
     "deployment": [
       "single-instance",
-      "replica-set"
-    ]
+      "replica-set",
+      "sharded-cluster"
+    ],
+    "notes": "Enterprise packages required for NDB 2.10 sharded-cluster readiness"
   },
   {
     "ndb_version": "2.10",
@@ -1460,7 +1469,8 @@
     "os_version": "9.7",
     "db_version": "6.0",
     "extensions": [],
-    "provisioning_role": "metadata",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
     "deployment": [
       "single-instance",
       "replica-set"
@@ -1474,7 +1484,8 @@
     "os_version": "22.04",
     "db_version": "8.0",
     "extensions": [],
-    "provisioning_role": "metadata",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
     "deployment": [
       "single-instance",
       "replica-set"
@@ -1488,7 +1499,8 @@
     "os_version": "22.04",
     "db_version": "7.0",
     "extensions": [],
-    "provisioning_role": "metadata",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
     "deployment": [
       "single-instance",
       "replica-set"
@@ -1502,7 +1514,8 @@
     "os_version": "22.04",
     "db_version": "6.0",
     "extensions": [],
-    "provisioning_role": "metadata",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
     "deployment": [
       "single-instance",
       "replica-set"
@@ -1513,10 +1526,11 @@
     "engine": "MongoDB",
     "db_type": "mongodb",
     "os_type": "Rocky Linux",
-    "os_version": "9.7 (sharded)",
+    "os_version": "9.7",
     "db_version": "8.0",
     "extensions": [],
     "provisioning_role": "metadata",
+    "mongodb_edition": "enterprise",
     "deployment": [
       "sharded-cluster"
     ],
@@ -1527,10 +1541,11 @@
     "engine": "MongoDB",
     "db_type": "mongodb",
     "os_type": "Rocky Linux",
-    "os_version": "9.7 (sharded)",
+    "os_version": "9.7",
     "db_version": "7.0",
     "extensions": [],
     "provisioning_role": "metadata",
+    "mongodb_edition": "enterprise",
     "deployment": [
       "sharded-cluster"
     ],
@@ -1541,38 +1556,11 @@
     "engine": "MongoDB",
     "db_type": "mongodb",
     "os_type": "Red Hat Enterprise Linux (RHEL)",
-    "os_version": "9.7 (sharded)",
-    "db_version": "8.0",
-    "extensions": [],
-    "provisioning_role": "metadata",
-    "deployment": [
-      "sharded-cluster"
-    ],
-    "notes": "Ops Manager Server 8.0.19"
-  },
-  {
-    "ndb_version": "2.10",
-    "engine": "MongoDB",
-    "db_type": "mongodb",
-    "os_type": "Red Hat Enterprise Linux (RHEL)",
-    "os_version": "9.7 (sharded)",
+    "os_version": "8.10",
     "db_version": "7.0",
     "extensions": [],
     "provisioning_role": "metadata",
-    "deployment": [
-      "sharded-cluster"
-    ],
-    "notes": "Ops Manager Server 8.0.19"
-  },
-  {
-    "ndb_version": "2.10",
-    "engine": "MongoDB",
-    "db_type": "mongodb",
-    "os_type": "Red Hat Enterprise Linux (RHEL)",
-    "os_version": "8.10 (sharded)",
-    "db_version": "7.0",
-    "extensions": [],
-    "provisioning_role": "metadata",
+    "mongodb_edition": "enterprise",
     "deployment": [
       "sharded-cluster"
     ],

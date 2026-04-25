@@ -1119,10 +1119,12 @@
         "os_version": "9.6",
         "db_version": "8.0",
         "extensions": [],
-        "provisioning_role": "metadata",
+        "provisioning_role": "mongodb",
+        "mongodb_edition": "community",
         "deployment": [
             "single-instance",
-            "replica-set"
+            "replica-set",
+            "sharded-cluster"
         ]
     },
     {
@@ -1133,10 +1135,12 @@
         "os_version": "9.6",
         "db_version": "7.0",
         "extensions": [],
-        "provisioning_role": "metadata",
+        "provisioning_role": "mongodb",
+        "mongodb_edition": "community",
         "deployment": [
             "single-instance",
-            "replica-set"
+            "replica-set",
+            "sharded-cluster"
         ]
     },
     {
@@ -1147,10 +1151,12 @@
         "os_version": "9.6",
         "db_version": "6.0",
         "extensions": [],
-        "provisioning_role": "metadata",
+        "provisioning_role": "mongodb",
+        "mongodb_edition": "community",
         "deployment": [
             "single-instance",
-            "replica-set"
+            "replica-set",
+            "sharded-cluster"
         ]
     },
     {
@@ -1161,10 +1167,12 @@
         "os_version": "9.6",
         "db_version": "8.0",
         "extensions": [],
-        "provisioning_role": "metadata",
+        "provisioning_role": "mongodb",
+        "mongodb_edition": "community",
         "deployment": [
             "single-instance",
-            "replica-set"
+            "replica-set",
+            "sharded-cluster"
         ]
     },
     {
@@ -1175,10 +1183,12 @@
         "os_version": "9.6",
         "db_version": "7.0",
         "extensions": [],
-        "provisioning_role": "metadata",
+        "provisioning_role": "mongodb",
+        "mongodb_edition": "community",
         "deployment": [
             "single-instance",
-            "replica-set"
+            "replica-set",
+            "sharded-cluster"
         ]
     },
     {
@@ -1189,7 +1199,24 @@
         "os_version": "9.6",
         "db_version": "6.0",
         "extensions": [],
-        "provisioning_role": "metadata",
+        "provisioning_role": "mongodb",
+        "mongodb_edition": "community",
+        "deployment": [
+            "single-instance",
+            "replica-set",
+            "sharded-cluster"
+        ]
+    },
+    {
+        "ndb_version": "2.9",
+        "engine": "MongoDB",
+        "db_type": "mongodb",
+        "os_type": "Ubuntu Linux",
+        "os_version": "22.04",
+        "db_version": "8.0",
+        "extensions": [],
+        "provisioning_role": "mongodb",
+        "mongodb_edition": "community",
         "deployment": [
             "single-instance",
             "replica-set"
@@ -1201,23 +1228,10 @@
         "db_type": "mongodb",
         "os_type": "Ubuntu Linux",
         "os_version": "22.04",
-        "db_version": "8.0",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "deployment": [
-            "single-instance",
-            "replica-set"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MongoDB",
-        "db_type": "mongodb",
-        "os_type": "Ubuntu Linux",
-        "os_version": "22.04",
         "db_version": "7.0",
         "extensions": [],
-        "provisioning_role": "metadata",
+        "provisioning_role": "mongodb",
+        "mongodb_edition": "community",
         "deployment": [
             "single-instance",
             "replica-set"
@@ -1231,49 +1245,11 @@
         "os_version": "22.04",
         "db_version": "6.0",
         "extensions": [],
-        "provisioning_role": "metadata",
+        "provisioning_role": "mongodb",
+        "mongodb_edition": "community",
         "deployment": [
             "single-instance",
             "replica-set"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MongoDB",
-        "db_type": "mongodb",
-        "os_type": "Rocky Linux",
-        "os_version": "9.6 (sharded)",
-        "db_version": "8.0",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "deployment": [
-            "sharded-cluster"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MongoDB",
-        "db_type": "mongodb",
-        "os_type": "Rocky Linux",
-        "os_version": "9.6 (sharded)",
-        "db_version": "7.0",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "deployment": [
-            "sharded-cluster"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MongoDB",
-        "db_type": "mongodb",
-        "os_type": "Rocky Linux",
-        "os_version": "9.6 (sharded)",
-        "db_version": "6.0",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "deployment": [
-            "sharded-cluster"
         ]
     }
 ]

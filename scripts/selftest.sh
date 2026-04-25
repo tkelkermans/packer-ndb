@@ -155,6 +155,25 @@ assert_invalid_matrix_without_pattern() {
 
 run_matrix_validator_tests
 
+run_mongodb_matrix_coverage_tests() {
+  local buildable_29 buildable_210 fake_versions sharded_readiness
+  buildable_29=$(jq '[.[] | select(.db_type == "mongodb" and .provisioning_role == "mongodb")] | length' "$ROOT_DIR/ndb/2.9/matrix.json")
+  buildable_210=$(jq '[.[] | select(.db_type == "mongodb" and .provisioning_role == "mongodb")] | length' "$ROOT_DIR/ndb/2.10/matrix.json")
+  fake_versions=$(jq -s '[.[][] | select(.db_type == "mongodb" and (.os_version | test("\\(")))] | length' "$ROOT_DIR"/ndb/*/matrix.json)
+  sharded_readiness=$(jq -s '[.[][] | select((.ndb_version == "2.9" or .ndb_version == "2.10") and .db_type == "mongodb" and .provisioning_role == "mongodb" and (.deployment | index("sharded-cluster")))] | length' "$ROOT_DIR/ndb/2.9/matrix.json" "$ROOT_DIR/ndb/2.10/matrix.json")
+
+  [[ "$buildable_29" == "9" ]] || fail "expected 9 buildable NDB 2.9 MongoDB rows, got $buildable_29"
+  [[ "$buildable_210" == "9" ]] || fail "expected 9 buildable NDB 2.10 MongoDB rows, got $buildable_210"
+  [[ "$fake_versions" == "0" ]] || fail "MongoDB topology is still encoded in os_version"
+
+  [[ "$sharded_readiness" == "8" ]] || fail "expected 8 buildable MongoDB sharded-readiness rows for NDB 2.9 and 2.10, got $sharded_readiness"
+  jq -e '[.[] | select(.ndb_version == "2.10" and .db_type == "mongodb" and .provisioning_role == "mongodb" and (.deployment | index("sharded-cluster")) and .mongodb_edition != "enterprise")] | length == 0' "$ROOT_DIR/ndb/2.10/matrix.json" >/dev/null || fail "NDB 2.10 sharded MongoDB rows must be enterprise"
+
+  pass "MongoDB matrix coverage"
+}
+
+run_mongodb_matrix_coverage_tests
+
 run_prism_helper_tests() {
   # shellcheck source=/dev/null
   source "$ROOT_DIR/scripts/prism.sh"
