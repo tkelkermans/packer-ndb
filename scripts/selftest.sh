@@ -453,6 +453,15 @@ SH
 
   cat > "$tmpdir/bin/ansible-playbook" <<'SH'
 #!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in
+    *.yml)
+      if [[ -n "${NDB_SELFTEST_PLAYBOOK_CAPTURE:-}" ]]; then
+        cp "$arg" "$NDB_SELFTEST_PLAYBOOK_CAPTURE"
+      fi
+      ;;
+  esac
+done
 exit "${NDB_SELFTEST_ANSIBLE_RC:-42}"
 SH
 
@@ -488,6 +497,7 @@ SH
     export PKR_VAR_subnet_name=mock-subnet
     export NDB_SELFTEST_DELETE_MARKER="$tmpdir/delete-called"
     export NDB_SELFTEST_ANSIBLE_RC=0
+    export NDB_SELFTEST_PLAYBOOK_CAPTURE="$tmpdir/postgres-validate.yml"
     if "$ROOT_DIR/scripts/artifact_validate.sh" \
       --image-name test-image \
       --ndb-version 2.10 \
@@ -502,8 +512,35 @@ SH
     fi
   )
 
+  grep -q "validate_postgres" "$tmpdir/postgres-validate.yml" || fail "PostgreSQL artifact validation did not dispatch validate_postgres"
   jq -e '.status == "passed" and .cleanup_status == "deleted" and .artifact_vm_name != "" and .artifact_vm_uuid == "vm-uuid" and .cleanup.artifact_validation_vm == "deleted"' "$success_result" >/dev/null || fail "artifact validation success result JSON"
   [[ -e "$tmpdir/delete-called" ]] || fail "artifact validation success did not request VM delete"
+  rm -f "$tmpdir/delete-called"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    export PKR_VAR_cluster_name=mock-cluster
+    export PKR_VAR_subnet_name=mock-subnet
+    export NDB_SELFTEST_DELETE_MARKER="$tmpdir/delete-called"
+    export NDB_SELFTEST_ANSIBLE_RC=0
+    export NDB_SELFTEST_PLAYBOOK_CAPTURE="$tmpdir/mongodb-validate.yml"
+    "$ROOT_DIR/scripts/artifact_validate.sh" \
+      --image-name test-image \
+      --ndb-version 2.10 \
+      --db-version 8.0 \
+      --db-type mongodb \
+      --provisioning-role mongodb \
+      --mongodb-edition community \
+      --mongodb-deployments '["single-instance","replica-set","sharded-cluster"]' \
+      --result-file "$tmpdir/mongodb-result.json" >/dev/null
+  ) || fail "MongoDB artifact validation success path failed"
+
+  grep -q "validate_mongodb" "$tmpdir/mongodb-validate.yml" || fail "MongoDB artifact validation did not dispatch validate_mongodb"
+  jq -e '.status == "passed"' "$tmpdir/mongodb-result.json" >/dev/null || fail "MongoDB artifact validation result JSON"
+  [[ -e "$tmpdir/delete-called" ]] || fail "MongoDB artifact validation success did not request VM delete"
   rm -f "$tmpdir/delete-called"
 
   (

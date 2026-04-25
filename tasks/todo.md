@@ -318,3 +318,31 @@ Implementation plan approved for the next reliability pass:
 - Added replica-set validation scripts and role tasks so rows declaring `replica-set` get an actual temporary localhost replica set smoke test.
 - Reworked sharded and replica-set smoke scripts to choose available localhost ports dynamically with `lsof`, and to verify PID command lines reference the tempdir before cleanup kills a process.
 - Verification passed: `bash scripts/selftest.sh`, `bash -n build.sh test.sh scripts/*.sh ansible/2.9/roles/validate_mongodb/files/*.sh ansible/2.10/roles/validate_mongodb/files/*.sh`, both requested Ansible syntax checks with `/tmp/ndb-ansible-2.18/bin` first in `PATH`, `git diff --check`, and identical-content checks between intended 2.9/2.10 role files.
+
+# Worker Task 7 Plan: Artifact Validation Dispatch
+
+**Goal:** Dispatch saved-artifact validation to PostgreSQL or MongoDB validation roles based on `db_type` / `provisioning_role`.
+
+**Files:**
+- Modify: `scripts/selftest.sh`
+- Modify: `scripts/artifact_validate.sh`
+- Modify: `tasks/todo.md`
+
+- [x] Add self-test capture for the generated artifact validation playbook.
+- [x] Add PostgreSQL and MongoDB dispatch assertions in `run_artifact_validate_tests()`.
+- [x] Run `bash scripts/selftest.sh` and capture the expected MongoDB red failure.
+- [x] Update `scripts/artifact_validate.sh` to choose `validate_postgres` or `validate_mongodb`.
+- [x] Require/load PostgreSQL defaults only for PostgreSQL artifact validation.
+- [x] Include shared PostgreSQL and MongoDB validation vars in generated `vars.json`.
+- [x] Verify with shell syntax checks, full self-tests, `git diff --check`, and focused smoke if useful.
+- [x] Self-review, document results, and commit the requested files.
+
+# Worker Task 7 Review: Artifact Validation Dispatch
+
+- Captured the intended red failure with `bash scripts/selftest.sh`: `FAIL: MongoDB artifact validation did not dispatch validate_mongodb`.
+- Extended the artifact validation self-test mock to capture generated playbooks and assert PostgreSQL still dispatches `validate_postgres`.
+- Added a MongoDB artifact validation success-path self-test that passes `--db-type mongodb`, `--provisioning-role mongodb`, edition, and deployment metadata, then asserts `validate_mongodb` is generated.
+- `scripts/artifact_validate.sh` now selects `validate_mongodb` when `db_type` or `provisioning_role` is MongoDB, otherwise keeps `validate_postgres`.
+- PostgreSQL defaults are required and passed only for PostgreSQL artifact validation; MongoDB validation receives only the generated vars file.
+- Generated vars now include `db_version`, `db_type`, `provisioning_role`, `configure_ndb_sudoers`, PostgreSQL extension defaults, `mongodb_edition`, and `mongodb_deployments`.
+- Verification passed: `bash -n scripts/artifact_validate.sh scripts/selftest.sh`, `bash scripts/selftest.sh`, and `git diff --check`.

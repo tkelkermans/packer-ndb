@@ -271,6 +271,13 @@ case "$PROVISIONING_ROLE" in
     ;;
 esac
 
+VALIDATION_ROLE="validate_postgres"
+LOAD_POSTGRES_DEFAULTS=true
+if [[ "$DB_TYPE" == "mongodb" || "$PROVISIONING_ROLE" == "mongodb" ]]; then
+  VALIDATION_ROLE="validate_mongodb"
+  LOAD_POSTGRES_DEFAULTS=false
+fi
+
 prism_require_env
 require_command jq curl ssh ansible-playbook base64
 
@@ -285,7 +292,9 @@ require_file "$PRIVATE_KEY_PATH"
 require_file "$PUBLIC_KEY_PATH"
 require_file "$USER_DATA_TEMPLATE"
 require_file "$ANSIBLE_CFG_PATH"
-require_file "$POSTGRES_DEFAULTS"
+if [[ "$LOAD_POSTGRES_DEFAULTS" == "true" ]]; then
+  require_file "$POSTGRES_DEFAULTS"
+fi
 
 if [[ -z "${PKR_VAR_cluster_name:-}" || -z "${PKR_VAR_subnet_name:-}" ]]; then
   printf 'Error: PKR_VAR_cluster_name and PKR_VAR_subnet_name are required for artifact validation.\n' >&2
@@ -421,32 +430,45 @@ cat > "$TMPDIR/inventory" <<EOF
 ${VM_IP} ansible_user=packer ansible_ssh_private_key_file=${PRIVATE_KEY_PATH} ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -o IdentityAgent=none'
 EOF
 
-cat > "$TMPDIR/validate.yml" <<'EOF'
+cat > "$TMPDIR/validate.yml" <<EOF
 ---
 - name: Validate saved NDB image artifact
   hosts: validation
   roles:
-    - validate_postgres
+    - ${VALIDATION_ROLE}
 EOF
 
 jq -n \
   --arg db_version "$DB_VERSION" \
   --arg db_type "$DB_TYPE" \
+  --arg provisioning_role "$PROVISIONING_ROLE" \
+  --arg mongodb_edition "$MONGODB_EDITION" \
   --argjson postgres_extensions "$EXTENSIONS_JSON" \
+  --argjson mongodb_deployments "$MONGODB_DEPLOYMENTS_JSON" \
   '{
     db_version: $db_version,
     db_type: $db_type,
+    provisioning_role: $provisioning_role,
     configure_ndb_sudoers: true,
     postgres_extensions: $postgres_extensions,
-    postgres_extensions_databases: ["postgres"]
+    postgres_extensions_databases: ["postgres"],
+    mongodb_edition: $mongodb_edition,
+    mongodb_deployments: $mongodb_deployments
   }' > "$TMPDIR/vars.json"
 
 printf 'Running artifact validation playbook against %s...\n' "$VM_IP"
-ANSIBLE_CONFIG="$ANSIBLE_CFG_PATH" ANSIBLE_ROLES_PATH="$ANSIBLE_DIR/roles" ansible-playbook \
-  -e "ansible_ssh_private_key_file=${PRIVATE_KEY_PATH}" \
-  -i "$TMPDIR/inventory" \
-  "$TMPDIR/validate.yml" \
-  -e "@${POSTGRES_DEFAULTS}" \
+ANSIBLE_PLAYBOOK_CMD=(
+  ansible-playbook
+  -e "ansible_ssh_private_key_file=${PRIVATE_KEY_PATH}"
+  -i "$TMPDIR/inventory"
+  "$TMPDIR/validate.yml"
+)
+if [[ "$LOAD_POSTGRES_DEFAULTS" == "true" ]]; then
+  ANSIBLE_PLAYBOOK_CMD+=(-e "@${POSTGRES_DEFAULTS}")
+fi
+ANSIBLE_PLAYBOOK_CMD+=(
   -e "@${TMPDIR}/vars.json"
+)
+ANSIBLE_CONFIG="$ANSIBLE_CFG_PATH" ANSIBLE_ROLES_PATH="$ANSIBLE_DIR/roles" "${ANSIBLE_PLAYBOOK_CMD[@]}"
 
 FINAL_STATUS="passed"
