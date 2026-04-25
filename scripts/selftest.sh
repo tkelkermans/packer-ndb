@@ -492,6 +492,9 @@ SH
       --image-name test-image \
       --ndb-version 2.10 \
       --db-version 18 \
+      --provisioning-role postgresql \
+      --mongodb-edition community \
+      --mongodb-deployments '[]' \
       --result-file "$success_result" >/dev/null 2>&1; then
       :
     else

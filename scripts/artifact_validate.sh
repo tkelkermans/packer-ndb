@@ -10,6 +10,9 @@ NDB_VERSION=""
 DB_VERSION=""
 DB_TYPE="pgsql"
 EXTENSIONS_JSON="[]"
+PROVISIONING_ROLE=""
+MONGODB_EDITION="community"
+MONGODB_DEPLOYMENTS_JSON="[]"
 RESULT_FILE=""
 KEEP_ON_FAILURE=false
 VM_NAME=""
@@ -29,6 +32,12 @@ Options:
   --db-version VERSION   PostgreSQL major version expected in the image
   --db-type TYPE         Database type expected in the image (default: pgsql)
   --extensions JSON      Matrix extension list JSON (default: [])
+  --provisioning-role ROLE
+                         Provisioning role from the selected matrix row
+  --mongodb-edition EDITION
+                         MongoDB edition: community or enterprise
+  --mongodb-deployments JSON
+                         MongoDB deployment list JSON (default: [])
   --result-file FILE     Write validation result JSON to FILE
   --keep-on-failure      Keep the disposable VM if validation fails
   -h, --help             Show this help and exit
@@ -70,6 +79,11 @@ require_file() {
 json_string_array() {
   local json=$1
   jq -ce 'if type == "array" and all(.[]; type == "string" and length > 0) then . else error("expected JSON array of non-empty strings") end' <<<"$json"
+}
+
+json_mongodb_deployments() {
+  local json=$1
+  jq -ce 'if type == "array" and all(.[]; type == "string" and (. == "single-instance" or . == "replica-set" or . == "sharded-cluster")) then . else error("expected MongoDB deployment array") end' <<<"$json"
 }
 
 base64_no_wrap() {
@@ -203,6 +217,21 @@ while [[ $# -gt 0 ]]; do
       EXTENSIONS_JSON=$2
       shift
       ;;
+    --provisioning-role)
+      require_option_value "$1" "$#"
+      PROVISIONING_ROLE=$2
+      shift
+      ;;
+    --mongodb-edition)
+      require_option_value "$1" "$#"
+      MONGODB_EDITION=$2
+      shift
+      ;;
+    --mongodb-deployments)
+      require_option_value "$1" "$#"
+      MONGODB_DEPLOYMENTS_JSON=$2
+      shift
+      ;;
     --result-file)
       require_option_value "$1" "$#"
       RESULT_FILE=$2
@@ -231,6 +260,17 @@ if [[ -z "$IMAGE_NAME" || -z "$NDB_VERSION" || -z "$DB_VERSION" ]]; then
 fi
 
 EXTENSIONS_JSON=$(json_string_array "$EXTENSIONS_JSON")
+MONGODB_DEPLOYMENTS_JSON=$(json_mongodb_deployments "$MONGODB_DEPLOYMENTS_JSON")
+PROVISIONING_ROLE=${PROVISIONING_ROLE:-$([[ "$DB_TYPE" == "mongodb" ]] && echo "mongodb" || echo "postgresql")}
+case "$PROVISIONING_ROLE" in
+  postgresql|mongodb)
+    ;;
+  *)
+    printf 'Error: unsupported provisioning role for artifact validation: %s\n' "$PROVISIONING_ROLE" >&2
+    exit 1
+    ;;
+esac
+
 prism_require_env
 require_command jq curl ssh ansible-playbook base64
 
