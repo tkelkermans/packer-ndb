@@ -138,3 +138,20 @@ Implementation plan approved for the next reliability pass:
 - In total, 14 buildable non-RHEL extension rows passed build-time validation and saved-artifact validation across NDB 2.9 and 2.10.
 - The RHEL rows remain unvalidated because `NDB_RHEL_9_6_IMAGE_URI` is still empty after the 1Password env mount. The key exists in `.env`, but `op run --env-file .env` resolves it as missing.
 - Prism cleanup verification returned no `ndb-*20260424` builder VMs and no `validate-ndb-*20260424` disposable validation VMs.
+
+# Active Plan: MongoDB Image Build and Validation Design
+
+- [x] Explore current MongoDB project context.
+- [x] Confirm MongoDB topology scope with the user.
+- [x] Propose implementation approaches and get design approval.
+- [x] Write the MongoDB design spec.
+- [x] Self-review the MongoDB design spec.
+- [x] Commit the approved MongoDB design spec.
+- [ ] Ask the user to review the written spec before implementation planning.
+
+# Active Plan Review: MongoDB Image Build and Validation Design
+
+- The current matrices contain MongoDB rows for NDB 2.9 and 2.10, but all are metadata-only today.
+- The current playbooks and validation helper are PostgreSQL-specific; MongoDB needs first-class role dispatch before live builds can run.
+- The user approved support for MongoDB single-instance and sharded-cluster validation, using the recommended local sharded topology inside validation instead of a shallow package-only check.
+- The written spec normalizes sharded topology into `deployment` metadata instead of fake OS versions such as `9.7 (sharded)`.
