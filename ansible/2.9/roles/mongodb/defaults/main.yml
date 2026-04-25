@@ -10,6 +10,9 @@ mongodb_config_file: /etc/mongod.conf
 mongodb_keyring_dir: /etc/apt/keyrings
 mongodb_redhat_arch: x86_64
 mongodb_debian_arch: amd64
+mongodb_selinux_policy_repo: https://github.com/mongodb/mongodb-selinux.git
+mongodb_selinux_policy_version: "18181652362a46fd4511a56f20c4055712deb252"
+mongodb_selinux_policy_dest: /usr/local/src/mongodb-selinux
 mongodb_package_names:
   community:
     RedHat:

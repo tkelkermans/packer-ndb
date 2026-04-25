@@ -863,8 +863,12 @@ run_mongodb_role_static_tests() {
     grep -q "lock_timeout: 600" "$ROOT_DIR/ansible/$version/roles/mongodb/tasks/main.yml" || fail "mongodb role $version does not wait for apt locks"
     grep -q "mongodb-enterprise" "$ROOT_DIR/ansible/$version/roles/mongodb/tasks/main.yml" || fail "mongodb role $version does not support enterprise packages"
     grep -q "mongod" "$ROOT_DIR/ansible/$version/roles/mongodb/tasks/main.yml" || fail "mongodb role $version does not manage mongod service"
-    grep -q "mongodb-selinux" "$ROOT_DIR/ansible/$version/roles/mongodb/tasks/main.yml" || fail "mongodb role $version does not install MongoDB SELinux policy"
+    grep -q "mongodb_selinux_policy_repo" "$ROOT_DIR/ansible/$version/roles/mongodb/tasks/main.yml" || fail "mongodb role $version does not install MongoDB SELinux policy"
+    grep -q "mongodb-selinux.git" "$ROOT_DIR/ansible/$version/roles/mongodb/defaults/main.yml" || fail "mongodb role $version missing MongoDB SELinux policy repository default"
     grep -q "selinux-policy-devel" "$ROOT_DIR/ansible/$version/roles/mongodb/tasks/main.yml" || fail "mongodb role $version missing SELinux policy build dependency"
+    grep -q "mongodb_selinux_policy_version" "$ROOT_DIR/ansible/$version/roles/mongodb/defaults/main.yml" || fail "mongodb role $version does not pin SELinux policy version"
+    grep -Eq 'mongodb_selinux_policy_version: "[0-9a-f]{40}"' "$ROOT_DIR/ansible/$version/roles/mongodb/defaults/main.yml" || fail "mongodb role $version SELinux policy version is not a commit SHA"
+    grep -q "update: false" "$ROOT_DIR/ansible/$version/roles/mongodb/tasks/main.yml" || fail "mongodb role $version updates SELinux policy from a mutable branch"
     ! grep -q "^mongodb_user: mongod" "$ROOT_DIR/ansible/$version/roles/mongodb/defaults/main.yml" || fail "mongodb role $version has RedHat-only user default"
     ! grep -q "^mongodb_group: mongod" "$ROOT_DIR/ansible/$version/roles/mongodb/defaults/main.yml" || fail "mongodb role $version has RedHat-only group default"
   done
