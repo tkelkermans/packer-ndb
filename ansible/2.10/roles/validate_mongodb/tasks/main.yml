@@ -98,6 +98,41 @@
       - validate_mongodb_server_version.stdout is regex("^" ~ validate_mongodb_major_version ~ "\\.")
     fail_msg: "Expected MongoDB server major version {{ validate_mongodb_major_version }}, got {{ validate_mongodb_server_version.stdout | default('') | trim }}"
 
+- name: Check MongoDB edition with buildInfo
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_mongodb_mongosh_binary }}"
+      - --quiet
+      - --eval
+      - 'const modules = db.runCommand({buildInfo:1}).modules || []; print(modules.includes("enterprise") ? "enterprise" : "community")'
+  register: validate_mongodb_edition_result
+  changed_when: false
+  become: yes
+
+- name: Assert MongoDB edition matches matrix selection
+  ansible.builtin.assert:
+    that:
+      - (validate_mongodb_edition_result.stdout | trim) == (mongodb_edition | default('community'))
+    fail_msg: "Expected MongoDB edition {{ mongodb_edition | default('community') }}, got {{ validate_mongodb_edition_result.stdout | default('') | trim }}"
+
+- name: Install replica-set validation script
+  ansible.builtin.copy:
+    src: validate_mongodb_replica_set.sh
+    dest: "{{ validate_mongodb_replica_set_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  when: "'replica-set' in validate_mongodb_deployments"
+  become: yes
+
+- name: Run local MongoDB replica-set smoke validation
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_mongodb_replica_set_script_path }}"
+  changed_when: false
+  when: "'replica-set' in validate_mongodb_deployments"
+  become: yes
+
 - name: Install sharded validation script
   ansible.builtin.copy:
     src: validate_mongodb_sharded.sh

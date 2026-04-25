@@ -101,6 +101,46 @@
   when: ansible_os_family == "Debian"
   become: yes
 
+- name: Install MongoDB SELinux policy build dependencies (RedHat family)
+  ansible.builtin.package:
+    name:
+      - git
+      - make
+      - checkpolicy
+      - policycoreutils
+      - selinux-policy-devel
+    state: present
+  when: ansible_os_family == "RedHat"
+  become: yes
+
+- name: Clone MongoDB SELinux policy repository (RedHat family)
+  ansible.builtin.git:
+    repo: https://github.com/mongodb/mongodb-selinux
+    dest: /usr/local/src/mongodb-selinux
+    version: master
+    update: true
+  when: ansible_os_family == "RedHat"
+  become: yes
+
+- name: Build MongoDB SELinux policy (RedHat family)
+  ansible.builtin.command:
+    argv:
+      - make
+    chdir: /usr/local/src/mongodb-selinux
+  changed_when: false
+  when: ansible_os_family == "RedHat"
+  become: yes
+
+- name: Install MongoDB SELinux policy (RedHat family)
+  ansible.builtin.command:
+    argv:
+      - make
+      - install
+    chdir: /usr/local/src/mongodb-selinux
+  changed_when: false
+  when: ansible_os_family == "RedHat"
+  become: yes
+
 - name: Ensure systemd has loaded MongoDB units
   ansible.builtin.systemd:
     daemon_reload: true

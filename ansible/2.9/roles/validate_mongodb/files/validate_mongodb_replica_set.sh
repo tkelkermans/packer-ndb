@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TMPDIR=$(mktemp -d /tmp/ndb-mongodb-sharded.XXXXXX)
+TMPDIR=$(mktemp -d /tmp/ndb-mongodb-replica-set.XXXXXX)
 
 port_available() {
   local port=$1
@@ -75,39 +75,16 @@ wait_for_primary() {
     fi
     sleep 1
   done
-  echo "Timed out waiting for primary on port $port" >&2
+  echo "Timed out waiting for replica-set primary on port $port" >&2
   return 1
 }
 
-wait_for_mongos() {
-  local port=$1
-  for _ in {1..60}; do
-    if mongosh --quiet --port "$port" --eval 'db.adminCommand({ping:1}).ok' 2>/dev/null | grep -q 1; then
-      return 0
-    fi
-    sleep 1
-  done
-  echo "Timed out waiting for mongos on port $port" >&2
-  return 1
-}
+mapfile -t PORTS < <(choose_ports 1)
+MONGOD_PORT=${PORTS[0]}
 
-mapfile -t PORTS < <(choose_ports 3)
-CONFIG_PORT=${PORTS[0]}
-SHARD_PORT=${PORTS[1]}
-MONGOS_PORT=${PORTS[2]}
+mkdir -p "$TMPDIR/data"
 
-mkdir -p "$TMPDIR/config" "$TMPDIR/shard"
-
-mongod --configsvr --replSet cfg --dbpath "$TMPDIR/config" --port "$CONFIG_PORT" --bind_ip 127.0.0.1 --fork --logpath "$TMPDIR/config.log" --pidfilepath "$TMPDIR/config.pid"
-mongod --shardsvr --replSet shard1 --dbpath "$TMPDIR/shard" --port "$SHARD_PORT" --bind_ip 127.0.0.1 --fork --logpath "$TMPDIR/shard.log" --pidfilepath "$TMPDIR/shard.pid"
-
-mongosh --quiet --port "$CONFIG_PORT" --eval "rs.initiate({_id:\"cfg\", configsvr:true, members:[{_id:0, host:\"127.0.0.1:${CONFIG_PORT}\"}]})"
-mongosh --quiet --port "$SHARD_PORT" --eval "rs.initiate({_id:\"shard1\", members:[{_id:0, host:\"127.0.0.1:${SHARD_PORT}\"}]})"
-wait_for_primary "$CONFIG_PORT"
-wait_for_primary "$SHARD_PORT"
-
-mongos --configdb "cfg/127.0.0.1:${CONFIG_PORT}" --bind_ip 127.0.0.1 --port "$MONGOS_PORT" --fork --logpath "$TMPDIR/mongos.log" --pidfilepath "$TMPDIR/mongos.pid"
-wait_for_mongos "$MONGOS_PORT"
-
-mongosh --quiet --port "$MONGOS_PORT" --eval "sh.addShard(\"shard1/127.0.0.1:${SHARD_PORT}\")"
-mongosh --quiet --port "$MONGOS_PORT" --eval 'db.adminCommand({listShards:1}).shards.length' | grep -Eq '^[1-9][0-9]*$'
+mongod --replSet rs0 --dbpath "$TMPDIR/data" --port "$MONGOD_PORT" --bind_ip 127.0.0.1 --fork --logpath "$TMPDIR/replica.log" --pidfilepath "$TMPDIR/replica.pid"
+mongosh --quiet --port "$MONGOD_PORT" --eval "rs.initiate({_id:\"rs0\", members:[{_id:0, host:\"127.0.0.1:${MONGOD_PORT}\"}]})"
+wait_for_primary "$MONGOD_PORT"
+mongosh --quiet --port "$MONGOD_PORT" --eval 'rs.status().ok' | grep -q '^1$'

@@ -6,4 +6,5 @@ validate_mongodb_service_active_delay: 5
 validate_mongodb_mongod_binary: /usr/bin/mongod
 validate_mongodb_mongosh_binary: /usr/bin/mongosh
 validate_mongodb_mongos_binary: /usr/bin/mongos
+validate_mongodb_replica_set_script_path: /tmp/validate_mongodb_replica_set.sh
 validate_mongodb_sharded_script_path: /tmp/validate_mongodb_sharded.sh

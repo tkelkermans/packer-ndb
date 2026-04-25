@@ -279,3 +279,42 @@ Implementation plan approved for the next reliability pass:
 - The sharded smoke script creates temporary config/shard servers plus `mongos`, adds the shard with `sh.addShard`, and cleans up temp files plus child processes with graceful `kill` followed by `kill -9` if needed.
 - Verification passed: `bash scripts/selftest.sh`, `bash -n build.sh test.sh scripts/*.sh ansible/2.9/roles/validate_mongodb/files/validate_mongodb_sharded.sh ansible/2.10/roles/validate_mongodb/files/validate_mongodb_sharded.sh`, both requested Ansible syntax checks with `/tmp/ndb-ansible-2.18/bin` first in `PATH`, and `git diff --check`.
 - Identical-content checks passed for both NDB versions' MongoDB defaults/tasks and validate_mongodb defaults/tasks/sharded scripts.
+
+# MongoDB Role Hardening Plan
+
+**Goal:** Address quality-review findings before accepting the MongoDB provisioning and validation slice.
+
+**Files:**
+- Modify: `ansible/2.9/roles/mongodb/defaults/main.yml`
+- Modify: `ansible/2.9/roles/mongodb/tasks/main.yml`
+- Modify: `ansible/2.10/roles/mongodb/defaults/main.yml`
+- Modify: `ansible/2.10/roles/mongodb/tasks/main.yml`
+- Modify: `ansible/2.9/roles/validate_mongodb/tasks/main.yml`
+- Modify: `ansible/2.9/roles/validate_mongodb/files/validate_mongodb_sharded.sh`
+- Create: `ansible/2.9/roles/validate_mongodb/files/validate_mongodb_replica_set.sh`
+- Modify: `ansible/2.10/roles/validate_mongodb/tasks/main.yml`
+- Modify: `ansible/2.10/roles/validate_mongodb/files/validate_mongodb_sharded.sh`
+- Create: `ansible/2.10/roles/validate_mongodb/files/validate_mongodb_replica_set.sh`
+- Modify: `scripts/selftest.sh`
+- Modify: `tasks/todo.md`
+- Modify: `tasks/lessons.md`
+
+- [x] Add static self-test guards for SELinux policy setup, edition validation, replica-set validation, dynamic ports, and safe PID cleanup.
+- [x] Run `bash scripts/selftest.sh` and capture the expected red failure.
+- [x] Add RedHat-family MongoDB SELinux policy dependency, clone, `make`, and `make install` tasks.
+- [x] Remove unused global MongoDB user/group defaults to avoid OS-family footguns.
+- [x] Add MongoDB edition validation via `buildInfo.modules`.
+- [x] Add replica-set validation script and run it for `replica-set` deployments.
+- [x] Update sharded and replica-set scripts to choose available localhost ports dynamically and only kill PIDs whose command line references the tempdir.
+- [x] Run self-tests, shell syntax checks, Ansible syntax checks, whitespace checks, and identical-content checks.
+- [x] Document hardening results and commit `Harden MongoDB provisioning validation`.
+
+# MongoDB Role Hardening Review
+
+- Captured the intended red failure: `FAIL: mongodb role 2.9 does not install MongoDB SELinux policy`.
+- Added RedHat-family SELinux policy setup using the official `mongodb/mongodb-selinux` repository at `/usr/local/src/mongodb-selinux`, with `git`, `make`, `checkpolicy`, `policycoreutils`, and `selinux-policy-devel` installed before `make` and `make install`.
+- Removed unused global `mongodb_user` and `mongodb_group` defaults so future tasks do not inherit RedHat-only service account assumptions on Ubuntu.
+- Added MongoDB edition validation by reading `buildInfo.modules` through `mongosh` and asserting the result matches `mongodb_edition`.
+- Added replica-set validation scripts and role tasks so rows declaring `replica-set` get an actual temporary localhost replica set smoke test.
+- Reworked sharded and replica-set smoke scripts to choose available localhost ports dynamically with `lsof`, and to verify PID command lines reference the tempdir before cleanup kills a process.
+- Verification passed: `bash scripts/selftest.sh`, `bash -n build.sh test.sh scripts/*.sh ansible/2.9/roles/validate_mongodb/files/*.sh ansible/2.10/roles/validate_mongodb/files/*.sh`, both requested Ansible syntax checks with `/tmp/ndb-ansible-2.18/bin` first in `PATH`, `git diff --check`, and identical-content checks between intended 2.9/2.10 role files.
