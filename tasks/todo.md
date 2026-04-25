@@ -172,8 +172,8 @@ Implementation plan approved for the next reliability pass:
 - [x] Execute Task 1: matrix validator and self-test guard.
 - [x] Run Task 1 spec-compliance and code-quality reviews.
 - [x] Correct the Task 2 sharded-readiness coverage count from 5 to 8 to match the approved matrix conversion scope.
-- [ ] Execute Task 2: MongoDB matrix conversion.
-- [ ] Run Task 2 spec-compliance and code-quality reviews.
+- [x] Execute Task 2: MongoDB matrix conversion.
+- [x] Run Task 2 spec-compliance and code-quality reviews.
 - [ ] Execute Task 3: build and test harness dispatch.
 - [ ] Continue remaining MongoDB provisioning, validation, README, offline verification, and live Prism validation tasks one task at a time.
 
@@ -182,3 +182,6 @@ Implementation plan approved for the next reliability pass:
 - Task 1 commit `facf389` validates MongoDB matrix metadata and adds self-test coverage for role/db-type mismatches, required edition/deployment metadata, invalid deployment values, duplicate deployments, duplicate grouping, and fake topology encoded in buildable `os_version` values.
 - Task 1 verification passed with `bash scripts/selftest.sh`, `scripts/matrix_validate.sh ndb/*/matrix.json`, shell syntax checks, and targeted invalid-input probes.
 - The written Task 2 plan originally expected five sharded-readiness rows, but its own row conversion scope produces eight: six NDB 2.9 community rows on Rocky/RHEL plus two NDB 2.10 Enterprise rows on RHEL.
+- Task 2 commit `0617a85` converted 9 buildable MongoDB rows in each NDB matrix, removed fake sharded `os_version` values, and added matrix coverage self-tests.
+- Task 2 review found the exact sharded-readiness guard should not glob future release matrices; it now scopes the exact count to NDB 2.9 and 2.10 only.
+- Task 2 final verification passed with `bash scripts/selftest.sh`, `scripts/matrix_validate.sh ndb/*/matrix.json`, `jq empty ndb/2.9/matrix.json ndb/2.10/matrix.json`, and `git diff --check`.
