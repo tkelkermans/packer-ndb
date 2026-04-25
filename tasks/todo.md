@@ -372,3 +372,43 @@ Implementation plan approved for the next reliability pass:
 - Verification passed: `bash scripts/selftest.sh`; `bash -n build.sh test.sh scripts/*.sh ansible/2.9/roles/validate_mongodb/files/*.sh ansible/2.10/roles/validate_mongodb/files/*.sh`; `scripts/matrix_validate.sh ndb/*/matrix.json`; `git diff --check`.
 - Self-review found no out-of-scope file changes beyond `README.md`, `scripts/selftest.sh`, and `tasks/todo.md`.
 - Note: live Prism MongoDB builds were not run in this documentation-only worker task; coverage here is offline README/self-test validation.
+
+# Final Offline Verification: MongoDB Pipeline
+
+- [x] Run shell syntax checks for `build.sh`, `test.sh`, `scripts/*.sh`, and MongoDB validation smoke scripts.
+- [x] Run full shell self-tests.
+- [x] Run matrix validation for all NDB matrices.
+- [x] Run Ansible syntax checks for NDB 2.9 and NDB 2.10 site playbooks with the Ansible 2.18 runtime first in `PATH`.
+- [x] Run Packer formatting and validation checks.
+- [x] Run MongoDB dry-run examples for NDB 2.10 Rocky Linux 9.7 MongoDB 8.0 and NDB 2.9 Ubuntu Linux 22.04 MongoDB 7.0 with `--validate --validate-artifact`.
+- [x] Run whitespace and git status checks.
+
+# Final Offline Verification Review
+
+- `bash -n build.sh test.sh scripts/*.sh ansible/2.9/roles/validate_mongodb/files/*.sh ansible/2.10/roles/validate_mongodb/files/*.sh` passed.
+- `bash scripts/selftest.sh` passed, including MongoDB matrix coverage, MongoDB build/test dispatch, playbook dispatch, provisioning role, validation role, artifact validation dispatch, and README guidance guards.
+- `scripts/matrix_validate.sh ndb/*/matrix.json` passed for NDB 2.9 and NDB 2.10.
+- Both Ansible syntax checks passed:
+- `PATH="/tmp/ndb-ansible-2.18/bin:$PATH" ANSIBLE_CONFIG=ansible/2.9/ansible.cfg ansible-playbook --syntax-check -i localhost, -c local ansible/2.9/playbooks/site.yml`
+- `PATH="/tmp/ndb-ansible-2.18/bin:$PATH" ANSIBLE_CONFIG=ansible/2.10/ansible.cfg ansible-playbook --syntax-check -i localhost, -c local ansible/2.10/playbooks/site.yml`
+- `packer fmt -check packer` passed.
+- `packer validate` passed for a representative NDB 2.10 MongoDB 8.0 Rocky Linux 9.7 configuration and printed `The configuration is valid.`
+- The NDB 2.10 Rocky Linux 9.7 MongoDB 8.0 dry run showed `Provisioning role: mongodb`, `mongodb_edition: community`, and `mongodb_deployments: ["single-instance","replica-set"]`.
+- The NDB 2.9 Ubuntu Linux 22.04 MongoDB 7.0 dry run showed `Provisioning role: mongodb`, `mongodb_edition: community`, and `mongodb_deployments: ["single-instance","replica-set"]`.
+- `git diff --check` passed and `git status --short --branch` was clean before recording this review note.
+
+# Live MongoDB Validation Status
+
+- [x] Check whether Prism credentials can be resolved without printing secret values.
+- [ ] Run non-RHEL live MongoDB validation.
+- [ ] Run RHEL live MongoDB validation if RHEL image variables are available.
+- [ ] Confirm MongoDB builder and validation VM cleanup in Prism.
+
+# Live MongoDB Validation Review
+
+- Live Prism validation is currently blocked in this shell because the 1Password-managed environment file is not readable.
+- The isolated worktree does not contain `.env`.
+- The original repository `.env` at `/Users/tristan/Developer/NDB/.env` exists as a FIFO named pipe.
+- A watchdog-protected probe against `/Users/tristan/Developer/NDB/.env` timed out after 20 seconds before producing any non-secret `set` or `missing` output.
+- No required `PKR_VAR_*` Prism variables are present in the raw shell environment.
+- Because credentials could not be resolved, no live MongoDB builds were launched and no Prism cleanup query was possible from this shell.
