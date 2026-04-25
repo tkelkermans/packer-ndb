@@ -155,3 +155,13 @@ Implementation plan approved for the next reliability pass:
 - The current playbooks and validation helper are PostgreSQL-specific; MongoDB needs first-class role dispatch before live builds can run.
 - The user approved support for MongoDB single-instance and sharded-cluster validation, using the recommended local sharded topology inside validation instead of a shallow package-only check.
 - The written spec normalizes sharded topology into `deployment` metadata instead of fake OS versions such as `9.7 (sharded)`.
+
+# Active Plan: MongoDB Implementation Plan
+
+- [x] Create detailed implementation plan from the approved MongoDB design spec.
+- [ ] User selects execution mode for implementation.
+
+# Active Plan Review: MongoDB Implementation Plan
+
+- The implementation plan is saved to `docs/superpowers/plans/2026-04-25-mongodb-image-build-validation-implementation.md`.
+- The plan decomposes the work into matrix validation, matrix conversion, build/test dispatch, Ansible provisioning, validation, artifact validation, README updates, offline verification, and live Prism validation.
