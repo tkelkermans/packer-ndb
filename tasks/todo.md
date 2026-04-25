@@ -214,3 +214,68 @@ Implementation plan approved for the next reliability pass:
 - Task 2 commit `0617a85` converted 9 buildable MongoDB rows in each NDB matrix, removed fake sharded `os_version` values, and added matrix coverage self-tests.
 - Task 2 review found the exact sharded-readiness guard should not glob future release matrices; it now scopes the exact count to NDB 2.9 and 2.10 only.
 - Task 2 final verification passed with `bash scripts/selftest.sh`, `scripts/matrix_validate.sh ndb/*/matrix.json`, `jq empty ndb/2.9/matrix.json ndb/2.10/matrix.json`, and `git diff --check`.
+
+# Worker Tasks 4+5 Plan: MongoDB Playbook Dispatch and Provisioning Roles
+
+**Goal:** Dispatch PostgreSQL or MongoDB provisioning from the Ansible site playbooks and add MongoDB package provisioning roles for NDB 2.9 and 2.10.
+
+**Files:**
+- Modify: `scripts/selftest.sh`
+- Modify: `ansible/2.9/playbooks/site.yml`
+- Modify: `ansible/2.10/playbooks/site.yml`
+- Create: `ansible/2.9/roles/mongodb/defaults/main.yml`
+- Create: `ansible/2.9/roles/mongodb/tasks/main.yml`
+- Create: `ansible/2.10/roles/mongodb/defaults/main.yml`
+- Create: `ansible/2.10/roles/mongodb/tasks/main.yml`
+- Modify: `tasks/todo.md`
+
+- [x] Add playbook database dispatch and MongoDB role static self-test guards.
+- [x] Run `bash scripts/selftest.sh` and capture the expected red failure before implementation.
+- [x] Update both site playbooks to dispatch PostgreSQL and MongoDB roles by `provisioning_role`.
+- [x] Add identical MongoDB defaults for Ansible 2.9 and 2.10.
+- [x] Add identical MongoDB repository, package, keyring, daemon-reload, and service tasks for Ansible 2.9 and 2.10.
+- [x] Run self-tests, shell syntax checks, Ansible syntax checks, and `git diff --check`.
+- [x] Self-review the diff, document results here, and commit `Add MongoDB provisioning roles`.
+
+# Worker Tasks 4+5 Review: MongoDB Playbook Dispatch and Provisioning Roles
+
+- Captured the intended Task 4 red failure: `FAIL: playbook 2.9 missing postgres role dispatch`.
+- Captured the intended Task 5 red failure after playbook dispatch was green: `FAIL: mongodb role 2.9 missing edition default`.
+- Added static self-test coverage for database role dispatch and MongoDB provisioning role package/repository/service support.
+- Updated both site playbooks to dispatch `postgres`, `validate_postgres`, `mongodb`, and `validate_mongodb` by `provisioning_role`, with `postgresql` as the default.
+- Added identical MongoDB provisioning defaults and tasks for NDB 2.9 and NDB 2.10, including community/enterprise repositories, Debian keyring directory creation, apt lock waiting, dnf metadata refresh, systemd daemon reload, and `mongod` service management.
+- Verification passed for `bash scripts/selftest.sh`, `bash -n build.sh test.sh scripts/*.sh`, `git diff --check`, and identical-content checks between the 2.9 and 2.10 MongoDB role files.
+- Verification is blocked for both Ansible syntax checks because `validate_mongodb` is referenced by the requested playbook dispatch but the `ansible/*/roles/validate_mongodb` role files are not present in this worktree and are outside this worker's owned file list.
+- Commit was deferred until expanded Task 6 supplied the missing validation role and made the combined syntax-check slice green.
+
+# Worker Task 6 Plan: MongoDB Validation Roles
+
+**Goal:** Add MongoDB validation roles so the Task 4 playbook dispatch can pass Ansible syntax checks and validate active/enabled MongoDB services plus version/topology smoke tests.
+
+**Files:**
+- Modify: `scripts/selftest.sh`
+- Create: `ansible/2.9/roles/validate_mongodb/defaults/main.yml`
+- Create: `ansible/2.9/roles/validate_mongodb/tasks/main.yml`
+- Create: `ansible/2.9/roles/validate_mongodb/files/validate_mongodb_sharded.sh`
+- Create: `ansible/2.10/roles/validate_mongodb/defaults/main.yml`
+- Create: `ansible/2.10/roles/validate_mongodb/tasks/main.yml`
+- Create: `ansible/2.10/roles/validate_mongodb/files/validate_mongodb_sharded.sh`
+- Modify: `tasks/todo.md`
+
+- [x] Add MongoDB validation-role static self-test guard.
+- [x] Run `bash scripts/selftest.sh` and capture the expected red failure for missing `validate_mongodb` role files.
+- [x] Add identical validation defaults for Ansible 2.9 and 2.10.
+- [x] Add identical sharded-cluster validation scripts with cleanup escalation.
+- [x] Add identical validation tasks for active/enabled service checks, `mongod`/server version checks, and optional sharded validation.
+- [x] Run self-tests, shell syntax checks, Ansible syntax checks, whitespace checks, and identical-content checks.
+- [x] Self-review the full Tasks 4+5+6 diff and commit `Add MongoDB provisioning and validation roles`.
+
+# Worker Tasks 4+5+6 Review: MongoDB Provisioning and Validation Roles
+
+- Captured the intended Task 6 red failure: `FAIL: validate_mongodb role 2.9 missing retry default`.
+- Added identical `validate_mongodb` defaults, tasks, and sharded validation scripts for NDB 2.9 and NDB 2.10.
+- Validation now checks `firewalld`, `chrony`, `cron`, and `mongod` are active with retries and enabled/static-ish before checking MongoDB versions.
+- Validation checks `mongod --version`, `mongosh --quiet --eval db.version()`, and runs the local sharded topology smoke script only when `sharded-cluster` is requested.
+- The sharded smoke script creates temporary config/shard servers plus `mongos`, adds the shard with `sh.addShard`, and cleans up temp files plus child processes with graceful `kill` followed by `kill -9` if needed.
+- Verification passed: `bash scripts/selftest.sh`, `bash -n build.sh test.sh scripts/*.sh ansible/2.9/roles/validate_mongodb/files/validate_mongodb_sharded.sh ansible/2.10/roles/validate_mongodb/files/validate_mongodb_sharded.sh`, both requested Ansible syntax checks with `/tmp/ndb-ansible-2.18/bin` first in `PATH`, and `git diff --check`.
+- Identical-content checks passed for both NDB versions' MongoDB defaults/tasks and validate_mongodb defaults/tasks/sharded scripts.

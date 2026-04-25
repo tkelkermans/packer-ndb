@@ -1,0 +1,29 @@
+---
+mongodb_edition: community
+mongodb_deployments: []
+mongodb_supported_versions:
+  - "6.0"
+  - "7.0"
+  - "8.0"
+mongodb_service_name: mongod
+mongodb_user: mongod
+mongodb_group: mongod
+mongodb_config_file: /etc/mongod.conf
+mongodb_keyring_dir: /etc/apt/keyrings
+mongodb_redhat_arch: x86_64
+mongodb_debian_arch: amd64
+mongodb_package_names:
+  community:
+    RedHat:
+      - mongodb-org
+      - mongodb-mongosh
+    Debian:
+      - mongodb-org
+      - mongodb-mongosh
+  enterprise:
+    RedHat:
+      - mongodb-enterprise
+      - mongodb-mongosh
+    Debian:
+      - mongodb-enterprise
+      - mongodb-mongosh

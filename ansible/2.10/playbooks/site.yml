@@ -2,7 +2,16 @@
   hosts: all
   roles:
     - common
-    - postgres
+    - role: postgres
+      when: (provisioning_role | default('postgresql')) == 'postgresql'
     - role: validate_postgres
-      when: validate_build | default(false) | bool
+      when:
+        - validate_build | default(false) | bool
+        - (provisioning_role | default('postgresql')) == 'postgresql'
+    - role: mongodb
+      when: (provisioning_role | default('postgresql')) == 'mongodb'
+    - role: validate_mongodb
+      when:
+        - validate_build | default(false) | bool
+        - (provisioning_role | default('postgresql')) == 'mongodb'
     - image_prepare

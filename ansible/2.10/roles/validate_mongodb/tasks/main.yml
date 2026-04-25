@@ -1,0 +1,117 @@
+---
+- name: Build MongoDB validation service list
+  ansible.builtin.set_fact:
+    validate_mongodb_services:
+      - label: firewalld
+        unit: firewalld.service
+      - label: chrony
+        unit: "{{ 'chronyd.service' if ansible_os_family == 'RedHat' else 'chrony.service' }}"
+      - label: cron
+        unit: "{{ 'crond.service' if ansible_os_family == 'RedHat' else 'cron.service' }}"
+      - label: mongod
+        unit: mongod.service
+    validate_mongodb_enabled_status_values:
+      - enabled
+      - enabled-runtime
+      - static
+      - indirect
+      - generated
+
+- name: Check required MongoDB image services are active
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ item.unit }}"
+  loop: "{{ validate_mongodb_services }}"
+  loop_control:
+    label: "{{ item.label }}"
+  register: validate_mongodb_service_active_result
+  retries: "{{ validate_mongodb_service_active_retries }}"
+  delay: "{{ validate_mongodb_service_active_delay }}"
+  until: validate_mongodb_service_active_result.stdout == "active"
+  changed_when: false
+  failed_when: false
+  become: yes
+
+- name: Assert required MongoDB image services are active
+  ansible.builtin.assert:
+    that:
+      - item.stdout == "active"
+    fail_msg: "Expected service {{ item.item.unit }} to be active, got {{ item.stdout | default('') | trim }}"
+  loop: "{{ validate_mongodb_service_active_result.results }}"
+  loop_control:
+    label: "{{ item.item.label }}"
+
+- name: Check required MongoDB image services are enabled
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - "{{ item.unit }}"
+  loop: "{{ validate_mongodb_services }}"
+  loop_control:
+    label: "{{ item.label }}"
+  register: validate_mongodb_service_enabled_results
+  changed_when: false
+  failed_when: false
+  become: yes
+
+- name: Assert required MongoDB image services are enabled
+  ansible.builtin.assert:
+    that:
+      - item.stdout in validate_mongodb_enabled_status_values
+    fail_msg: "Expected service {{ item.item.unit }} to be enabled, got {{ item.stdout | default('') | trim }}"
+  loop: "{{ validate_mongodb_service_enabled_results.results }}"
+  loop_control:
+    label: "{{ item.item.label }}"
+
+- name: Check mongod --version
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_mongodb_mongod_binary }}"
+      - --version
+  register: validate_mongodb_mongod_version
+  changed_when: false
+  become: yes
+
+- name: Assert mongod binary major version
+  ansible.builtin.assert:
+    that:
+      - validate_mongodb_mongod_version.stdout is regex("db version v" ~ validate_mongodb_major_version ~ "\\.")
+    fail_msg: "Expected mongod major version {{ validate_mongodb_major_version }}, got {{ validate_mongodb_mongod_version.stdout | default('') | trim }}"
+
+- name: Check MongoDB server version with mongosh
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_mongodb_mongosh_binary }}"
+      - --quiet
+      - --eval
+      - "db.version()"
+  register: validate_mongodb_server_version
+  changed_when: false
+  become: yes
+
+- name: Assert MongoDB server major version
+  ansible.builtin.assert:
+    that:
+      - validate_mongodb_server_version.stdout is regex("^" ~ validate_mongodb_major_version ~ "\\.")
+    fail_msg: "Expected MongoDB server major version {{ validate_mongodb_major_version }}, got {{ validate_mongodb_server_version.stdout | default('') | trim }}"
+
+- name: Install sharded validation script
+  ansible.builtin.copy:
+    src: validate_mongodb_sharded.sh
+    dest: "{{ validate_mongodb_sharded_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  when: "'sharded-cluster' in validate_mongodb_deployments"
+  become: yes
+
+- name: Run local MongoDB sharded topology smoke validation
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_mongodb_sharded_script_path }}"
+  changed_when: false
+  when: "'sharded-cluster' in validate_mongodb_deployments"
+  become: yes

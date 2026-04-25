@@ -1,0 +1,9 @@
+---
+validate_mongodb_major_version: "{{ db_version }}"
+validate_mongodb_deployments: "{{ mongodb_deployments | default([]) }}"
+validate_mongodb_service_active_retries: 12
+validate_mongodb_service_active_delay: 5
+validate_mongodb_mongod_binary: /usr/bin/mongod
+validate_mongodb_mongosh_binary: /usr/bin/mongosh
+validate_mongodb_mongos_binary: /usr/bin/mongos
+validate_mongodb_sharded_script_path: /tmp/validate_mongodb_sharded.sh
