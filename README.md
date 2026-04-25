@@ -149,7 +149,7 @@ Ubuntu images can start background package work just after boot. The Ansible rol
 
 At the end of every build, the final image preparation role resets cloud-init state before Packer captures the image. On Ubuntu it also removes the generated cloud-init netplan file so a VM cloned from the saved image can regenerate first-boot networking and accept the validation SSH key.
 
-Post-build artifact validation waits for required services to become active after SSH is reachable. This matters on first boot: SSH can be ready before `firewalld`, `chrony`, `cron`, or PostgreSQL have fully settled.
+Post-build artifact validation waits for required services to become active after SSH is reachable. This matters on first boot: SSH can be ready before `firewalld`, `chrony`, `cron`, PostgreSQL, or MongoDB have fully settled.
 
 Show interactive prompts for buildable matrix rows:
 
