@@ -34,6 +34,12 @@ validate_matrix_file() {
     def trim_string: gsub("^\\s+|\\s+$"; "");
     def nonempty_string: type == "string" and (trim_string | length > 0);
     def display($value): if $value == null then "None" else ($value | tostring) end;
+    def deployment_key($entry):
+      if ($entry.deployment | type) == "array" then
+        ($entry.deployment | map(tostring) | sort | join("+"))
+      else
+        ""
+      end;
     def ctx($idx; $entry):
       "[\($idx)] \(display($entry.db_type // null)) | \(display($entry.os_type // null)) \(display($entry.os_version // null)) | \(display($entry.db_version // null))";
 
@@ -64,6 +70,31 @@ validate_matrix_file() {
             (
               select(($entry.provisioning_role // null) == "postgresql" and ($entry.db_type // null) != "pgsql")
               | "\(ctx($idx; $entry)): provisioning_role '\''postgresql'\'' requires db_type '\''pgsql'\''"
+            ),
+            (
+              select(($entry.provisioning_role // null) == "mongodb" and ($entry.db_type // null) != "mongodb")
+              | "\(ctx($idx; $entry)): provisioning_role '\''mongodb'\'' requires db_type '\''mongodb'\''"
+            ),
+            (
+              select(($entry.provisioning_role // null) == "mongodb" and ($entry.os_version | type) == "string" and ($entry.os_version | test("\\(")))
+              | "\(ctx($idx; $entry)): os_version must not encode MongoDB topology; use deployment metadata instead"
+            ),
+            (
+              select(($entry.provisioning_role // null) == "mongodb" and (($entry.mongodb_edition // "") | IN("community", "enterprise") | not))
+              | "\(ctx($idx; $entry)): buildable MongoDB rows require mongodb_edition community or enterprise"
+            ),
+            (
+              select(($entry.db_type // null) == "mongodb" and (($entry.deployment | type) != "array" or ($entry.deployment | length) == 0))
+              | "\(ctx($idx; $entry)): MongoDB rows require deployment as a non-empty list"
+            ),
+            (
+              select(($entry.db_type // null) == "mongodb" and ($entry.deployment | type) == "array")
+              | select(any($entry.deployment[]; (. | IN("single-instance", "replica-set", "sharded-cluster") | not)))
+              | "\(ctx($idx; $entry)): MongoDB deployment values must be single-instance, replica-set, or sharded-cluster"
+            ),
+            (
+              select(($entry.db_type // null) == "mongodb" and ($entry.deployment | type) == "array" and (($entry.deployment | length) != ($entry.deployment | unique | length)))
+              | "\(ctx($idx; $entry)): MongoDB deployment values must not contain duplicates"
             ),
             (
               select(($entry | has("extensions")) and ($entry.extensions != null) and (($entry.extensions | type) != "array"))
@@ -109,10 +140,18 @@ validate_matrix_file() {
       ),
       (
         [.[] | select(type == "object")]
-        | group_by([.db_type, .os_type, .os_version, .db_version])[]
+        | group_by([
+            .db_type,
+            .os_type,
+            .os_version,
+            .db_version,
+            (.mongodb_edition // ""),
+            deployment_key(.),
+            (.provisioning_role // "")
+          ])[]
         | select(length > 1)
         | .[0] as $entry
-        | "\(ctx("duplicate"; $entry)): duplicate combination [\($entry.db_type | tojson), \($entry.os_type | tojson), \($entry.os_version | tojson), \($entry.db_version | tojson)]"
+        | "\(ctx("duplicate"; $entry)): duplicate combination [db_type=\($entry.db_type | tojson), os_type=\($entry.os_type | tojson), os_version=\($entry.os_version | tojson), db_version=\($entry.db_version | tojson), mongodb_edition=\(($entry.mongodb_edition // "") | tojson), deployment=\(deployment_key($entry) | tojson), provisioning_role=\(($entry.provisioning_role // "") | tojson)]"
       )
     end
   ' "$matrix_file" 2>&1); then

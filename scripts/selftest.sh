@@ -75,6 +75,44 @@ JSON
   assert_invalid_matrix "empty PostgreSQL extensions require reason" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","extensions":[]}]' "extensions_empty_reason"
   assert_invalid_matrix "ha_components type" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","ha_components":[]}]' "ha_components.*object"
   assert_invalid_matrix "duplicate combination" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql"},{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql"}]' "duplicate combination"
+  assert_invalid_matrix "mongodb role requires mongodb db type" '[{"ndb_version":"2.99","engine":"MongoDB","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"8.0","provisioning_role":"mongodb","mongodb_edition":"community","deployment":["single-instance"]}]' "provisioning_role.*mongodb.*requires db_type"
+  assert_invalid_matrix "mongodb edition required" '[{"ndb_version":"2.99","engine":"MongoDB","db_type":"mongodb","os_type":"Rocky Linux","os_version":"9.9","db_version":"8.0","provisioning_role":"mongodb","deployment":["single-instance"]}]' "mongodb_edition"
+  assert_invalid_matrix "mongodb deployment required" '[{"ndb_version":"2.99","engine":"MongoDB","db_type":"mongodb","os_type":"Rocky Linux","os_version":"9.9","db_version":"8.0","provisioning_role":"mongodb","mongodb_edition":"community"}]' "deployment"
+  assert_invalid_matrix "mongodb fake sharded os version" '[{"ndb_version":"2.99","engine":"MongoDB","db_type":"mongodb","os_type":"Rocky Linux","os_version":"9.9 (sharded)","db_version":"8.0","provisioning_role":"mongodb","mongodb_edition":"community","deployment":["sharded-cluster"]}]' "os_version.*must not encode MongoDB topology"
+  assert_invalid_matrix_without_pattern "mongodb non-string os version clean error" '[{"ndb_version":"2.99","engine":"MongoDB","db_type":"mongodb","os_type":"Rocky Linux","os_version":9.9,"db_version":"8.0","provisioning_role":"mongodb","mongodb_edition":"community","deployment":["single-instance"]}]' "os_version" "jq:|test\\(|number.*string|string.*number"
+  assert_invalid_matrix "mongodb metadata deployment required" '[{"ndb_version":"2.99","engine":"MongoDB","db_type":"mongodb","os_type":"Rocky Linux","os_version":"9.9","db_version":"8.0","provisioning_role":"metadata"}]' "MongoDB rows require deployment as a non-empty list"
+  assert_invalid_matrix "mongodb metadata invalid deployment value" '[{"ndb_version":"2.99","engine":"MongoDB","db_type":"mongodb","os_type":"Rocky Linux","os_version":"9.9","db_version":"8.0","provisioning_role":"metadata","deployment":["global-cluster"]}]' "MongoDB deployment values"
+  assert_invalid_matrix "mongodb duplicate deployment value" '[{"ndb_version":"2.99","engine":"MongoDB","db_type":"mongodb","os_type":"Rocky Linux","os_version":"9.9","db_version":"8.0","provisioning_role":"metadata","deployment":["single-instance","single-instance"]}]' "MongoDB deployment values must not contain duplicates"
+  assert_invalid_matrix_without_pattern "mongodb non-array deployment clean error" '[{"ndb_version":"2.99","engine":"MongoDB","db_type":"mongodb","os_type":"Rocky Linux","os_version":"9.9","db_version":"8.0","provisioning_role":"metadata","deployment":"single-instance"}]' "MongoDB rows require deployment as a non-empty list" "jq:|Cannot iterate|array.*string"
+
+  mkdir -p "$tmpdir/2.99-mongodb"
+  cat > "$tmpdir/2.99-mongodb/matrix.json" <<'JSON'
+[
+  {
+    "ndb_version": "2.99-mongodb",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Rocky Linux",
+    "os_version": "9.9",
+    "db_version": "8.0",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
+    "deployment": ["single-instance", "replica-set", "sharded-cluster"]
+  },
+  {
+    "ndb_version": "2.99-mongodb",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Rocky Linux",
+    "os_version": "9.9",
+    "db_version": "8.0",
+    "provisioning_role": "metadata",
+    "deployment": ["sharded-cluster"],
+    "notes": "metadata-only sharded row"
+  }
+]
+JSON
+  "$ROOT_DIR/scripts/matrix_validate.sh" "$tmpdir/2.99-mongodb/matrix.json" >/dev/null
 
   pass "matrix validator"
 }
@@ -94,6 +132,25 @@ assert_invalid_matrix() {
   fi
 
   grep -Eq "$expected_pattern" "$output_file" || fail "${name} output missed expected pattern: ${expected_pattern}"
+}
+
+assert_invalid_matrix_without_pattern() {
+  local name=$1
+  local json=$2
+  local expected_pattern=$3
+  local rejected_pattern=$4
+  local matrix_file output_file
+  matrix_file="$tmpdir/2.99/${name// /-}.json"
+  output_file="$tmpdir/${name// /-}.out"
+  mkdir -p "$(dirname "$matrix_file")"
+  printf '%s\n' "$json" > "$matrix_file"
+
+  if "$ROOT_DIR/scripts/matrix_validate.sh" "$matrix_file" >"$output_file" 2>&1; then
+    fail "${name} matrix unexpectedly passed validation"
+  fi
+
+  grep -Eq "$expected_pattern" "$output_file" || fail "${name} output missed expected pattern: ${expected_pattern}"
+  ! grep -Eq "$rejected_pattern" "$output_file" || fail "${name} output included rejected pattern: ${rejected_pattern}"
 }
 
 run_matrix_validator_tests
