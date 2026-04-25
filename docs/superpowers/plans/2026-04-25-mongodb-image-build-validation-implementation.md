@@ -173,7 +173,7 @@ run_mongodb_matrix_coverage_tests() {
   [[ "$buildable_210" == "9" ]] || fail "expected 9 buildable NDB 2.10 MongoDB rows, got $buildable_210"
   [[ "$fake_versions" == "0" ]] || fail "MongoDB topology is still encoded in os_version"
 
-  jq -se '[.[][] | select(.db_type == "mongodb" and .provisioning_role == "mongodb" and (.deployment | index("sharded-cluster")))] | length == 5' "$ROOT_DIR"/ndb/*/matrix.json >/dev/null || fail "expected five buildable MongoDB sharded-readiness rows"
+  jq -se '[.[][] | select(.db_type == "mongodb" and .provisioning_role == "mongodb" and (.deployment | index("sharded-cluster")))] | length == 8' "$ROOT_DIR"/ndb/*/matrix.json >/dev/null || fail "expected eight buildable MongoDB sharded-readiness rows"
   jq -e '[.[] | select(.ndb_version == "2.10" and .db_type == "mongodb" and .provisioning_role == "mongodb" and (.deployment | index("sharded-cluster")) and .mongodb_edition != "enterprise")] | length == 0' "$ROOT_DIR/ndb/2.10/matrix.json" >/dev/null || fail "NDB 2.10 sharded MongoDB rows must be enterprise"
 
   pass "MongoDB matrix coverage"

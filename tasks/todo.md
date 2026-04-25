@@ -165,3 +165,20 @@ Implementation plan approved for the next reliability pass:
 
 - The implementation plan is saved to `docs/superpowers/plans/2026-04-25-mongodb-image-build-validation-implementation.md`.
 - The plan decomposes the work into matrix validation, matrix conversion, build/test dispatch, Ansible provisioning, validation, artifact validation, README updates, offline verification, and live Prism validation.
+
+# Active Plan: MongoDB Implementation Execution
+
+- [x] Create isolated worktree branch `codex/mongodb-image-validation`.
+- [x] Execute Task 1: matrix validator and self-test guard.
+- [x] Run Task 1 spec-compliance and code-quality reviews.
+- [x] Correct the Task 2 sharded-readiness coverage count from 5 to 8 to match the approved matrix conversion scope.
+- [ ] Execute Task 2: MongoDB matrix conversion.
+- [ ] Run Task 2 spec-compliance and code-quality reviews.
+- [ ] Execute Task 3: build and test harness dispatch.
+- [ ] Continue remaining MongoDB provisioning, validation, README, offline verification, and live Prism validation tasks one task at a time.
+
+# Active Plan Review: MongoDB Implementation Execution
+
+- Task 1 commit `facf389` validates MongoDB matrix metadata and adds self-test coverage for role/db-type mismatches, required edition/deployment metadata, invalid deployment values, duplicate deployments, duplicate grouping, and fake topology encoded in buildable `os_version` values.
+- Task 1 verification passed with `bash scripts/selftest.sh`, `scripts/matrix_validate.sh ndb/*/matrix.json`, shell syntax checks, and targeted invalid-input probes.
+- The written Task 2 plan originally expected five sharded-readiness rows, but its own row conversion scope produces eight: six NDB 2.9 community rows on Rocky/RHEL plus two NDB 2.10 Enterprise rows on RHEL.
