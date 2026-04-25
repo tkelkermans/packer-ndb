@@ -251,7 +251,7 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
       continue
     fi
     provisioning_role=$(echo "$build" | jq -r '.provisioning_role // "postgresql"')
-    if [[ "$provisioning_role" != "postgresql" ]]; then
+    if [[ "$provisioning_role" == "metadata" ]]; then
       continue
     fi
     os_type=$(echo "$build" | jq -r '.os_type')

@@ -174,8 +174,37 @@ Implementation plan approved for the next reliability pass:
 - [x] Correct the Task 2 sharded-readiness coverage count from 5 to 8 to match the approved matrix conversion scope.
 - [x] Execute Task 2: MongoDB matrix conversion.
 - [x] Run Task 2 spec-compliance and code-quality reviews.
-- [ ] Execute Task 3: build and test harness dispatch.
+- [x] Execute Task 3: build and test harness dispatch.
 - [ ] Continue remaining MongoDB provisioning, validation, README, offline verification, and live Prism validation tasks one task at a time.
+
+# Worker Task 3 Plan: MongoDB Harness Dispatch
+
+**Goal:** Allow build/test harness selection to dispatch buildable MongoDB matrix rows without touching provisioning roles.
+
+**Files:**
+- Modify: `scripts/selftest.sh`
+- Modify: `build.sh`
+- Modify: `test.sh`
+
+- [x] Add MongoDB dispatch guard self-tests after the existing test harness tests.
+- [x] Run `bash scripts/selftest.sh` and capture the expected failure before production changes.
+- [x] Extend `generate_ansible_vars_json()` to include `provisioning_role`, `mongodb_edition`, and `mongodb_deployments`.
+- [x] Move role metadata extraction before Ansible vars generation and allow `postgresql|mongodb` while still rejecting `metadata` and unsupported roles.
+- [x] Pass MongoDB metadata and provisioning role into artifact validation.
+- [x] Update `test.sh` to skip only `metadata` rows instead of every non-PostgreSQL row.
+- [x] Verify with shell syntax checks, self-tests, `git diff --check`, and the focused MongoDB dry-run probe.
+- [x] Self-review the diff, document results, and commit the requested harness files.
+
+# Worker Task 3 Review: MongoDB Harness Dispatch
+
+- Added dispatch self-test coverage after the existing test harness tests.
+- Captured the intended red failure: `FAIL: build.sh does not allow MongoDB provisioning role`.
+- `build.sh` now includes `provisioning_role`, `mongodb_edition`, and `mongodb_deployments` in generated Ansible vars.
+- `build.sh` now accepts `postgresql|mongodb`, rejects `metadata` as metadata-only, and reports unsupported roles distinctly.
+- `build.sh` now passes provisioning role and MongoDB metadata into artifact validation command construction.
+- `test.sh` now skips only `metadata` rows instead of filtering every non-PostgreSQL role.
+- Verification passed with `bash -n build.sh test.sh scripts/*.sh`, `bash scripts/selftest.sh`, `git diff --check`, and the focused MongoDB dry-run probe.
+- Concern: `scripts/artifact_validate.sh` does not yet parse the newly wired artifact-validation metadata flags; this task did not edit that file because it is outside Worker Task 3 ownership and later validation tasks own artifact behavior.
 
 # Active Plan Review: MongoDB Implementation Execution
 

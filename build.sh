@@ -237,19 +237,28 @@ function generate_ansible_vars_json() {
   local extensions_json=$3
   local db_type=$4
   local validate_build=$5
+  local provisioning_role=$6
+  local mongodb_edition=$7
+  local mongodb_deployments_json=$8
 
   jq -nc \
     --arg db_version "$db_version" \
     --arg db_type "$db_type" \
     --arg ndb_version "$ndb_version" \
+    --arg provisioning_role "$provisioning_role" \
+    --arg mongodb_edition "$mongodb_edition" \
     --argjson validate_build "$validate_build" \
     --argjson postgres_extensions "${extensions_json:-[]}" \
+    --argjson mongodb_deployments "${mongodb_deployments_json:-[]}" \
     '{
       db_version: $db_version,
       db_type: $db_type,
       ndb_version: $ndb_version,
+      provisioning_role: $provisioning_role,
       validate_build: $validate_build,
-      postgres_extensions: $postgres_extensions
+      postgres_extensions: $postgres_extensions,
+      mongodb_edition: $mongodb_edition,
+      mongodb_deployments: $mongodb_deployments
     }'
 }
 
@@ -603,15 +612,24 @@ if [[ -z "$CONFIG" ]]; then
   exit 1
 fi
 
-POSTGRES_EXTENSIONS_JSON=$(echo "$CONFIG" | jq -c '.extensions // []')
-ANSIBLE_VARS_JSON=$(generate_ansible_vars_json "$NDB_VERSION" "$DB_VERSION" "$POSTGRES_EXTENSIONS_JSON" "$DB_TYPE" "$VALIDATE_BUILD")
 ENGINE_NAME=$(echo "$CONFIG" | jq -r '.engine // ""')
+POSTGRES_EXTENSIONS_JSON=$(echo "$CONFIG" | jq -c '.extensions // []')
 PROVISIONING_ROLE=$(echo "$CONFIG" | jq -r '.provisioning_role // "postgresql"')
-if [[ "$PROVISIONING_ROLE" != "postgresql" ]]; then
-  echo "Selected configuration (${ENGINE_NAME:-$DB_TYPE} on ${OS_TYPE} ${OS_VERSION}) is metadata-only (provisioning role: ${PROVISIONING_ROLE})." >&2
-  echo "Current build pipeline supports only PostgreSQL entries. Please choose a PostgreSQL configuration." >&2
-  exit 1
-fi
+MONGODB_EDITION=$(echo "$CONFIG" | jq -r '.mongodb_edition // "community"')
+MONGODB_DEPLOYMENTS_JSON=$(echo "$CONFIG" | jq -c '.deployment // []')
+ANSIBLE_VARS_JSON=$(generate_ansible_vars_json "$NDB_VERSION" "$DB_VERSION" "$POSTGRES_EXTENSIONS_JSON" "$DB_TYPE" "$VALIDATE_BUILD" "$PROVISIONING_ROLE" "$MONGODB_EDITION" "$MONGODB_DEPLOYMENTS_JSON")
+case "$PROVISIONING_ROLE" in
+  postgresql|mongodb)
+    ;;
+  metadata)
+    echo "Selected configuration (${ENGINE_NAME:-$DB_TYPE} on ${OS_TYPE} ${OS_VERSION}) is metadata-only." >&2
+    exit 1
+    ;;
+  *)
+    echo "Selected configuration (${ENGINE_NAME:-$DB_TYPE} on ${OS_TYPE} ${OS_VERSION}) uses unsupported provisioning role: ${PROVISIONING_ROLE}" >&2
+    exit 1
+    ;;
+esac
 PATRONI_VERSION=$(echo "$CONFIG" | jq -r '.patroni_version // .ha_components.patroni[0] // ""')
 ETCD_VERSION=$(echo "$CONFIG" | jq -r '.etcd_version // .ha_components.etcd[0] // ""')
 
@@ -868,6 +886,9 @@ if [[ "$VALIDATE_ARTIFACT" == "true" ]]; then
     --db-version "$DB_VERSION"
     --db-type "$DB_TYPE"
     --extensions "$POSTGRES_EXTENSIONS_JSON"
+    --provisioning-role "$PROVISIONING_ROLE"
+    --mongodb-edition "$MONGODB_EDITION"
+    --mongodb-deployments "$MONGODB_DEPLOYMENTS_JSON"
     --result-file "$ARTIFACT_RESULT_FILE"
   )
   if [[ "$DEBUG" == "true" ]]; then
