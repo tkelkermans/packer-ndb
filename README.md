@@ -13,7 +13,7 @@ The normal workflow is:
 - Optionally boot the saved image as a disposable VM and validate the final artifact.
 - Optionally write a JSON manifest under `manifests/` so the build can be audited later.
 
-Today, the build-ready rows are PostgreSQL Community Edition rows with `provisioning_role=postgresql`. Other matrix rows may exist as release-note metadata so the support list is documented, but `build.sh` will reject them until matching Packer/Ansible roles exist.
+Today, the build-ready rows are PostgreSQL Community Edition rows with `provisioning_role=postgresql` and MongoDB rows with `provisioning_role=mongodb`. Other database engines can still appear as `provisioning_role=metadata` rows so the support list is documented, but `build.sh` rejects metadata-only rows until matching Packer/Ansible roles exist.
 
 ## Quick Start
 
@@ -65,12 +65,24 @@ Dry-run mode does not start Packer and does not require live Prism credentials t
 ./build.sh --dry-run --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
+For a MongoDB dry run, change `--db-type` and `--db-version`:
+
+```bash
+./build.sh --dry-run --ci --ndb-version 2.10 --db-type mongodb --os "Rocky Linux" --os-version 9.7 --db-version 8.0
+```
+
 ### 4. Run A Production Build
 
-This is the recommended production command. It builds the image, validates during provisioning, validates the saved artifact in a disposable VM, and writes a manifest.
+This is the recommended PostgreSQL production command. It builds the image, validates during provisioning, validates the saved artifact in a disposable VM, and writes a manifest.
 
 ```bash
 ./build.sh --ci --validate --validate-artifact --manifest --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+```
+
+This is the same production flow for one MongoDB row:
+
+```bash
+./build.sh --ci --validate --validate-artifact --manifest --ndb-version 2.10 --db-type mongodb --os "Rocky Linux" --os-version 9.7 --db-version 8.0
 ```
 
 ## Common Commands
@@ -104,6 +116,20 @@ Run the Rocky Linux NDB 2.10 build suite with both validation stages and manifes
 ```bash
 ./test.sh --include-ndb 2.10 --include-os "Rocky Linux" --validate --validate-artifact --manifest
 ```
+
+Run the MongoDB live suite with both validation stages and manifests. Keep `--max-parallel 1` while validating MongoDB topology rows so each temporary local smoke test has the host to itself.
+
+```bash
+./test.sh --include-db-type mongodb --validate --validate-artifact --manifest --max-parallel 1
+```
+
+If you use 1Password to provide `.env`, wrap the same MongoDB suite command with `op run`:
+
+```bash
+op run --env-file .env -- ./test.sh --include-db-type mongodb --validate --validate-artifact --manifest --max-parallel 1
+```
+
+`test.sh` skips RHEL rows unless you add `--allow-rhel`. Only add it after the licensed RHEL source image environment variables are set.
 
 Run every buildable PostgreSQL row that requests extension installation. This is the full extension coverage command for the matrix. It includes RHEL rows, validates the temporary build VM, validates the saved artifact, writes manifests, and keeps going after failures so you get a complete report. Each background build runs with stdin isolated from the matrix reader so every selected row is tested.
 
@@ -252,6 +278,13 @@ The `validate_postgres` role checks:
 - The NDB sudoers drop-in exists and the full sudoers configuration passes `visudo`.
 - Expected PostgreSQL extensions exist in the target databases.
 
+For MongoDB rows, `--validate` runs `validate_mongodb` instead:
+
+- Single-instance validation checks that `mongod` is installed, enabled, running, reachable through `mongosh`, on the selected version, and on the selected edition.
+- Rows with `replica-set` in `deployment` run a temporary local replica-set smoke test and clean it up afterward.
+- Rows with `sharded-cluster` in `deployment` run a temporary local sharded topology smoke test with `mongod` and `mongos`, add one shard, verify it is present, and clean it up afterward.
+- `mongodb_edition=enterprise` rows install and validate MongoDB Enterprise packages. NDB 2.10 sharded-cluster readiness uses Enterprise packages because the release notes list sharded MongoDB as Enterprise-only.
+
 ### Artifact Validation
 
 Use `--validate-artifact` to validate the saved Prism image:
@@ -266,7 +299,7 @@ Artifact validation:
 - Boots a disposable `validate-...` VM from that image.
 - Injects the repo SSH key with cloud-init.
 - Connects as `packer` with `packer/id_rsa`.
-- Runs the same `validate_postgres` role against the disposable VM.
+- Runs the matching validation role against the disposable VM: `validate_postgres` for PostgreSQL or `validate_mongodb` for MongoDB.
 - Deletes the disposable VM after validation by default.
 
 Add `--debug` to keep the validation VM on failure:
@@ -458,14 +491,43 @@ For buildable PostgreSQL rows, an empty extension list must be intentional. Add 
 }
 ```
 
-Use `provisioning_role=metadata` for combinations that should be documented but are not buildable yet.
+Each buildable MongoDB row should include `mongodb_edition` and `deployment`:
+
+```json
+{
+  "ndb_version": "2.10",
+  "engine": "MongoDB",
+  "db_type": "mongodb",
+  "os_type": "Rocky Linux",
+  "os_version": "9.7",
+  "db_version": "8.0",
+  "provisioning_role": "mongodb",
+  "mongodb_edition": "community",
+  "deployment": ["single-instance", "replica-set"]
+}
+```
+
+Use `mongodb_edition=community` for Community packages and `mongodb_edition=enterprise` for Enterprise packages. Use `deployment` to list the MongoDB shapes the row must prove during validation:
+
+- `single-instance`: validates the installed `mongod` service, MongoDB version, and edition.
+- `replica-set`: also runs a temporary local replica-set smoke test.
+- `sharded-cluster`: also runs a temporary local sharded topology smoke test.
+
+For NDB 2.10, sharded MongoDB rows are Enterprise rows because the release notes list sharded MongoDB as Enterprise-only. If a release note combination is useful to document but is not buildable yet, keep it as `provisioning_role=metadata`.
 
 ### Matrix Drafting Prompt
 
 You can use this prompt with a language model to draft a new matrix from release notes:
 
 ```text
-Please create a JSON array of all possible build combinations from the provided markdown file. Each object must include ndb_version, engine, db_type, os_type, os_version, db_version, and provisioning_role. Add patroni_version, etcd_version, and ha_components when the release notes include HA component data. Use provisioning_role=postgresql only for combinations that are actually buildable by the current PostgreSQL pipeline, and use provisioning_role=metadata for documentation-only rows. For buildable PostgreSQL rows, add the qualified PostgreSQL extensions in extensions. If a buildable PostgreSQL row intentionally has no extension coverage yet, set extensions to [] and add a clear extensions_empty_reason.
+Please create a JSON array of all possible build combinations from the provided markdown file.
+Each object must include ndb_version, engine, db_type, os_type, os_version, db_version, and provisioning_role.
+Add patroni_version, etcd_version, and ha_components when the release notes include PostgreSQL HA component data.
+Use provisioning_role=postgresql only for combinations that are actually buildable by the current PostgreSQL pipeline.
+Use provisioning_role=mongodb only for combinations that are actually buildable by the current MongoDB pipeline, and include mongodb_edition plus deployment metadata for those rows.
+For buildable PostgreSQL rows, add the qualified PostgreSQL extensions in extensions.
+If a buildable PostgreSQL row intentionally has no extension coverage yet, set extensions to [] and add a clear extensions_empty_reason.
+Use provisioning_role=metadata for documentation-only rows and for database engines that are not buildable yet.
 ```
 
 Always review the generated matrix manually against the release notes before building.
@@ -500,6 +562,12 @@ The matrix validator fails buildable PostgreSQL rows that have no extension list
 - PostgreSQL contrib packages are installed unconditionally.
 - `ansible/2.10` applies the Ubuntu 24.04 rsyslog AppArmor workaround from the NDB 2.10 known issues.
 
+### Current MongoDB Coverage
+
+- MongoDB rows install Community or Enterprise packages based on `mongodb_edition`.
+- Validation checks the running service, server version, selected edition, and any requested local replica-set or sharded topology smoke tests.
+- Red Hat and Rocky MongoDB builds install MongoDB's pinned SELinux policy source for default RPM layouts. This can be slow because the build needs GitHub access while Ansible clones the pinned `mongodb/mongodb-selinux` source and installs the policy.
+
 ### Image Naming
 
 Images use this pattern:
@@ -516,6 +584,6 @@ ndb-2.10-pgsql-18-Rocky Linux-9.7-20260424000000
 
 ### Multi-Engine Roadmap
 
-`ndb/2.10/matrix.json` also tracks Oracle, SQL Server, MySQL, MariaDB, and MongoDB combinations from the NDB 2.10 release notes.
+`ndb/2.10/matrix.json` also tracks Oracle, SQL Server, MySQL, MariaDB, and MongoDB combinations from the NDB 2.10 release notes. PostgreSQL and selected MongoDB rows are buildable today. Oracle, SQL Server, MySQL, MariaDB, and any unsupported MongoDB combinations remain metadata-only.
 
-To make those buildable, add matching Packer and Ansible roles, then change their matrix rows from `provisioning_role=metadata` to a real role such as `oracle` or `sqlserver`.
+To make another engine buildable, add matching Packer and Ansible roles, then change its matrix rows from `provisioning_role=metadata` to a real role such as `oracle` or `sqlserver`.

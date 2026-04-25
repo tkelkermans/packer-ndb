@@ -346,3 +346,29 @@ Implementation plan approved for the next reliability pass:
 - PostgreSQL defaults are required and passed only for PostgreSQL artifact validation; MongoDB validation receives only the generated vars file.
 - Generated vars now include `db_version`, `db_type`, `provisioning_role`, `configure_ndb_sudoers`, PostgreSQL extension defaults, `mongodb_edition`, and `mongodb_deployments`.
 - Verification passed: `bash -n scripts/artifact_validate.sh scripts/selftest.sh`, `bash scripts/selftest.sh`, and `git diff --check`.
+
+# Worker Task 8 Plan: MongoDB README and Operator Guidance
+
+**Goal:** Update the beginner operator README so MongoDB buildable rows, validation behavior, matrix metadata, and live-suite commands match the implemented MongoDB pipeline.
+
+**Files:**
+- Modify: `README.md`
+- Modify: `scripts/selftest.sh`
+- Modify: `tasks/todo.md`
+
+- [x] Add the README MongoDB guidance self-test to `scripts/selftest.sh`.
+- [x] Run `bash scripts/selftest.sh` and capture the expected red failure before README changes.
+- [x] Update the README opening, quick-start/common commands, validation explanation, matrix guidance, drafting prompt, roadmap, and MongoDB SELinux policy note.
+- [x] Run requested verification: self-tests, shell syntax checks, matrix validation, and whitespace checks.
+- [x] Self-review the diff, document results here, and commit `Document MongoDB image builds`.
+
+# Worker Task 8 Review: MongoDB README and Operator Guidance
+
+- Captured the intended red failure after adding the README guard: `FAIL: README missing MongoDB test command`.
+- Updated the README opening to say PostgreSQL and MongoDB rows are build-ready while other engines can remain metadata-only.
+- Added MongoDB dry-run, one-row production build, live suite, and 1Password-wrapped live suite commands.
+- Documented MongoDB validation in plain language: service/version/edition checks for single-instance rows, temporary local replica-set smoke tests, and temporary local sharded topology smoke tests that add and verify one shard before cleanup.
+- Documented `mongodb_edition`, `deployment`, Enterprise sharded-cluster rows, matrix drafting guidance, artifact validation dispatch, and the Red Hat/Rocky pinned MongoDB SELinux policy source requirement.
+- Verification passed: `bash scripts/selftest.sh`; `bash -n build.sh test.sh scripts/*.sh ansible/2.9/roles/validate_mongodb/files/*.sh ansible/2.10/roles/validate_mongodb/files/*.sh`; `scripts/matrix_validate.sh ndb/*/matrix.json`; `git diff --check`.
+- Self-review found no out-of-scope file changes beyond `README.md`, `scripts/selftest.sh`, and `tasks/todo.md`.
+- Note: live Prism MongoDB builds were not run in this documentation-only worker task; coverage here is offline README/self-test validation.

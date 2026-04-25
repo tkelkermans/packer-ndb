@@ -957,3 +957,13 @@ run_build_cleanup_guard_tests() {
 }
 
 run_build_cleanup_guard_tests
+
+run_readme_mongodb_tests() {
+  grep -q "MongoDB" "$ROOT_DIR/README.md" || fail "README does not mention MongoDB"
+  grep -q -- "--include-db-type mongodb" "$ROOT_DIR/README.md" || fail "README missing MongoDB test command"
+  grep -q "sharded topology" "$ROOT_DIR/README.md" || fail "README missing local sharded topology explanation"
+  grep -q "mongodb_edition" "$ROOT_DIR/README.md" || fail "README missing MongoDB edition matrix guidance"
+  pass "README MongoDB guidance"
+}
+
+run_readme_mongodb_tests
