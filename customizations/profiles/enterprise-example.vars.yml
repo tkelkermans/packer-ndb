@@ -1,0 +1,16 @@
+enterprise_internal_ca_enabled: true
+enterprise_internal_ca_name: ndb-example-internal-ca
+enterprise_internal_ca_path_redhat: /etc/pki/ca-trust/source/anchors/ndb-example-internal-ca.crt
+enterprise_internal_ca_path_debian: /usr/local/share/ca-certificates/ndb-example-internal-ca.crt
+enterprise_internal_ca_private_key_path: /etc/ndb-enterprise/ndb-example-internal-ca.key
+enterprise_internal_ca_subject: /CN=NDB Example Internal CA
+
+enterprise_monitoring_enabled: true
+enterprise_otel_service_name: ndb-example-otelcol
+enterprise_otel_config_path: /etc/ndb-enterprise/otelcol/config.yaml
+enterprise_otel_marker_path: /etc/ndb-enterprise/otelcol/enabled
+
+enterprise_hardening_enabled: true
+enterprise_hardening_marker_path: /etc/ndb-enterprise/hardening/baseline.conf
+enterprise_hardening_sysctl_key: vm.swappiness
+enterprise_hardening_sysctl_value: "10"

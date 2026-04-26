@@ -1,0 +1,19 @@
+name: enterprise-example
+description: Install a sample internal CA, OpenTelemetry Collector example, and safe hardening baseline.
+
+vars_files:
+  - customizations/profiles/enterprise-example.vars.yml
+
+phases:
+  pre_common:
+    roles:
+      - custom_internal_ca
+  post_common:
+    roles: []
+  post_database:
+    roles:
+      - custom_monitoring_agent
+      - custom_os_hardening
+  validate:
+    roles:
+      - validate_custom_enterprise

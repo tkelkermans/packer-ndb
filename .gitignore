@@ -59,3 +59,9 @@ ansible/vars*.json
 # Build manifests
 manifests/*.json
 !manifests/.gitkeep
+
+# Private enterprise customization overlays
+customizations/local/**
+!customizations/local/
+!customizations/local/.gitkeep
+!customizations/local/README.md

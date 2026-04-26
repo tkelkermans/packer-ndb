@@ -174,6 +174,23 @@ run_mongodb_matrix_coverage_tests() {
 
 run_mongodb_matrix_coverage_tests
 
+run_customization_profile_static_tests() {
+  [[ -f "$ROOT_DIR/customizations/profiles/enterprise-example.yml" ]] || fail "missing enterprise example profile"
+  [[ -f "$ROOT_DIR/customizations/profiles/enterprise-example.vars.yml" ]] || fail "missing enterprise example vars"
+  [[ -f "$ROOT_DIR/customizations/local/README.md" ]] || fail "missing local customization README"
+  grep -q "customizations/local/" "$ROOT_DIR/.gitignore" || fail ".gitignore does not ignore local customizations"
+  grep -q "custom_internal_ca" "$ROOT_DIR/customizations/profiles/enterprise-example.yml" || fail "profile missing internal CA role"
+  grep -q "custom_monitoring_agent" "$ROOT_DIR/customizations/profiles/enterprise-example.yml" || fail "profile missing monitoring role"
+  grep -q "custom_os_hardening" "$ROOT_DIR/customizations/profiles/enterprise-example.yml" || fail "profile missing hardening role"
+  grep -q "validate_custom_enterprise" "$ROOT_DIR/customizations/profiles/enterprise-example.yml" || fail "profile missing custom validation role"
+  grep -q "OpenTelemetry Collector" "$ROOT_DIR/customizations/examples/monitoring-agent/README.md" || fail "monitoring example does not document OpenTelemetry Collector"
+  grep -q "Customize The Image" "$ROOT_DIR/README.md" || fail "README missing customization section"
+  grep -q -- "--customization-profile" "$ROOT_DIR/README.md" || fail "README missing customization profile command"
+  pass "customization profile static skeleton"
+}
+
+run_customization_profile_static_tests
+
 run_prism_helper_tests() {
   # shellcheck source=/dev/null
   source "$ROOT_DIR/scripts/prism.sh"

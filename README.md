@@ -261,6 +261,18 @@ Each entry can be:
 
 If a remote import is slow over VPN, staging or reusing an existing Prism image is usually faster and more reliable than asking Packer to import the remote URI every time.
 
+## Customize The Image
+
+Customization profiles are optional overlays for enterprise-specific tools, certificates, hardening, or validation checks. The committed `enterprise-example` profile is a safe starter that shows where profile settings live without requiring private repositories, tenant URLs, or secrets.
+
+Start with a dry run so you can see the selected matrix row and planned customization inputs before any VM is created:
+
+```bash
+./build.sh --dry-run --ci --customization-profile enterprise-example --ndb-version 2.10 --db-type mongodb --os "Rocky Linux" --os-version 9.7 --db-version 8.0
+```
+
+Use `customizations/examples/` as copyable reference material. Put real customer-specific profiles, private variables, and private roles under `customizations/local/`; that directory is ignored by git except for its README and `.gitkeep` so secrets and internal implementation details stay out of commits.
+
 ## Validation
 
 ### In-Guest Validation

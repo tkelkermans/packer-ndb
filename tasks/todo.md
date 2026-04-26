@@ -412,3 +412,21 @@ Implementation plan approved for the next reliability pass:
 - A watchdog-protected probe against `/Users/tristan/Developer/NDB/.env` timed out after 20 seconds before producing any non-secret `set` or `missing` output.
 - No required `PKR_VAR_*` Prism variables are present in the raw shell environment.
 - Because credentials could not be resolved, no live MongoDB builds were launched and no Prism cleanup query was possible from this shell.
+
+# Active Plan: Enterprise Customization Profiles
+
+- [x] Add customization skeleton, committed examples, private overlay ignore rules, and README guidance.
+- [ ] Add `build.sh` customization profile selection and dry-run reporting.
+- [ ] Add Ansible profile preflight validation.
+- [ ] Add build-time customization phase dispatch.
+- [ ] Add saved-artifact customization validation dispatch.
+- [ ] Add manifest reporting for selected customization profiles.
+- [ ] Run offline verification and live PostgreSQL/MongoDB profile smoke builds.
+
+# Active Plan Review: Enterprise Customization Profiles
+
+- Task 1 added the static customization skeleton self-test and confirmed the intended initial failure: `FAIL: missing enterprise example profile`.
+- Added the committed `enterprise-example` profile and safe example variables, example README files, and the gitignored `customizations/local` placeholder.
+- Added private overlay ignore rules for `customizations/local/**` while keeping the local README and `.gitkeep` tracked.
+- Added the beginner-facing `Customize The Image` README section before `Validation` with the exact starter dry-run command.
+- Verification passed with `bash scripts/selftest.sh` and `git diff --check`.
