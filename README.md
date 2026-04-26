@@ -57,7 +57,25 @@ cp .env.example .env
 source .env
 ```
 
-### 3. Run A Safe Dry Run
+### 3. Use The Guided Wizard
+
+If you are new to the project, start with the single-image wizard:
+
+```bash
+scripts/build_wizard.sh
+```
+
+The wizard does not replace `build.sh`. It asks beginner-friendly questions, shows the selected matrix row, prints the exact `./build.sh --ci ...` command, and lets you either print the command or run it.
+
+For PostgreSQL rows, the wizard shows the matrix-defined extension list before you build. Extension installation is still controlled by `ndb/<version>/matrix.json`; to change extensions, edit or add a matrix row, then run:
+
+```bash
+scripts/matrix_validate.sh ndb/*/matrix.json
+```
+
+Maintainer rule: when you add or change a single-image build feature, update the wizard/TUI in the same change if the feature affects user choices, generated flags, warnings, validation defaults, or preview text.
+
+### 4. Run A Safe Dry Run
 
 Dry-run mode does not start Packer and does not require live Prism credentials to be valid. It shows the selected matrix row, source image plan, generated Ansible variables, final Packer variables, and missing live-build prerequisites.
 
@@ -71,7 +89,7 @@ For a MongoDB dry run, change `--db-type` and `--db-version`:
 ./build.sh --dry-run --ci --ndb-version 2.10 --db-type mongodb --os "Rocky Linux" --os-version 9.7 --db-version 8.0
 ```
 
-### 4. Run A Production Build
+### 5. Run A Production Build
 
 This is the recommended PostgreSQL production command. It builds the image, validates during provisioning, validates the saved artifact in a disposable VM, and writes a manifest.
 
@@ -478,6 +496,7 @@ export NDB_RHEL_9_6_IMAGE_URI="/path/to/rhel-9.6.qcow2"
 |   `-- variables.pkr.hcl
 |-- scripts/
 |   |-- artifact_validate.sh
+|   |-- build_wizard.sh
 |   |-- manifest.sh
 |   |-- matrix_validate.sh
 |   |-- prism.sh

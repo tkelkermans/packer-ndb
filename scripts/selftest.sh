@@ -1093,6 +1093,150 @@ run_release_scaffold_tests() {
 
 run_release_scaffold_tests
 
+run_build_wizard_tests() {
+  local tmpdir output build_log wizard
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/wizard.out"
+  build_log="$tmpdir/build.log"
+  wizard="$tmpdir/scripts/build_wizard.sh"
+
+  mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts" "$tmpdir/customizations/profiles"
+  cp "$ROOT_DIR/scripts/build_wizard.sh" "$wizard"
+  chmod +x "$wizard"
+
+  cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
+[
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.9",
+    "db_version": "16",
+    "provisioning_role": "postgresql",
+    "extensions": ["pgvector", "postgis"]
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Ubuntu",
+    "os_version": "22.04",
+    "db_version": "15",
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Self-test empty extension row."
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Rocky Linux",
+    "os_version": "9.9",
+    "db_version": "8.0",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
+    "deployment": ["single-instance", "replica-set", "sharded-cluster"]
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.7",
+    "db_version": "14",
+    "provisioning_role": "postgresql",
+    "extensions": [],
+    "extensions_empty_reason": "Self-test licensed source image row."
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "Metadata Only",
+    "db_type": "pgsql",
+    "os_type": "RHEL",
+    "os_version": "9.9",
+    "db_version": "14",
+    "provisioning_role": "metadata",
+    "extensions": ["pg_stat_statements"]
+  }
+]
+JSON
+
+  cat > "$tmpdir/images.json" <<'JSON'
+{
+  "rhel-9.7": {
+    "env_var": "NDB_RHEL_9_7_IMAGE_URI",
+    "description": "Set NDB_RHEL_9_7_IMAGE_URI before starting the build."
+  }
+}
+JSON
+
+  cat > "$tmpdir/customizations/profiles/enterprise-example.yml" <<'YAML'
+name: enterprise-example
+phases: {}
+YAML
+
+  cat > "$tmpdir/build.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%q ' "$@" > "${NDB_SELFTEST_BUILD_LOG:?}"
+printf '\n' >> "${NDB_SELFTEST_BUILD_LOG:?}"
+SH
+  chmod +x "$tmpdir/build.sh"
+
+  (
+    cd "$tmpdir"
+    printf '1\n1\n1\n1\n1\n1\n1\n' | "$wizard" >"$output" 2>&1
+  ) || fail "wizard default PostgreSQL dry-run failed"
+  grep -Fq "Extensions: pgvector, postgis" "$output" || fail "wizard did not show PostgreSQL extension list"
+  grep -Fq "./build.sh --ci --dry-run --ndb-version 9.99 --db-type pgsql --os 'Rocky Linux' --os-version 9.9 --db-version 16" "$output" || fail "wizard dry-run command mismatch"
+  ! grep -Fq "Metadata Only" "$output" || fail "wizard exposed metadata-only rows"
+
+  (
+    cd "$tmpdir"
+    printf '1\n1\n2\n1\n1\n1\n1\n' | "$wizard" >"$output" 2>&1
+  ) || fail "wizard empty-extension PostgreSQL dry-run failed"
+  grep -Fq "No PostgreSQL extensions requested." "$output" || fail "wizard did not show empty extension status"
+  grep -Fq "Self-test empty extension row." "$output" || fail "wizard did not show empty extension reason"
+
+  (
+    cd "$tmpdir"
+    printf '1\n1\n1\n4\n1\n1\n1\n1\n1\n1\n' | "$wizard" >"$output" 2>&1
+  ) || fail "wizard validated build preview failed"
+  grep -Fq "./build.sh --ci --validate --validate-artifact --manifest --ndb-version 9.99 --db-type pgsql --os 'Rocky Linux' --os-version 9.9 --db-version 16" "$output" || fail "wizard build command missing validation defaults"
+
+  (
+    cd "$tmpdir"
+    printf '1\n1\n3\n1\n1\n1\n1\n' | "$wizard" >"$output" 2>&1
+  ) || fail "wizard MongoDB dry-run failed"
+  grep -Fq "MongoDB deployments: single-instance, replica-set, sharded-cluster" "$output" || fail "wizard did not show MongoDB deployment list"
+  grep -Fq -- "--db-type mongodb" "$output" || fail "wizard MongoDB command mismatch"
+
+  (
+    cd "$tmpdir"
+    printf '1\n1\n4\n1\n1\n1\n1\n' | NDB_RHEL_9_7_IMAGE_URI="" "$wizard" >"$output" 2>&1
+  ) || fail "wizard RHEL source warning preview failed"
+  grep -Fq "Warning: source image variable NDB_RHEL_9_7_IMAGE_URI is not set." "$output" || fail "wizard did not warn about missing RHEL source image variable"
+
+  (
+    cd "$tmpdir"
+    printf '1\n1\n1\n1\n3\n11111111-2222-3333-4444-555555555555\n3\n1\n1\n' | "$wizard" >"$output" 2>&1
+  ) || fail "wizard source UUID and customization preview failed"
+  grep -Fq -- "--source-image-uuid 11111111-2222-3333-4444-555555555555" "$output" || fail "wizard source UUID command mismatch"
+  grep -Fq -- "--customization-profile enterprise-example" "$output" || fail "wizard customization command mismatch"
+
+  (
+    cd "$tmpdir"
+    printf '1\n1\n1\n1\n1\n1\n2\n' | NDB_SELFTEST_BUILD_LOG="$build_log" "$wizard" >"$output" 2>&1
+  ) || fail "wizard run-now path failed"
+  grep -Fq -- "--dry-run" "$build_log" || fail "wizard did not execute generated build command"
+
+  pass "build wizard"
+}
+
+run_build_wizard_tests
+
 run_test_harness_tests() {
   local tmpdir marker
   tmpdir=$(mktemp -d)
@@ -1478,6 +1622,16 @@ run_readme_mongodb_tests() {
 }
 
 run_readme_mongodb_tests
+
+run_readme_wizard_tests() {
+  grep -q "scripts/build_wizard.sh" "$ROOT_DIR/README.md" || fail "README missing build wizard command"
+  grep -q "PostgreSQL rows, the wizard shows" "$ROOT_DIR/README.md" || fail "README missing wizard PostgreSQL extension guidance"
+  grep -q "Extension installation is still controlled by" "$ROOT_DIR/README.md" || fail "README missing matrix-driven extension guidance"
+  grep -q "update the wizard/TUI in the same change" "$ROOT_DIR/README.md" || fail "README missing wizard maintenance rule"
+  pass "README build wizard guidance"
+}
+
+run_readme_wizard_tests
 
 run_readme_customization_tests() {
   grep -q "Customize The Image" "$ROOT_DIR/README.md" || fail "README missing Customize The Image"

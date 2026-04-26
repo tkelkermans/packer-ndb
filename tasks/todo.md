@@ -3,12 +3,12 @@
 # Active Plan: Single-Image Build Wizard Implementation
 
 - [x] Create the implementation plan from the approved wizard design.
-- [ ] Add failing offline wizard selftests.
-- [ ] Implement `scripts/build_wizard.sh`.
-- [ ] Add PostgreSQL extension awareness to the wizard preview.
-- [ ] Add source image and customization choices.
-- [ ] Update the README beginner workflow.
-- [ ] Run offline verification.
+- [x] Add failing offline wizard selftests.
+- [x] Implement `scripts/build_wizard.sh`.
+- [x] Add PostgreSQL extension awareness to the wizard preview.
+- [x] Add source image and customization choices.
+- [x] Update the README beginner workflow.
+- [x] Run offline verification.
 - [ ] Commit the implementation.
 
 # Active Plan Review: Single-Image Build Wizard Implementation
@@ -16,6 +16,9 @@
 - Implementation plan saved to `docs/superpowers/plans/2026-04-26-single-image-build-wizard-implementation.md`.
 - The plan keeps the wizard as a shell-only wrapper that prints ordinary `build.sh` commands.
 - PostgreSQL extensions remain matrix-driven; the wizard will display them but will not add a new extension flag.
+- Future single-image build features must update the wizard when they add or change choices, generated flags, warnings, or preview content.
+- The README now documents the wizard as the beginner starting point and records the maintainer rule to update the wizard/TUI with future single-image build changes.
+- Offline verification passed with shell syntax checks, `bash scripts/selftest.sh`, matrix validation, `packer fmt -check packer`, `git diff --check`, and a print-only wizard smoke that generated a dry-run `build.sh` command without starting Packer.
 
 # Active Plan: Single-Image Build Wizard Design
 
@@ -25,7 +28,7 @@
 - [x] Write the single-image build wizard design spec.
 - [x] Self-review the design spec.
 - [x] Commit the design spec.
-- [ ] Ask the user to review the written spec before implementation planning.
+- [x] Ask the user to review the written spec before implementation planning.
 
 # Active Plan Review: Single-Image Build Wizard Design
 
