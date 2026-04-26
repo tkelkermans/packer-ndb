@@ -324,6 +324,32 @@ function write_ansible_vars_file() {
   echo "$vars_file"
 }
 
+function run_customization_preflight() {
+  local preflight_playbook
+  local roles_path
+
+  if [[ "$CUSTOMIZATION_ENABLED" != "true" ]]; then
+    return 0
+  fi
+
+  preflight_playbook="${SCRIPT_DIR}/ansible/${NDB_VERSION}/playbooks/customization_preflight.yml"
+  roles_path="${SCRIPT_DIR}/ansible/${NDB_VERSION}/roles:${SCRIPT_DIR}/customizations/examples/internal-ca/roles:${SCRIPT_DIR}/customizations/examples/monitoring-agent/roles:${SCRIPT_DIR}/customizations/examples/os-hardening/roles:${SCRIPT_DIR}/customizations/examples/enterprise-validation/roles:${SCRIPT_DIR}/customizations/local"
+  CUSTOMIZATION_SUMMARY_FILE=$(mktemp -t ndb-customization-summary.XXXXXX.json)
+  TEMP_FILES+=("$CUSTOMIZATION_SUMMARY_FILE")
+
+  ANSIBLE_ROLES_PATH="$roles_path" \
+  ANSIBLE_CONFIG="${SCRIPT_DIR}/ansible/${NDB_VERSION}/ansible.cfg" \
+  ansible-playbook \
+    -i localhost, \
+    -c local \
+    -e "customization_enabled=true" \
+    -e "customization_profile_file=${SCRIPT_DIR}/${CUSTOMIZATION_PROFILE_FILE}" \
+    -e "customization_profile_name=${CUSTOMIZATION_PROFILE_NAME}" \
+    -e "customization_repo_root=${SCRIPT_DIR}" \
+    -e "customization_summary_file=${CUSTOMIZATION_SUMMARY_FILE}" \
+    "$preflight_playbook"
+}
+
 function print_dry_run_summary() {
   local live_ready=true
   local missing_items=()
@@ -343,6 +369,12 @@ function print_dry_run_summary() {
         missing_items+=("command: ${cmd}")
       fi
     done
+  fi
+  if [[ "$CUSTOMIZATION_ENABLED" == "true" && "$VALIDATE_ARTIFACT" != "true" ]]; then
+    if ! command_is_available ansible-playbook; then
+      live_ready=false
+      missing_items+=("command: ansible-playbook")
+    fi
   fi
 
   for var_name in "${REQUIRED_ENV_VARS[@]}"; do
@@ -463,6 +495,9 @@ EOF
     for cmd in ssh ansible-playbook base64; do
       printf '  %s=%s\n' "$cmd" "$( command_is_available "$cmd" && echo "present" || echo "missing" )"
     done
+  fi
+  if [[ "$CUSTOMIZATION_ENABLED" == "true" && "$VALIDATE_ARTIFACT" != "true" ]]; then
+    printf '  %s=%s\n' "ansible-playbook" "$( command_is_available ansible-playbook && echo "present" || echo "missing" )"
   fi
 
   if (( ${#missing_items[@]} > 0 )); then
@@ -891,6 +926,8 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.uuid" --value "$SOURCE_IMAGE_UUID"
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.runtime_action" --value "$SOURCE_IMAGE_RUNTIME_ACTION"
 fi
+
+run_customization_preflight
 
 if [[ "$DRY_RUN" == "true" ]]; then
   print_dry_run_summary

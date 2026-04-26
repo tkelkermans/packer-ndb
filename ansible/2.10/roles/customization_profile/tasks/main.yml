@@ -1,0 +1,107 @@
+- name: Skip customization profile when disabled
+  ansible.builtin.meta: end_role
+  when: not (customization_enabled | default(false) | bool)
+
+- name: Assert customization profile file is provided
+  ansible.builtin.assert:
+    that:
+      - customization_profile_file | length > 0
+    fail_msg: "customization_profile_file is required when customization_enabled=true"
+
+- name: Load customization profile
+  ansible.builtin.include_vars:
+    file: "{{ customization_profile_file }}"
+    name: customization_profile
+
+- name: Assert customization profile has required fields
+  ansible.builtin.assert:
+    that:
+      - customization_profile.name is defined
+      - customization_profile.name | length > 0
+      - customization_profile.description is defined
+      - customization_profile.description | length > 0
+      - customization_profile.phases is defined
+      - customization_profile.phases is mapping
+    fail_msg: "Customization profile must define name, description, and phases mapping"
+
+- name: Assert customization profile phases are supported
+  ansible.builtin.assert:
+    that:
+      - customization_profile.phases.keys() | difference(customization_allowed_phases) | length == 0
+    fail_msg: "Customization profile contains unsupported phase names"
+
+- name: Assert customization profile phase roles are lists
+  ansible.builtin.assert:
+    that:
+      - customization_profile.phases[item].roles is not defined or customization_profile.phases[item].roles is sequence
+    fail_msg: "Customization profile phase roles must be lists"
+  loop: "{{ customization_profile.phases.keys() | list }}"
+
+- name: Assert customization vars files exist
+  ansible.builtin.stat:
+    path: "{{ item if item is abs else customization_repo_root ~ '/' ~ item }}"
+  register: customization_vars_file_stats
+  loop: "{{ customization_profile.vars_files | default([]) }}"
+
+- name: Fail when customization vars files are missing
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+    fail_msg: "Customization vars file does not exist: {{ item.item }}"
+  loop: "{{ customization_vars_file_stats.results | default([]) }}"
+
+- name: Load customization vars files
+  ansible.builtin.include_vars:
+    file: "{{ item if item is abs else customization_repo_root ~ '/' ~ item }}"
+  loop: "{{ customization_profile.vars_files | default([]) }}"
+
+- name: Assert explicit customization role paths exist
+  ansible.builtin.stat:
+    path: "{{ item if item is abs else customization_repo_root ~ '/' ~ item }}"
+  register: customization_role_path_stats
+  loop: "{{ customization_profile.extra_role_paths | default([]) }}"
+
+- name: Fail when explicit customization role paths are missing
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isdir
+    fail_msg: "Customization role path does not exist or is not a directory: {{ item.item }}"
+  loop: "{{ customization_role_path_stats.results | default([]) }}"
+
+- name: Write customization summary for shell manifest reporting
+  ansible.builtin.copy:
+    dest: "{{ customization_summary_file }}"
+    mode: "0600"
+    content: |
+      {{
+        {
+          "enabled": true,
+          "profile": customization_profile.name,
+          "profile_file": customization_profile_file,
+          "phases": {
+            "pre_common": customization_profile.phases.get("pre_common", {}).get("roles", []),
+            "post_common": customization_profile.phases.get("post_common", {}).get("roles", []),
+            "post_database": customization_profile.phases.get("post_database", {}).get("roles", []),
+            "validate": customization_profile.phases.get("validate", {}).get("roles", [])
+          },
+          "validation": "not-requested"
+        } | to_nice_json
+      }}
+  delegate_to: localhost
+  when:
+    - customization_summary_file | default("") | length > 0
+    - customization_preflight_only | default(false) | bool
+
+- name: Stop after profile validation when running preflight only
+  ansible.builtin.meta: end_role
+  when: customization_preflight_only | default(false) | bool
+
+- name: Resolve customization phase roles
+  ansible.builtin.set_fact:
+    customization_phase_roles: "{{ customization_profile.phases.get(customization_phase, {}).get('roles', []) }}"
+
+- name: Run customization phase roles
+  ansible.builtin.include_role:
+    name: "{{ item }}"
+  loop: "{{ customization_phase_roles }}"

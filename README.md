@@ -273,6 +273,8 @@ Start with a dry run so you can see the selected matrix row and planned customiz
 
 Profiles live in `customizations/profiles/` or `customizations/local/`. Use `customizations/examples/` as copyable reference material, then put real customer-specific profiles, private variables, and private roles under `customizations/local/`; that directory is ignored by git except for its README and `.gitkeep` so secrets and internal implementation details stay out of commits.
 
+When a customization profile is selected, even a dry run validates the profile with `ansible-playbook` before printing the dry-run summary. This catches missing profile files, unsupported phase names, missing variable files, and missing custom role paths before a long image build starts.
+
 The committed monitoring example uses OpenTelemetry Collector naming but avoids secrets. Production profiles should include validation roles so every installed enterprise tool can be checked during build or artifact validation.
 
 ## Validation

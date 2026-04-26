@@ -417,7 +417,7 @@ Implementation plan approved for the next reliability pass:
 
 - [x] Add customization skeleton, committed examples, private overlay ignore rules, and README guidance.
 - [x] Add `build.sh` customization profile selection and dry-run reporting.
-- [ ] Add Ansible profile preflight validation.
+- [x] Add Ansible profile preflight validation.
 - [ ] Add build-time customization phase dispatch.
 - [ ] Add saved-artifact customization validation dispatch.
 - [ ] Add manifest reporting for selected customization profiles.
@@ -461,3 +461,38 @@ Implementation plan approved for the next reliability pass:
 - Added dry-run reporting for enabled state, profile name, profile file, env default usage, and explicit disablement.
 - Updated the README customization paragraph so the documented starter command matches the new behavior.
 - Verification passed with `bash scripts/selftest.sh`, the documented MongoDB customization dry-run command, and `git diff --check`.
+
+# Worker Task 3 Plan: Ansible Profile Preflight
+
+**Goal:** Validate selected customization profiles with Ansible before dry-run or live build execution continues.
+
+**Files:**
+- Modify: `scripts/selftest.sh`
+- Create: `ansible/2.9/roles/customization_profile/defaults/main.yml`
+- Create: `ansible/2.9/roles/customization_profile/tasks/main.yml`
+- Create: `ansible/2.10/roles/customization_profile/defaults/main.yml`
+- Create: `ansible/2.10/roles/customization_profile/tasks/main.yml`
+- Create: `ansible/2.9/playbooks/customization_preflight.yml`
+- Create: `ansible/2.10/playbooks/customization_preflight.yml`
+- Modify: `build.sh`
+- Modify: `README.md`
+- Modify: `tasks/todo.md`
+
+- [x] Add customization profile Ansible preflight self-tests.
+- [x] Run `bash scripts/selftest.sh` and capture the intended failure before implementation.
+- [x] Add `customization_profile` role defaults and tasks for NDB 2.9 and 2.10.
+- [x] Add `customization_preflight.yml` playbooks for NDB 2.9 and 2.10.
+- [x] Run customization preflight from `build.sh` when a profile is selected.
+- [x] Report `ansible-playbook` as a dry-run prerequisite only when customization needs it.
+- [x] Update README and task notes for preflight behavior.
+- [x] Run Task 3 verification and commit only Task 3 files.
+
+# Worker Task 3 Review: Ansible Profile Preflight
+
+- Added Ansible preflight static guards and confirmed the intended initial failure: `FAIL: missing customization preflight playbook 2.9`.
+- Added matching `customization_profile` defaults and tasks for NDB 2.9 and 2.10.
+- Added matching `customization_preflight.yml` playbooks for NDB 2.9 and 2.10.
+- `build.sh` now validates a selected customization profile with `ansible-playbook` before dry-run output or live build execution continues.
+- Dry-run prerequisite reporting now includes `ansible-playbook` only when customization is enabled and artifact validation has not already reported it.
+- README now explains that selected profiles are validated even during dry runs.
+- Verification passed with `bash scripts/selftest.sh`, the required MongoDB customization dry-run command, and `git diff --check`.

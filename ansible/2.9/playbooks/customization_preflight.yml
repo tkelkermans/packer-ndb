@@ -1,0 +1,8 @@
+- name: Validate customization profile
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: customization_profile
+      vars:
+        customization_preflight_only: true
