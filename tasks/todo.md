@@ -540,3 +540,40 @@ Implementation plan approved for the next reliability pass:
 - Dry-run prerequisite reporting now includes `ansible-playbook` only when customization is enabled and artifact validation has not already reported it.
 - README now explains that selected profiles are validated even during dry runs.
 - Verification passed with `bash scripts/selftest.sh`, the required MongoDB customization dry-run command, and `git diff --check`.
+
+# Worker Task 4 Plan: Build-Time Customization Phase Dispatch
+
+**Goal:** Run selected customization profile phases during image builds while keeping saved-artifact validation and manifest reporting for later tasks.
+
+**Files:**
+- Modify: `scripts/selftest.sh`
+- Modify: `packer/variables.pkr.hcl`
+- Modify: `packer/database.pkr.hcl`
+- Modify: `build.sh`
+- Modify: `ansible/2.9/playbooks/site.yml`
+- Modify: `ansible/2.10/playbooks/site.yml`
+- Create: `customizations/examples/internal-ca/roles/custom_internal_ca/tasks/main.yml`
+- Create: `customizations/examples/monitoring-agent/roles/custom_monitoring_agent/tasks/main.yml`
+- Create: `customizations/examples/os-hardening/roles/custom_os_hardening/tasks/main.yml`
+- Modify: `README.md`
+- Modify: `tasks/todo.md`
+
+- [x] Add build-time dispatch selftests.
+- [x] Run `bash scripts/selftest.sh` and capture the intended failure before implementation.
+- [x] Add the Packer `ansible_roles_path_env` variable and pass it to the Ansible provisioner.
+- [x] Add `build.sh` roles-path generation, Packer variable wiring, and dry-run reporting.
+- [x] Dispatch `pre_common`, `post_common`, `post_database`, and build-time `validate` customization phases in both site playbooks.
+- [x] Create install example roles for internal CA, monitoring agent, and OS hardening.
+- [x] Update README/tasks for beginner-facing build-time behavior.
+- [x] Run Task 4 verification and commit only Task 4 files.
+
+# Worker Task 4 Review: Build-Time Customization Phase Dispatch
+
+- Added build-time dispatch guards and captured the intended red failure: `FAIL: Packer variables missing ansible_roles_path_env`.
+- Added `ansible_roles_path_env` to Packer variables and Ansible provisioner environment so `build.sh` can supply customization role paths without editing `ansible.cfg`.
+- Added `customization_roles_path_env()` in `build.sh`, reused it for preflight, passed it to Packer, and showed it in dry-run output.
+- Both NDB 2.9 and NDB 2.10 site playbooks now dispatch customization phases at `pre_common`, `post_common`, `post_database`, and build-time `validate`.
+- Added install example roles for `custom_internal_ca`, `custom_monitoring_agent`, and `custom_os_hardening`.
+- README now explains build-time customization phase behavior in the existing beginner-facing customization section.
+- Verification passed: `bash scripts/selftest.sh`; both requested Ansible syntax checks with `/tmp/ndb-ansible-2.18/bin` first in `PATH`; `packer fmt -check packer`; `git diff --check`; and the documented customization dry-run showed the generated `ansible_roles_path_env`.
+- Concern: the example profile's `validate` phase names `validate_custom_enterprise`, but that role is intentionally left for Task 5 per the committed plan and this worker's scope. Build-time `--validate --customization-profile enterprise-example` will need Task 5 before that validation phase can succeed.

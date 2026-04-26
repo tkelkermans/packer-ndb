@@ -275,6 +275,21 @@ function resolve_customization_profile() {
   CUSTOMIZATION_PROFILE_NAME="${selection%.yml}"
 }
 
+function customization_roles_path_env() {
+  if [[ "$CUSTOMIZATION_ENABLED" != "true" ]]; then
+    printf ''
+    return
+  fi
+
+  printf 'ANSIBLE_ROLES_PATH=%s:%s:%s:%s:%s:%s' \
+    "${SCRIPT_DIR}/ansible/${NDB_VERSION}/roles" \
+    "${SCRIPT_DIR}/customizations/examples/internal-ca/roles" \
+    "${SCRIPT_DIR}/customizations/examples/monitoring-agent/roles" \
+    "${SCRIPT_DIR}/customizations/examples/os-hardening/roles" \
+    "${SCRIPT_DIR}/customizations/examples/enterprise-validation/roles" \
+    "${SCRIPT_DIR}/customizations/local"
+}
+
 function generate_ansible_vars_json() {
   local ndb_version=$1
   local db_version=$2
@@ -339,7 +354,7 @@ function run_customization_preflight() {
   else
     profile_file_path="${SCRIPT_DIR}/${CUSTOMIZATION_PROFILE_FILE}"
   fi
-  roles_path="${SCRIPT_DIR}/ansible/${NDB_VERSION}/roles:${SCRIPT_DIR}/customizations/examples/internal-ca/roles:${SCRIPT_DIR}/customizations/examples/monitoring-agent/roles:${SCRIPT_DIR}/customizations/examples/os-hardening/roles:${SCRIPT_DIR}/customizations/examples/enterprise-validation/roles:${SCRIPT_DIR}/customizations/local"
+  roles_path="${ANSIBLE_ROLES_PATH_ENV#ANSIBLE_ROLES_PATH=}"
   CUSTOMIZATION_SUMMARY_FILE=$(mktemp -t ndb-customization-summary.XXXXXX.json)
   TEMP_FILES+=("$CUSTOMIZATION_SUMMARY_FILE")
 
@@ -471,6 +486,7 @@ ${config_pretty}
 Packer variable preview:
   ansible_site_playbook=${ANSIBLE_SITE_PLAYBOOK}
   ansible_config_path=${ANSIBLE_CONFIG_PATH}
+  ansible_roles_path_env=${ANSIBLE_ROLES_PATH_ENV:-default ansible.cfg roles_path}
   ansible_extra_vars_file=<temporary file created at runtime>
   ndb_version=${NDB_VERSION}
   os_type=${OS_TYPE}
@@ -681,6 +697,7 @@ ensure_file_exists "$ANSIBLE_SITE_PLAYBOOK"
 ANSIBLE_CFG_PATH="ansible/${NDB_VERSION}/ansible.cfg"
 ensure_file_exists "$ANSIBLE_CFG_PATH"
 ANSIBLE_CONFIG_PATH="ANSIBLE_CONFIG=${ANSIBLE_CFG_PATH}"
+ANSIBLE_ROLES_PATH_ENV=$(customization_roles_path_env)
 
 MATRIX_FILE="ndb/${NDB_VERSION}/matrix.json"
 if [[ ! -f "$MATRIX_FILE" ]]; then
@@ -970,6 +987,7 @@ PACKER_STATUS=0
 "${PACKER_CMD[@]}" \
   -var "ansible_site_playbook=${ANSIBLE_SITE_PLAYBOOK}" \
   -var "ansible_config_path=${ANSIBLE_CONFIG_PATH}" \
+  -var "ansible_roles_path_env=${ANSIBLE_ROLES_PATH_ENV}" \
   -var "ansible_extra_vars_file=${ANSIBLE_VARS_FILE}" \
   -var "ndb_version=${NDB_VERSION}" \
   -var "os_type=${OS_TYPE}" \

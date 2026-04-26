@@ -51,6 +51,8 @@ build {
     playbook_file = var.ansible_site_playbook
     ansible_env_vars = compact([
       var.ansible_config_path,
+      # build.sh passes ANSIBLE_ROLES_PATH through ansible_roles_path_env when a customization profile is selected.
+      var.ansible_roles_path_env,
       "ANSIBLE_HOST_KEY_CHECKING=False"
     ])
     extra_arguments = [

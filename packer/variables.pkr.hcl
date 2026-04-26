@@ -108,6 +108,11 @@ variable "ansible_config_path" {
   default = ""
 }
 
+variable "ansible_roles_path_env" {
+  type    = string
+  default = ""
+}
+
 variable "ansible_extra_vars_file" {
   type    = string
   default = "ansible/vars.json"

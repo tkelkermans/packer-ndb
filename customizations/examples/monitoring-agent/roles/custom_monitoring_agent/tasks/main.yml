@@ -1,0 +1,71 @@
+- name: custom_monitoring_agent role marker
+  ansible.builtin.debug:
+    msg: "ndb-example-otelcol"
+
+- name: Ensure OpenTelemetry Collector example directory exists
+  ansible.builtin.file:
+    path: "{{ enterprise_otel_config_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: enterprise_monitoring_enabled | default(false) | bool
+
+- name: Write OpenTelemetry Collector example config
+  ansible.builtin.copy:
+    dest: "{{ enterprise_otel_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 127.0.0.1:4317
+      exporters:
+        debug:
+          verbosity: basic
+      service:
+        pipelines:
+          traces:
+            receivers: [otlp]
+            exporters: [debug]
+  when: enterprise_monitoring_enabled | default(false) | bool
+
+- name: Write OpenTelemetry Collector example marker
+  ansible.builtin.copy:
+    dest: "{{ enterprise_otel_marker_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "OpenTelemetry Collector example enabled by NDB customization profile\n"
+  when: enterprise_monitoring_enabled | default(false) | bool
+
+- name: Install example OpenTelemetry Collector systemd unit
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ enterprise_otel_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=NDB example OpenTelemetry Collector service shim
+      After=network-online.target
+
+      [Service]
+      Type=simple
+      ExecStart=/usr/bin/env sh -c 'while true; do sleep 3600; done'
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+  when: enterprise_monitoring_enabled | default(false) | bool
+
+- name: Enable and start example monitoring service
+  ansible.builtin.systemd:
+    name: "{{ enterprise_otel_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: enterprise_monitoring_enabled | default(false) | bool

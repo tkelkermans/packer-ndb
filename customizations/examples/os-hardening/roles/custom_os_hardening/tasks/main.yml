@@ -1,0 +1,39 @@
+- name: custom_os_hardening role marker
+  ansible.builtin.debug:
+    msg: "vm.swappiness"
+
+- name: Ensure hardening marker directory exists
+  ansible.builtin.file:
+    path: "{{ enterprise_hardening_marker_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: enterprise_hardening_enabled | default(false) | bool
+
+- name: Persist safe hardening sysctl
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-ndb-enterprise-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ enterprise_hardening_sysctl_key }}={{ enterprise_hardening_sysctl_value }}\n"
+  when: enterprise_hardening_enabled | default(false) | bool
+
+- name: Apply safe hardening sysctl at runtime
+  ansible.builtin.command:
+    argv:
+      - sysctl
+      - "-w"
+      - "{{ enterprise_hardening_sysctl_key }}={{ enterprise_hardening_sysctl_value }}"
+  changed_when: true
+  when: enterprise_hardening_enabled | default(false) | bool
+
+- name: Write hardening marker file
+  ansible.builtin.copy:
+    dest: "{{ enterprise_hardening_marker_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ enterprise_hardening_sysctl_key }}={{ enterprise_hardening_sysctl_value }}\n"
+  when: enterprise_hardening_enabled | default(false) | bool

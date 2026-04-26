@@ -1,7 +1,18 @@
 - name: Configure Packer VM
   hosts: all
+  pre_tasks:
+    - name: Run pre-common customization roles
+      ansible.builtin.include_role:
+        name: customization_profile
+      vars:
+        customization_phase: pre_common
+      when: customization_enabled | default(false) | bool
   roles:
     - common
+    - role: customization_profile
+      vars:
+        customization_phase: post_common
+      when: customization_enabled | default(false) | bool
     - role: postgres
       when: (provisioning_role | default('postgresql')) == 'postgresql'
     - role: validate_postgres
@@ -14,4 +25,14 @@
       when:
         - validate_build | default(false) | bool
         - (provisioning_role | default('postgresql')) == 'mongodb'
+    - role: customization_profile
+      vars:
+        customization_phase: post_database
+      when: customization_enabled | default(false) | bool
+    - role: customization_profile
+      vars:
+        customization_phase: validate
+      when:
+        - validate_build | default(false) | bool
+        - customization_enabled | default(false) | bool
     - image_prepare

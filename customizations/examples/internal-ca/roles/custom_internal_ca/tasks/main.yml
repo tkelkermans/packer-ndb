@@ -1,0 +1,91 @@
+- name: custom_internal_ca role marker
+  ansible.builtin.debug:
+    msg: "custom_internal_ca"
+
+- name: Ensure enterprise marker directory exists
+  ansible.builtin.file:
+    path: /etc/ndb-enterprise
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Generate sample internal CA certificate on RedHat family
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - req
+      - -x509
+      - -newkey
+      - rsa:2048
+      - -nodes
+      - -sha256
+      - -days
+      - "3650"
+      - -subj
+      - "{{ enterprise_internal_ca_subject }}"
+      - -keyout
+      - "{{ enterprise_internal_ca_private_key_path }}"
+      - -out
+      - "{{ enterprise_internal_ca_path_redhat }}"
+    creates: "{{ enterprise_internal_ca_path_redhat }}"
+  when:
+    - enterprise_internal_ca_enabled | default(false) | bool
+    - ansible_os_family == "RedHat"
+
+- name: Set RedHat sample CA certificate permissions
+  ansible.builtin.file:
+    path: "{{ enterprise_internal_ca_path_redhat }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - enterprise_internal_ca_enabled | default(false) | bool
+    - ansible_os_family == "RedHat"
+
+- name: Generate sample internal CA certificate on Debian family
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - req
+      - -x509
+      - -newkey
+      - rsa:2048
+      - -nodes
+      - -sha256
+      - -days
+      - "3650"
+      - -subj
+      - "{{ enterprise_internal_ca_subject }}"
+      - -keyout
+      - "{{ enterprise_internal_ca_private_key_path }}"
+      - -out
+      - "{{ enterprise_internal_ca_path_debian }}"
+    creates: "{{ enterprise_internal_ca_path_debian }}"
+  when:
+    - enterprise_internal_ca_enabled | default(false) | bool
+    - ansible_os_family == "Debian"
+
+- name: Set Debian sample CA certificate permissions
+  ansible.builtin.file:
+    path: "{{ enterprise_internal_ca_path_debian }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - enterprise_internal_ca_enabled | default(false) | bool
+    - ansible_os_family == "Debian"
+
+- name: Update RedHat trust store
+  ansible.builtin.command: update-ca-trust
+  changed_when: true
+  when:
+    - enterprise_internal_ca_enabled | default(false) | bool
+    - ansible_os_family == "RedHat"
+
+- name: Update Debian trust store
+  ansible.builtin.command: update-ca-certificates
+  changed_when: true
+  when:
+    - enterprise_internal_ca_enabled | default(false) | bool
+    - ansible_os_family == "Debian"
