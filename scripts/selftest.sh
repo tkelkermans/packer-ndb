@@ -1627,11 +1627,20 @@ run_readme_wizard_tests() {
   grep -q "scripts/build_wizard.sh" "$ROOT_DIR/README.md" || fail "README missing build wizard command"
   grep -q "PostgreSQL rows, the wizard shows" "$ROOT_DIR/README.md" || fail "README missing wizard PostgreSQL extension guidance"
   grep -q "Extension installation is still controlled by" "$ROOT_DIR/README.md" || fail "README missing matrix-driven extension guidance"
-  grep -q "update the wizard/TUI in the same change" "$ROOT_DIR/README.md" || fail "README missing wizard maintenance rule"
+  ! grep -q "Maintainer rule:" "$ROOT_DIR/README.md" || fail "README should not contain agent maintainer rules"
   pass "README build wizard guidance"
 }
 
 run_readme_wizard_tests
+
+run_agent_guidance_tests() {
+  grep -q "update the shell wizard/TUI in the same work item" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing wizard maintenance rule"
+  grep -q "Keep the README beginner-facing" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing README boundary guidance"
+  grep -q "update the shell wizard/TUI in the same work item" "$ROOT_DIR/tasks/lessons.md" || fail "lessons missing wizard maintenance rule"
+  pass "agent guidance"
+}
+
+run_agent_guidance_tests
 
 run_readme_customization_tests() {
   grep -q "Customize The Image" "$ROOT_DIR/README.md" || fail "README missing Customize The Image"

@@ -8,3 +8,4 @@
 - When a missing env value is reported fixed through a 1Password mount, verify both that the key exists and that `op run --env-file .env` resolves a non-empty value before launching expensive live matrix runs.
 - When designing operator flows for this project, include matrix-driven PostgreSQL extension behavior explicitly. Do not assume selecting a PostgreSQL row is enough; surface requested extensions, empty-extension reasons, and the validation path in the user experience.
 - When adding or changing single-image build behavior, update the shell wizard/TUI in the same work item if the change affects user choices, generated flags, warnings, validation defaults, or preview text.
+- Keep agent-only maintainer rules out of the beginner README. Put those rules in `AGENTS.md` and `tasks/lessons.md`, while the README stays focused on operator usage.

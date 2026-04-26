@@ -73,8 +73,6 @@ For PostgreSQL rows, the wizard shows the matrix-defined extension list before y
 scripts/matrix_validate.sh ndb/*/matrix.json
 ```
 
-Maintainer rule: when you add or change a single-image build feature, update the wizard/TUI in the same change if the feature affects user choices, generated flags, warnings, validation defaults, or preview text.
-
 ### 4. Run A Safe Dry Run
 
 Dry-run mode does not start Packer and does not require live Prism credentials to be valid. It shows the selected matrix row, source image plan, generated Ansible variables, final Packer variables, and missing live-build prerequisites.
