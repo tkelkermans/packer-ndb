@@ -1,5 +1,22 @@
 # Task Plan
 
+# Active Plan: Single-Image Build Wizard Design
+
+- [x] Explore whether a TUI fits the current shell/Packer/Ansible project.
+- [x] Confirm the wizard scope is single-image builds only.
+- [x] Choose the separate thin wrapper approach.
+- [x] Write the single-image build wizard design spec.
+- [x] Self-review the design spec.
+- [ ] Commit the design spec.
+- [ ] Ask the user to review the written spec before implementation planning.
+
+# Active Plan Review: Single-Image Build Wizard Design
+
+- The wizard is intentionally a shell-only helper that generates ordinary `build.sh` commands instead of becoming a second build engine.
+- The first version targets one image at a time and leaves matrix validation flows unchanged.
+- Rich TUI dependencies are out of scope to preserve enterprise portability and readability.
+- Safe defaults should favor dry-run first, then validated builds with artifact validation and manifests enabled.
+
 # Active Plan: Source Image UUID Smoke Fix
 
 - [x] Reproduce live customization smoke blocker: Packer failed before VM creation because Prism returned more than one image with the same source image name/URI.
