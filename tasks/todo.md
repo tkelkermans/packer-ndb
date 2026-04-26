@@ -218,6 +218,28 @@ Implementation plan approved for the next reliability pass:
 - [x] Add a selftest proving customized dry-run without `ansible-playbook` prints the summary and reports `ansible-playbook=missing`.
 - [x] Skip customized dry-run preflight only when `ansible-playbook` is missing, while keeping live/preflight customization builds protected by an early required-command check.
 - [x] Verify full selftests, customized dry-run with Ansible present, missing-Ansible dry-run reproduction, and `git diff --check`.
+
+# Worker Task 3 Review Fix Plan: Customization Preflight Profile Validation
+
+**Goal:** Fix only the remaining Task 3 review finding where customized `--preflight` exits before validating the selected customization profile contract.
+
+**Files:**
+- Modify: `build.sh`
+- Modify: `scripts/selftest.sh`
+- Modify: `tasks/todo.md`
+
+- [x] Add a selftest proving customized `--preflight` invokes customization profile validation before Prism/source-image preflight.
+- [x] Move customized `--preflight` profile validation ahead of source-image preflight while preserving missing-`ansible-playbook` early failure.
+- [x] Preserve customized dry-run without `ansible-playbook` friendly summary behavior.
+- [x] Run requested verification probes and `git diff --check`.
+- [ ] Stage only Task 3 fix files and commit with the requested message.
+
+# Worker Task 3 Review Fix Review: Customization Preflight Profile Validation
+
+- Added selftest coverage proving customized `--preflight` validates the selected profile before Prism/source-image checks.
+- `build.sh --preflight --customization-profile <bad>` now runs `run_customization_preflight` first and fails with the Ansible customization profile contract error.
+- Direct absolute customization profile paths are passed to preflight Ansible unchanged instead of being prefixed with the repo root.
+- Verified customized dry-run still reports missing `ansible-playbook` with the friendly summary instead of crashing.
 - [x] Self-review staged files and commit `Fix customization preflight prerequisite reporting`.
 
 # Worker Task 3 Review Fix Review: Customization Dry-Run Preflight Ordering

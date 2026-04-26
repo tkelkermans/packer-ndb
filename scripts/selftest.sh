@@ -255,6 +255,155 @@ run_customization_dry_run_missing_ansible_tests() {
 
 run_customization_dry_run_missing_ansible_tests
 
+run_customization_preflight_order_tests() {
+  local tmpdir output valid_profile invalid_profile ansible_log curl_log cmd cmd_path
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/preflight.out"
+  valid_profile="$tmpdir/valid-profile.yml"
+  invalid_profile="$tmpdir/invalid-profile.yml"
+  ansible_log="$tmpdir/ansible.log"
+  curl_log="$tmpdir/curl.log"
+  mkdir -p "$tmpdir/bin"
+
+  for cmd in jq dirname mktemp date tr sed rm grep basename bash cat head; do
+    cmd_path=$(command -v "$cmd") || fail "selftest missing required command: $cmd"
+    ln -s "$cmd_path" "$tmpdir/bin/$cmd"
+  done
+
+  cat > "$valid_profile" <<'YAML'
+name: valid-test
+description: valid profile
+phases:
+  pre_common:
+    roles: []
+YAML
+
+  cat > "$invalid_profile" <<'YAML'
+name: invalid-test
+description: invalid profile
+phases:
+  unsupported_phase:
+    roles: []
+YAML
+
+  cat > "$tmpdir/bin/ansible-playbook" <<'SH'
+#!/usr/bin/env bash
+printf 'ansible-playbook %s\n' "$*" >> "$NDB_SELFTEST_ANSIBLE_LOG"
+profile_file=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -e)
+      case "$2" in
+        customization_profile_file=*)
+          profile_file=${2#customization_profile_file=}
+          ;;
+      esac
+      shift
+      ;;
+  esac
+  shift
+done
+if grep -q "unsupported_phase" "$profile_file"; then
+  printf 'Customization profile contains unsupported phase names\n' >&2
+  exit 23
+fi
+exit 0
+SH
+  chmod +x "$tmpdir/bin/ansible-playbook"
+
+  cat > "$tmpdir/bin/curl" <<'SH'
+#!/usr/bin/env bash
+printf 'curl %s\n' "$*" >> "$NDB_SELFTEST_CURL_LOG"
+output_file=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output_file=$2
+      shift
+      ;;
+    -w)
+      shift
+      ;;
+  esac
+  shift
+done
+body='{"entities":[{"spec":{"name":"test-cluster"},"metadata":{"uuid":"cluster-uuid"}},{"spec":{"name":"test-subnet"},"metadata":{"uuid":"subnet-uuid"}},{"spec":{"name":"test-image"},"metadata":{"uuid":"image-uuid"}}]}'
+if [[ -n "$output_file" ]]; then
+  printf '%s' "$body" > "$output_file"
+else
+  printf '%s' "$body"
+fi
+printf '200'
+exit 0
+SH
+  chmod +x "$tmpdir/bin/curl"
+
+  if (
+    cd "$ROOT_DIR"
+    PATH="$tmpdir/bin" \
+      SKIP_MATRIX_VALIDATION=true \
+      NDB_SELFTEST_ANSIBLE_LOG="$ansible_log" \
+      NDB_SELFTEST_CURL_LOG="$curl_log" \
+      PKR_VAR_pc_username=user \
+      PKR_VAR_pc_password=password \
+      PKR_VAR_pc_ip=pc.example.com \
+      PKR_VAR_cluster_name=test-cluster \
+      PKR_VAR_subnet_name=test-subnet \
+      "$BASH" "$ROOT_DIR/build.sh" \
+        --ci \
+        --preflight \
+        --ndb-version 2.10 \
+        --db-type pgsql \
+        --os "Rocky Linux" \
+        --os-version "9.6" \
+        --db-version 17 \
+        --source-image-name test-image \
+        --customization-profile "$invalid_profile" >"$output" 2>&1
+  ); then
+    fail "customized preflight with invalid profile unexpectedly passed"
+  fi
+
+  grep -q "Customization profile contains unsupported phase names" "$output" || fail "invalid customized preflight missed profile contract error"
+  [[ -s "$ansible_log" ]] || fail "invalid customized preflight did not invoke ansible-playbook"
+  [[ ! -e "$curl_log" ]] || fail "invalid customized preflight reached Prism/source-image checks before profile validation"
+
+  rm -f "$ansible_log" "$curl_log" "$output"
+
+  if (
+    cd "$ROOT_DIR"
+    PATH="$tmpdir/bin" \
+      SKIP_MATRIX_VALIDATION=true \
+      NDB_SELFTEST_ANSIBLE_LOG="$ansible_log" \
+      NDB_SELFTEST_CURL_LOG="$curl_log" \
+      PKR_VAR_pc_username=user \
+      PKR_VAR_pc_password=password \
+      PKR_VAR_pc_ip=pc.example.com \
+      PKR_VAR_cluster_name=test-cluster \
+      PKR_VAR_subnet_name=test-subnet \
+      "$BASH" "$ROOT_DIR/build.sh" \
+        --ci \
+        --preflight \
+        --ndb-version 2.10 \
+        --db-type pgsql \
+        --os "Rocky Linux" \
+        --os-version "9.6" \
+        --db-version 17 \
+        --source-image-name test-image \
+        --customization-profile "$valid_profile" >"$output" 2>&1
+  ); then
+    :
+  else
+    fail "customized preflight with valid profile failed: $(cat "$output")"
+  fi
+
+  [[ -s "$ansible_log" ]] || fail "valid customized preflight did not invoke ansible-playbook"
+  [[ -s "$curl_log" ]] || fail "valid customized preflight did not continue to Prism/source-image checks"
+  pass "customization preflight validates profile before source-image checks"
+}
+
+run_customization_preflight_order_tests
+
 run_prism_helper_tests() {
   # shellcheck source=/dev/null
   source "$ROOT_DIR/scripts/prism.sh"

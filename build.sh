@@ -326,6 +326,7 @@ function write_ansible_vars_file() {
 
 function run_customization_preflight() {
   local preflight_playbook
+  local profile_file_path
   local roles_path
 
   if [[ "$CUSTOMIZATION_ENABLED" != "true" ]]; then
@@ -333,6 +334,11 @@ function run_customization_preflight() {
   fi
 
   preflight_playbook="${SCRIPT_DIR}/ansible/${NDB_VERSION}/playbooks/customization_preflight.yml"
+  if [[ "$CUSTOMIZATION_PROFILE_FILE" = /* ]]; then
+    profile_file_path="$CUSTOMIZATION_PROFILE_FILE"
+  else
+    profile_file_path="${SCRIPT_DIR}/${CUSTOMIZATION_PROFILE_FILE}"
+  fi
   roles_path="${SCRIPT_DIR}/ansible/${NDB_VERSION}/roles:${SCRIPT_DIR}/customizations/examples/internal-ca/roles:${SCRIPT_DIR}/customizations/examples/monitoring-agent/roles:${SCRIPT_DIR}/customizations/examples/os-hardening/roles:${SCRIPT_DIR}/customizations/examples/enterprise-validation/roles:${SCRIPT_DIR}/customizations/local"
   CUSTOMIZATION_SUMMARY_FILE=$(mktemp -t ndb-customization-summary.XXXXXX.json)
   TEMP_FILES+=("$CUSTOMIZATION_SUMMARY_FILE")
@@ -343,7 +349,7 @@ function run_customization_preflight() {
     -i localhost, \
     -c local \
     -e "customization_enabled=true" \
-    -e "customization_profile_file=${SCRIPT_DIR}/${CUSTOMIZATION_PROFILE_FILE}" \
+    -e "customization_profile_file=${profile_file_path}" \
     -e "customization_profile_name=${CUSTOMIZATION_PROFILE_NAME}" \
     -e "customization_repo_root=${SCRIPT_DIR}" \
     -e "customization_summary_file=${CUSTOMIZATION_SUMMARY_FILE}" \
@@ -886,6 +892,8 @@ if [[ "$WRITE_MANIFEST" == "true" && "$DRY_RUN" != "true" && "$PREFLIGHT_ONLY" !
 fi
 
 if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
+  run_customization_preflight
+
   if [[ "$SOURCE_IMAGE_RESOLUTION_STATUS" == "missing-env" ]]; then
     echo "Error: source image environment variable is missing: ${SOURCE_IMAGE_REQUIRED_ENV_VAR}" >&2
     print_dry_run_summary
