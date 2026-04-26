@@ -216,6 +216,45 @@ run_customization_profile_ansible_tests() {
 
 run_customization_profile_ansible_tests
 
+run_customization_dry_run_missing_ansible_tests() {
+  local tmpdir output cmd cmd_path
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/dry-run.out"
+  mkdir -p "$tmpdir/bin"
+
+  for cmd in jq dirname mktemp date tr sed rm cat; do
+    cmd_path=$(command -v "$cmd") || fail "selftest missing required command: $cmd"
+    ln -s "$cmd_path" "$tmpdir/bin/$cmd"
+  done
+
+  if (
+    cd "$ROOT_DIR"
+    PATH="$tmpdir/bin" SKIP_MATRIX_VALIDATION=true "$BASH" "$ROOT_DIR/build.sh" \
+      --ci \
+      --dry-run \
+      --ndb-version 2.10 \
+      --db-type pgsql \
+      --os "Rocky Linux" \
+      --os-version "9.6" \
+      --db-version 17 \
+      --source-image-name test-image \
+      --customization-profile enterprise-example >"$output" 2>&1
+  ); then
+    :
+  else
+    fail "customized dry-run failed without ansible-playbook: $(cat "$output")"
+  fi
+
+  grep -q "=== NDB Build Dry Run ===" "$output" || fail "customized dry-run missing summary"
+  grep -q "ansible-playbook=missing" "$output" || fail "customized dry-run did not report missing ansible-playbook"
+  grep -q "command: ansible-playbook" "$output" || fail "customized dry-run did not list ansible-playbook as a missing prerequisite"
+  ! grep -q "command not found" "$output" || fail "customized dry-run crashed with command not found"
+  pass "customization dry-run reports missing ansible-playbook"
+}
+
+run_customization_dry_run_missing_ansible_tests
+
 run_prism_helper_tests() {
   # shellcheck source=/dev/null
   source "$ROOT_DIR/scripts/prism.sh"

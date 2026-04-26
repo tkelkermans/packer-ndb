@@ -206,6 +206,28 @@ Implementation plan approved for the next reliability pass:
 - Verification passed with `bash -n build.sh test.sh scripts/*.sh`, `bash scripts/selftest.sh`, `git diff --check`, and the focused MongoDB dry-run probe.
 - Concern: `scripts/artifact_validate.sh` does not yet parse the newly wired artifact-validation metadata flags; this task did not edit that file because it is outside Worker Task 3 ownership and later validation tasks own artifact behavior.
 
+# Worker Task 3 Review Fix Plan: Customization Dry-Run Preflight Ordering
+
+**Goal:** Fix only the Task 3 review finding where customized dry-runs crash before reporting missing `ansible-playbook`.
+
+**Files:**
+- Modify: `build.sh`
+- Modify: `scripts/selftest.sh`
+- Modify: `tasks/todo.md`
+
+- [x] Add a selftest proving customized dry-run without `ansible-playbook` prints the summary and reports `ansible-playbook=missing`.
+- [x] Skip customized dry-run preflight only when `ansible-playbook` is missing, while keeping live/preflight customization builds protected by an early required-command check.
+- [x] Verify full selftests, customized dry-run with Ansible present, missing-Ansible dry-run reproduction, and `git diff --check`.
+- [x] Self-review staged files and commit `Fix customization preflight prerequisite reporting`.
+
+# Worker Task 3 Review Fix Review: Customization Dry-Run Preflight Ordering
+
+- Added selftest coverage for a customized dry-run with a constrained `PATH` that intentionally lacks `ansible-playbook`.
+- `build.sh` now reports the dry-run summary with `ansible-playbook=missing` instead of invoking a missing command.
+- Customized dry-runs still run the Ansible customization preflight when `ansible-playbook` is present.
+- Customized live builds and `--preflight` runs now fail early through `require_commands "ansible-playbook"` when Ansible is unavailable.
+- Verification passed with `bash scripts/selftest.sh`, the required customized dry-run using `/tmp/ndb-ansible-2.18/bin`, the missing-Ansible dry-run reproduction, a missing-Ansible customized `--preflight` probe, and `git diff --check`.
+
 # Active Plan Review: MongoDB Implementation Execution
 
 - Task 1 commit `facf389` validates MongoDB matrix metadata and adds self-test coverage for role/db-type mismatches, required edition/deployment metadata, invalid deployment values, duplicate deployments, duplicate grouping, and fake topology encoded in buildable `os_version` values.

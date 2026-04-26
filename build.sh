@@ -636,6 +636,9 @@ require_commands "${COMMON_REQUIRED_COMMANDS[@]}"
 
 if [[ "$DRY_RUN" != "true" ]]; then
   require_env_vars
+  if [[ "$CUSTOMIZATION_ENABLED" == "true" ]]; then
+    require_commands "ansible-playbook"
+  fi
   if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
     require_commands "curl"
   else
@@ -925,6 +928,11 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.path" --value "$PACKER_SOURCE_IMAGE_PATH"
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.uuid" --value "$SOURCE_IMAGE_UUID"
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.runtime_action" --value "$SOURCE_IMAGE_RUNTIME_ACTION"
+fi
+
+if [[ "$DRY_RUN" == "true" && "$CUSTOMIZATION_ENABLED" == "true" ]] && ! command_is_available ansible-playbook; then
+  print_dry_run_summary
+  exit 0
 fi
 
 run_customization_preflight
