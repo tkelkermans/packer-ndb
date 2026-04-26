@@ -16,6 +16,7 @@
 - The first version targets one image at a time and leaves matrix validation flows unchanged.
 - Rich TUI dependencies are out of scope to preserve enterprise portability and readability.
 - Safe defaults should favor dry-run first, then validated builds with artifact validation and manifests enabled.
+- User review caught that the wizard must support PostgreSQL extension awareness; the design now requires showing the selected row's extension list, empty-extension reason, and validation-friendly defaults without adding ad hoc extension flags outside the matrix.
 
 # Active Plan: Source Image UUID Smoke Fix
 

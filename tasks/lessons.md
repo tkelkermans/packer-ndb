@@ -6,3 +6,4 @@
 - Every behavior change must update the README in the same work item. The README should stay simple, beginner-friendly, and explicit enough that a new operator can understand what the tool does and exactly how to run it.
 - Before asking subagents to verify or commit, make sure the branch has a committed baseline for files their task depends on. Do not let a task pass only because important matrices, Ansible trees, or source files are untracked in the local working tree.
 - When a missing env value is reported fixed through a 1Password mount, verify both that the key exists and that `op run --env-file .env` resolves a non-empty value before launching expensive live matrix runs.
+- When designing operator flows for this project, include matrix-driven PostgreSQL extension behavior explicitly. Do not assume selecting a PostgreSQL row is enough; surface requested extensions, empty-extension reasons, and the validation path in the user experience.
