@@ -275,19 +275,88 @@ function resolve_customization_profile() {
   CUSTOMIZATION_PROFILE_NAME="${selection%.yml}"
 }
 
+function customization_profile_abs_path() {
+  if [[ "$CUSTOMIZATION_PROFILE_FILE" = /* ]]; then
+    printf '%s\n' "$CUSTOMIZATION_PROFILE_FILE"
+  else
+    printf '%s\n' "${SCRIPT_DIR}/${CUSTOMIZATION_PROFILE_FILE}"
+  fi
+}
+
+function customization_profile_extra_role_paths() {
+  local profile_file_path
+  local extra_paths_file
+  local extract_playbook
+
+  if [[ "$CUSTOMIZATION_ENABLED" != "true" ]]; then
+    return 0
+  fi
+
+  if ! command_is_available ansible-playbook; then
+    return 0
+  fi
+
+  profile_file_path=$(customization_profile_abs_path)
+  extra_paths_file=$(mktemp -t ndb-customization-extra-role-paths.XXXXXX.json)
+  extract_playbook=$(mktemp -t ndb-customization-extra-role-paths.XXXXXX.yml)
+  TEMP_FILES+=("$extra_paths_file" "$extract_playbook")
+
+  cat > "$extract_playbook" <<'YAML'
+- name: Extract customization profile role paths
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Load customization profile
+      ansible.builtin.include_vars:
+        file: "{{ customization_profile_file }}"
+        name: customization_profile
+
+    - name: Write customization extra role paths
+      ansible.builtin.copy:
+        dest: "{{ customization_extra_role_paths_file }}"
+        mode: "0600"
+        content: "{{ customization_profile.extra_role_paths | default([]) | to_json }}"
+      delegate_to: localhost
+YAML
+
+  ANSIBLE_CONFIG="${SCRIPT_DIR}/ansible/${NDB_VERSION}/ansible.cfg" \
+  ansible-playbook \
+    -i localhost, \
+    -c local \
+    -e "customization_profile_file=${profile_file_path}" \
+    -e "customization_extra_role_paths_file=${extra_paths_file}" \
+    "$extract_playbook" >/dev/null
+
+  jq -r --arg root "$SCRIPT_DIR" \
+    'if type == "array" then .[] else empty end | tostring | if startswith("/") then . else $root + "/" + . end' \
+    "$extra_paths_file"
+}
+
 function customization_roles_path_env() {
+  local role_paths=()
+  local extra_role_path
+  local IFS
+
   if [[ "$CUSTOMIZATION_ENABLED" != "true" ]]; then
     printf ''
     return
   fi
 
-  printf 'ANSIBLE_ROLES_PATH=%s:%s:%s:%s:%s:%s' \
-    "${SCRIPT_DIR}/ansible/${NDB_VERSION}/roles" \
-    "${SCRIPT_DIR}/customizations/examples/internal-ca/roles" \
-    "${SCRIPT_DIR}/customizations/examples/monitoring-agent/roles" \
-    "${SCRIPT_DIR}/customizations/examples/os-hardening/roles" \
-    "${SCRIPT_DIR}/customizations/examples/enterprise-validation/roles" \
+  role_paths=(
+    "${SCRIPT_DIR}/ansible/${NDB_VERSION}/roles"
+    "${SCRIPT_DIR}/customizations/examples/internal-ca/roles"
+    "${SCRIPT_DIR}/customizations/examples/monitoring-agent/roles"
+    "${SCRIPT_DIR}/customizations/examples/os-hardening/roles"
+    "${SCRIPT_DIR}/customizations/examples/enterprise-validation/roles"
     "${SCRIPT_DIR}/customizations/local"
+  )
+
+  while IFS= read -r extra_role_path; do
+    [[ -n "$extra_role_path" ]] && role_paths+=("$extra_role_path")
+  done < <(customization_profile_extra_role_paths)
+
+  IFS=:
+  printf 'ANSIBLE_ROLES_PATH=%s' "${role_paths[*]}"
 }
 
 function generate_ansible_vars_json() {
@@ -349,11 +418,7 @@ function run_customization_preflight() {
   fi
 
   preflight_playbook="${SCRIPT_DIR}/ansible/${NDB_VERSION}/playbooks/customization_preflight.yml"
-  if [[ "$CUSTOMIZATION_PROFILE_FILE" = /* ]]; then
-    profile_file_path="$CUSTOMIZATION_PROFILE_FILE"
-  else
-    profile_file_path="${SCRIPT_DIR}/${CUSTOMIZATION_PROFILE_FILE}"
-  fi
+  profile_file_path=$(customization_profile_abs_path)
   roles_path="${ANSIBLE_ROLES_PATH_ENV#ANSIBLE_ROLES_PATH=}"
   CUSTOMIZATION_SUMMARY_FILE=$(mktemp -t ndb-customization-summary.XXXXXX.json)
   TEMP_FILES+=("$CUSTOMIZATION_SUMMARY_FILE")

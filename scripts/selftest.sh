@@ -268,6 +268,83 @@ run_customization_dry_run_missing_ansible_tests() {
 
 run_customization_dry_run_missing_ansible_tests
 
+run_customization_extra_role_path_dry_run_tests() {
+  local tmpdir output profile local_extra_root extra_roles relative_extra_roles cmd cmd_path
+  tmpdir=$(mktemp -d)
+  local_extra_root="customizations/local/selftest-extra-role-path-$$"
+  trap 'rm -rf "$tmpdir" "$ROOT_DIR/$local_extra_root"' RETURN
+  output="$tmpdir/dry-run.out"
+  profile="$ROOT_DIR/$local_extra_root/profile.yml"
+  relative_extra_roles="$local_extra_root/roles"
+  extra_roles="$ROOT_DIR/$relative_extra_roles"
+  mkdir -p "$tmpdir/bin" "$extra_roles/custom_test_role/tasks"
+
+  for cmd in jq dirname mktemp date tr sed rm cat grep chmod bash; do
+    cmd_path=$(command -v "$cmd") || fail "selftest missing required command: $cmd"
+    ln -s "$cmd_path" "$tmpdir/bin/$cmd"
+  done
+
+  cat > "$profile" <<YAML
+name: extra-role-path-test
+description: profile with a temporary role path
+extra_role_paths:
+  - $relative_extra_roles
+phases:
+  pre_common:
+    roles:
+      - custom_test_role
+YAML
+
+  cat > "$tmpdir/bin/ansible-playbook" <<'SH'
+#!/usr/bin/env bash
+extra_paths_file=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -e)
+      case "$2" in
+        customization_extra_role_paths_file=*)
+          extra_paths_file=${2#customization_extra_role_paths_file=}
+          ;;
+      esac
+      shift
+      ;;
+  esac
+  shift
+done
+if [[ -n "$extra_paths_file" ]]; then
+  printf '["%s"]' "$NDB_SELFTEST_EXTRA_ROLES" > "$extra_paths_file"
+fi
+exit 0
+SH
+  chmod +x "$tmpdir/bin/ansible-playbook"
+
+  if (
+    cd "$ROOT_DIR"
+    PATH="$tmpdir/bin" \
+      SKIP_MATRIX_VALIDATION=true \
+      NDB_SELFTEST_EXTRA_ROLES="$relative_extra_roles" \
+      "$BASH" "$ROOT_DIR/build.sh" \
+      --ci \
+      --dry-run \
+      --ndb-version 2.10 \
+      --db-type pgsql \
+      --os "Rocky Linux" \
+      --os-version "9.6" \
+      --db-version 17 \
+      --source-image-name test-image \
+      --customization-profile "$profile" >"$output" 2>&1
+  ); then
+    :
+  else
+    fail "customized dry-run with extra role path failed: $(cat "$output")"
+  fi
+
+  grep -q "ansible_roles_path_env=ANSIBLE_ROLES_PATH=.*$extra_roles" "$output" || fail "customized dry-run omitted profile extra_role_paths from roles path preview"
+  pass "customization dry-run includes profile extra_role_paths"
+}
+
+run_customization_extra_role_path_dry_run_tests
+
 run_customization_preflight_order_tests() {
   local tmpdir output valid_profile invalid_profile ansible_log curl_log cmd cmd_path
   tmpdir=$(mktemp -d)
@@ -304,6 +381,7 @@ YAML
 #!/usr/bin/env bash
 printf 'ansible-playbook %s\n' "$*" >> "$NDB_SELFTEST_ANSIBLE_LOG"
 profile_file=""
+extra_paths_file=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -e)
@@ -311,12 +389,19 @@ while [[ $# -gt 0 ]]; do
         customization_profile_file=*)
           profile_file=${2#customization_profile_file=}
           ;;
+        customization_extra_role_paths_file=*)
+          extra_paths_file=${2#customization_extra_role_paths_file=}
+          ;;
       esac
       shift
       ;;
   esac
   shift
 done
+if [[ -n "$extra_paths_file" ]]; then
+  printf '[]' > "$extra_paths_file"
+  exit 0
+fi
 if grep -q "unsupported_phase" "$profile_file"; then
   printf 'Customization profile contains unsupported phase names\n' >&2
   exit 23

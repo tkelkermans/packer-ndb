@@ -259,6 +259,28 @@ Implementation plan approved for the next reliability pass:
 - Task 2 review found the exact sharded-readiness guard should not glob future release matrices; it now scopes the exact count to NDB 2.9 and 2.10 only.
 - Task 2 final verification passed with `bash scripts/selftest.sh`, `scripts/matrix_validate.sh ndb/*/matrix.json`, `jq empty ndb/2.9/matrix.json ndb/2.10/matrix.json`, and `git diff --check`.
 
+# Worker Task 4 Review Fix Plan: Custom Profile Role Paths
+
+**Goal:** Fix only the Task 4 review finding where profile `extra_role_paths` pass customization preflight but are omitted from the Packer `ANSIBLE_ROLES_PATH`.
+
+**Files:**
+- Modify: `build.sh`
+- Modify: `scripts/selftest.sh`
+- Modify: `tasks/todo.md`
+
+- [x] Add a failing selftest proving a temporary profile `extra_role_paths` entry appears in the customized dry-run/Packer roles path preview.
+- [x] Include selected profile `extra_role_paths` in `customization_roles_path_env`, normalizing relative entries to absolute repo paths.
+- [x] Preserve non-customized behavior: no `ANSIBLE_ROLES_PATH` override when customization is disabled.
+- [x] Run requested verification and commit `Include custom profile role paths in builds`.
+
+# Worker Task 4 Review Fix Review: Custom Profile Role Paths
+
+- Added selftest coverage using a temporary `customizations/local` profile with a relative `extra_role_paths` entry.
+- `build.sh` now extracts selected profile `extra_role_paths` with Ansible, normalizes relative paths under the repo root, and appends them to the generated `ANSIBLE_ROLES_PATH`.
+- Customized dry-runs and Packer builds now preview/use built-in roles, example customization roles, `customizations/local`, and any selected profile extra role paths.
+- Non-customized dry-runs still show `default ansible.cfg roles_path`, preserving the no-override behavior when customization is disabled.
+- Verification passed with selftests, customized dry-run proof, non-customized dry-run proof, both site playbook syntax checks, `packer fmt -check packer`, and `git diff --check`.
+
 # Worker Tasks 4+5 Plan: MongoDB Playbook Dispatch and Provisioning Roles
 
 **Goal:** Dispatch PostgreSQL or MongoDB provisioning from the Ansible site playbooks and add MongoDB package provisioning roles for NDB 2.9 and 2.10.
