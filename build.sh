@@ -107,6 +107,9 @@ Options:
   --db-version VERSION      Database version from matrix.json
   --source-image-uri URI    Override images.json with an explicit source image URI or local file path
   --source-image-name NAME  Override images.json with the name of an image that already exists in Prism
+  --customization-profile NAME_OR_PATH
+                            Apply an enterprise customization profile
+  --no-customizations        Disable NDB_CUSTOMIZATION_PROFILE for this build
   -h, --help                Show this help and exit
 
 Environment:
@@ -231,6 +234,47 @@ function slugify() {
   normalize_image_key_part "$1"
 }
 
+function resolve_customization_profile() {
+  local selection=""
+  local candidate=""
+
+  if [[ "$CUSTOMIZATION_NO_CUSTOMIZATIONS" == "true" ]]; then
+    CUSTOMIZATION_ENABLED=false
+    CUSTOMIZATION_PROFILE_FILE=""
+    CUSTOMIZATION_PROFILE_NAME=""
+    return 0
+  fi
+
+  if [[ -n "$CUSTOMIZATION_PROFILE_ARG" ]]; then
+    selection="$CUSTOMIZATION_PROFILE_ARG"
+  elif [[ -n "${NDB_CUSTOMIZATION_PROFILE:-}" ]]; then
+    selection="$NDB_CUSTOMIZATION_PROFILE"
+  else
+    CUSTOMIZATION_ENABLED=false
+    CUSTOMIZATION_PROFILE_FILE=""
+    CUSTOMIZATION_PROFILE_NAME=""
+    return 0
+  fi
+
+  if [[ -f "$selection" ]]; then
+    candidate="$selection"
+  elif [[ -f "customizations/profiles/${selection}.yml" ]]; then
+    candidate="customizations/profiles/${selection}.yml"
+  elif [[ -f "customizations/local/${selection}.yml" ]]; then
+    candidate="customizations/local/${selection}.yml"
+  elif [[ -f "customizations/local/${selection}" ]]; then
+    candidate="customizations/local/${selection}"
+  else
+    echo "Error: customization profile not found: ${selection}" >&2
+    echo "Looked for a direct path, customizations/profiles/${selection}.yml, and customizations/local/${selection}.yml." >&2
+    exit 1
+  fi
+
+  CUSTOMIZATION_ENABLED=true
+  CUSTOMIZATION_PROFILE_FILE="$candidate"
+  CUSTOMIZATION_PROFILE_NAME="${selection%.yml}"
+}
+
 function generate_ansible_vars_json() {
   local ndb_version=$1
   local db_version=$2
@@ -240,6 +284,9 @@ function generate_ansible_vars_json() {
   local provisioning_role=$6
   local mongodb_edition=$7
   local mongodb_deployments_json=$8
+  local customization_enabled=$9
+  local customization_profile_name=${10}
+  local customization_profile_file=${11}
 
   jq -nc \
     --arg db_version "$db_version" \
@@ -247,9 +294,12 @@ function generate_ansible_vars_json() {
     --arg ndb_version "$ndb_version" \
     --arg provisioning_role "$provisioning_role" \
     --arg mongodb_edition "$mongodb_edition" \
+    --arg customization_profile_name "$customization_profile_name" \
+    --arg customization_profile_file "$customization_profile_file" \
     --argjson validate_build "$validate_build" \
     --argjson postgres_extensions "${extensions_json:-[]}" \
     --argjson mongodb_deployments "${mongodb_deployments_json:-[]}" \
+    --argjson customization_enabled "$customization_enabled" \
     '{
       db_version: $db_version,
       db_type: $db_type,
@@ -258,7 +308,10 @@ function generate_ansible_vars_json() {
       validate_build: $validate_build,
       postgres_extensions: $postgres_extensions,
       mongodb_edition: $mongodb_edition,
-      mongodb_deployments: $mongodb_deployments
+      mongodb_deployments: $mongodb_deployments,
+      customization_enabled: $customization_enabled,
+      customization_profile_name: $customization_profile_name,
+      customization_profile_file: $customization_profile_file
     }'
 }
 
@@ -346,6 +399,13 @@ Source image:
   Effective packer source_image_uri: ${PACKER_SOURCE_IMAGE_URI}
   Effective packer source_image_path: ${PACKER_SOURCE_IMAGE_PATH}
   Runtime action: ${SOURCE_IMAGE_RUNTIME_ACTION}
+
+Customization profile:
+  Enabled: ${CUSTOMIZATION_ENABLED}
+  Profile name: ${CUSTOMIZATION_PROFILE_NAME:-none}
+  Profile file: ${CUSTOMIZATION_PROFILE_FILE:-none}
+  Default from NDB_CUSTOMIZATION_PROFILE: $( [[ -n "${NDB_CUSTOMIZATION_PROFILE:-}" ]] && echo "yes" || echo "no" )
+  Explicitly disabled: ${CUSTOMIZATION_NO_CUSTOMIZATIONS}
 EOF
 
   if [[ -n "${SOURCE_IMAGE_REQUIRED_ENV_VAR:-}" ]]; then
@@ -444,6 +504,13 @@ VALIDATE_ARTIFACT=false
 WRITE_MANIFEST=false
 MANIFEST_FILE=""
 MANIFEST_FINALIZED=false
+CUSTOMIZATION_PROFILE_ARG=""
+CUSTOMIZATION_PROFILE_FILE=""
+CUSTOMIZATION_PROFILE_NAME=""
+CUSTOMIZATION_ENABLED=false
+CUSTOMIZATION_NO_CUSTOMIZATIONS=false
+CUSTOMIZATION_ROLE_PATHS=()
+CUSTOMIZATION_SUMMARY_FILE=""
 
 declare NDB_VERSION=""
 declare OS_TYPE=""
@@ -508,6 +575,13 @@ while [[ $# -gt 0 ]]; do
       SOURCE_IMAGE_NAME_OVERRIDE="$2"
       shift
       ;;
+    --customization-profile)
+      CUSTOMIZATION_PROFILE_ARG="$2"
+      shift
+      ;;
+    --no-customizations)
+      CUSTOMIZATION_NO_CUSTOMIZATIONS=true
+      ;;
     -h|--help)
       usage
       exit 0
@@ -520,6 +594,8 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+resolve_customization_profile
 
 require_commands "${COMMON_REQUIRED_COMMANDS[@]}"
 
@@ -617,7 +693,7 @@ POSTGRES_EXTENSIONS_JSON=$(echo "$CONFIG" | jq -c '.extensions // []')
 PROVISIONING_ROLE=$(echo "$CONFIG" | jq -r '.provisioning_role // "postgresql"')
 MONGODB_EDITION=$(echo "$CONFIG" | jq -r '.mongodb_edition // "community"')
 MONGODB_DEPLOYMENTS_JSON=$(echo "$CONFIG" | jq -c '.deployment // []')
-ANSIBLE_VARS_JSON=$(generate_ansible_vars_json "$NDB_VERSION" "$DB_VERSION" "$POSTGRES_EXTENSIONS_JSON" "$DB_TYPE" "$VALIDATE_BUILD" "$PROVISIONING_ROLE" "$MONGODB_EDITION" "$MONGODB_DEPLOYMENTS_JSON")
+ANSIBLE_VARS_JSON=$(generate_ansible_vars_json "$NDB_VERSION" "$DB_VERSION" "$POSTGRES_EXTENSIONS_JSON" "$DB_TYPE" "$VALIDATE_BUILD" "$PROVISIONING_ROLE" "$MONGODB_EDITION" "$MONGODB_DEPLOYMENTS_JSON" "$CUSTOMIZATION_ENABLED" "$CUSTOMIZATION_PROFILE_NAME" "$CUSTOMIZATION_PROFILE_FILE")
 case "$PROVISIONING_ROLE" in
   postgresql|mongodb)
     ;;

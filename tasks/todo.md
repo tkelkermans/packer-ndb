@@ -416,7 +416,7 @@ Implementation plan approved for the next reliability pass:
 # Active Plan: Enterprise Customization Profiles
 
 - [x] Add customization skeleton, committed examples, private overlay ignore rules, and README guidance.
-- [ ] Add `build.sh` customization profile selection and dry-run reporting.
+- [x] Add `build.sh` customization profile selection and dry-run reporting.
 - [ ] Add Ansible profile preflight validation.
 - [ ] Add build-time customization phase dispatch.
 - [ ] Add saved-artifact customization validation dispatch.
@@ -430,3 +430,34 @@ Implementation plan approved for the next reliability pass:
 - Added private overlay ignore rules for `customizations/local/**` while keeping the local README and `.gitkeep` tracked.
 - Added the beginner-facing `Customize The Image` README section before `Validation` with the exact starter dry-run command.
 - Verification passed with `bash scripts/selftest.sh` and `git diff --check`.
+
+# Worker Task 2 Plan: Build Script Profile Selection And Dry-Run Reporting
+
+**Goal:** Make the documented customization dry-run command runnable by wiring profile selection into `build.sh` and reporting it in dry-run output.
+
+**Files:**
+- Modify: `scripts/selftest.sh`
+- Modify: `build.sh`
+- Modify: `README.md`
+- Modify: `tasks/todo.md`
+
+- [x] Add customization profile CLI static self-tests.
+- [x] Run `bash scripts/selftest.sh` and capture the intended failure before implementation.
+- [x] Add `build.sh` customization usage text, variables, and parser cases.
+- [x] Add customization profile resolution from CLI/env/local profile paths.
+- [x] Pass customization profile metadata into generated Ansible vars JSON.
+- [x] Add dry-run customization profile reporting.
+- [x] Keep README beginner-facing customization docs accurate for the runnable dry-run command.
+- [x] Run `bash scripts/selftest.sh`.
+- [x] Run the documented customization dry-run command and confirm enabled/profile-file output.
+- [x] Run `git diff --check`.
+- [x] Commit only Task 2 files with message `Add customization profile selection`.
+
+# Worker Task 2 Review: Build Script Profile Selection And Dry-Run Reporting
+
+- Added CLI static guards and confirmed the intended initial failure: `FAIL: build.sh missing customization profile flag`.
+- Added `--customization-profile`, `--no-customizations`, and `NDB_CUSTOMIZATION_PROFILE` profile resolution for committed and local profile paths.
+- Added customization profile metadata to generated Ansible vars JSON.
+- Added dry-run reporting for enabled state, profile name, profile file, env default usage, and explicit disablement.
+- Updated the README customization paragraph so the documented starter command matches the new behavior.
+- Verification passed with `bash scripts/selftest.sh`, the documented MongoDB customization dry-run command, and `git diff --check`.

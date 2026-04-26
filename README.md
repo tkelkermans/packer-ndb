@@ -271,7 +271,9 @@ Start with a dry run so you can see the selected matrix row and planned customiz
 ./build.sh --dry-run --ci --customization-profile enterprise-example --ndb-version 2.10 --db-type mongodb --os "Rocky Linux" --os-version 9.7 --db-version 8.0
 ```
 
-Use `customizations/examples/` as copyable reference material. Put real customer-specific profiles, private variables, and private roles under `customizations/local/`; that directory is ignored by git except for its README and `.gitkeep` so secrets and internal implementation details stay out of commits.
+Profiles live in `customizations/profiles/` or `customizations/local/`. Use `customizations/examples/` as copyable reference material, then put real customer-specific profiles, private variables, and private roles under `customizations/local/`; that directory is ignored by git except for its README and `.gitkeep` so secrets and internal implementation details stay out of commits.
+
+The committed monitoring example uses OpenTelemetry Collector naming but avoids secrets. Production profiles should include validation roles so every installed enterprise tool can be checked during build or artifact validation.
 
 ## Validation
 
