@@ -485,7 +485,7 @@ Implementation plan approved for the next reliability pass:
 - [x] Add `build.sh` customization profile selection and dry-run reporting.
 - [x] Add Ansible profile preflight validation.
 - [ ] Add build-time customization phase dispatch.
-- [ ] Add saved-artifact customization validation dispatch.
+- [x] Add saved-artifact customization validation dispatch.
 - [ ] Add manifest reporting for selected customization profiles.
 - [ ] Run offline verification and live PostgreSQL/MongoDB profile smoke builds.
 
@@ -599,3 +599,35 @@ Implementation plan approved for the next reliability pass:
 - README now explains build-time customization phase behavior in the existing beginner-facing customization section.
 - Verification passed: `bash scripts/selftest.sh`; both requested Ansible syntax checks with `/tmp/ndb-ansible-2.18/bin` first in `PATH`; `packer fmt -check packer`; `git diff --check`; and the documented customization dry-run showed the generated `ansible_roles_path_env`.
 - Concern: the example profile's `validate` phase names `validate_custom_enterprise`, but that role is intentionally left for Task 5 per the committed plan and this worker's scope. Build-time `--validate --customization-profile enterprise-example` will need Task 5 before that validation phase can succeed.
+
+# Worker Task 5 Plan: Saved-Artifact Custom Validation Dispatch
+
+**Goal:** Run selected customization profile validation roles during saved-artifact validation.
+
+**Files:**
+- Modify: `scripts/selftest.sh`
+- Modify: `scripts/artifact_validate.sh`
+- Create: `customizations/examples/enterprise-validation/roles/validate_custom_enterprise/tasks/main.yml`
+- Modify: `build.sh`
+- Modify: `README.md`
+- Modify: `tasks/todo.md`
+
+- [x] Add artifact validation selftests for customization arguments, generated playbook dispatch, custom roles path, and static role markers.
+- [x] Run `bash scripts/selftest.sh` and capture the intended failure before implementation.
+- [x] Add customization arguments and vars JSON wiring to `scripts/artifact_validate.sh`.
+- [x] Generate artifact validation playbooks with the customization `validate` phase after database validation.
+- [x] Run `ansible-playbook` with a custom `ANSIBLE_ROLES_PATH` when provided.
+- [x] Create the `validate_custom_enterprise` role.
+- [x] Have `build.sh` pass customization arguments to artifact validation when customization is enabled.
+- [x] Update README/tasks for saved-artifact customization validation behavior.
+- [x] Run Task 5 verification and commit only Task 5 files.
+
+# Worker Task 5 Review: Saved-Artifact Custom Validation Dispatch
+
+- Added artifact-validation selftests and captured the intended red failure: `FAIL: artifact validation missing customization profile file flag`.
+- `scripts/artifact_validate.sh` now accepts customization profile flags, includes customization context in validation vars, and appends the `customization_profile` validate phase after database validation.
+- Artifact validation uses the provided custom `ANSIBLE_ROLES_PATH` when present, including the `ANSIBLE_ROLES_PATH=...` form produced by `build.sh`.
+- Added the `validate_custom_enterprise` example role for sample CA, monitoring, and hardening validation.
+- `build.sh` now forwards selected customization profile metadata and role paths to saved-artifact validation when customization is enabled.
+- README now notes that `--validate-artifact` runs profile validation roles after database validation.
+- Verification passed with `bash scripts/selftest.sh`, `bash -n scripts/artifact_validate.sh build.sh`, and `git diff --check`.

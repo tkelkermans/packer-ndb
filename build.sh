@@ -1106,6 +1106,12 @@ if [[ "$VALIDATE_ARTIFACT" == "true" ]]; then
   if [[ "$DEBUG" == "true" ]]; then
     ARTIFACT_VALIDATE_CMD+=(--keep-on-failure)
   fi
+  if [[ "$CUSTOMIZATION_ENABLED" == "true" ]]; then
+    ARTIFACT_VALIDATE_CMD+=(--customization-enabled)
+    ARTIFACT_VALIDATE_CMD+=(--customization-profile-name "$CUSTOMIZATION_PROFILE_NAME")
+    ARTIFACT_VALIDATE_CMD+=(--customization-profile-file "$(customization_profile_abs_path)")
+    ARTIFACT_VALIDATE_CMD+=(--customization-roles-path "$ANSIBLE_ROLES_PATH_ENV")
+  fi
 
   if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
     "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.artifact" --value "running"

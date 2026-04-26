@@ -1,0 +1,70 @@
+- name: validate_custom_enterprise role marker
+  ansible.builtin.debug:
+    msg: "validate_custom_enterprise"
+
+- name: Check RedHat sample CA certificate
+  ansible.builtin.stat:
+    path: "{{ enterprise_internal_ca_path_redhat }}"
+  register: enterprise_ca_redhat_stat
+  when:
+    - enterprise_internal_ca_enabled | default(false) | bool
+    - ansible_os_family == "RedHat"
+
+- name: Check Debian sample CA certificate
+  ansible.builtin.stat:
+    path: "{{ enterprise_internal_ca_path_debian }}"
+  register: enterprise_ca_debian_stat
+  when:
+    - enterprise_internal_ca_enabled | default(false) | bool
+    - ansible_os_family == "Debian"
+
+- name: Assert sample CA certificate exists
+  ansible.builtin.assert:
+    that:
+      - (ansible_os_family == "RedHat" and enterprise_ca_redhat_stat.stat.exists) or
+        (ansible_os_family == "Debian" and enterprise_ca_debian_stat.stat.exists)
+    fail_msg: "Enterprise sample CA certificate was not installed"
+  when: enterprise_internal_ca_enabled | default(false) | bool
+
+- name: Check monitoring marker
+  ansible.builtin.stat:
+    path: "{{ enterprise_otel_marker_path }}"
+  register: enterprise_otel_marker_stat
+  when: enterprise_monitoring_enabled | default(false) | bool
+
+- name: Assert monitoring marker exists
+  ansible.builtin.assert:
+    that:
+      - enterprise_otel_marker_stat.stat.exists
+    fail_msg: "OpenTelemetry Collector example marker is missing"
+  when: enterprise_monitoring_enabled | default(false) | bool
+
+- name: Check monitoring service is active
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ enterprise_otel_service_name }}.service"
+  register: enterprise_otel_service_active
+  changed_when: false
+  when: enterprise_monitoring_enabled | default(false) | bool
+
+- name: Assert monitoring service is active
+  ansible.builtin.assert:
+    that:
+      - enterprise_otel_service_active.stdout == "active"
+    fail_msg: "OpenTelemetry Collector example service is not active"
+  when: enterprise_monitoring_enabled | default(false) | bool
+
+- name: Read hardening marker
+  ansible.builtin.slurp:
+    path: "{{ enterprise_hardening_marker_path }}"
+  register: enterprise_hardening_marker
+  when: enterprise_hardening_enabled | default(false) | bool
+
+- name: Assert hardening marker contains expected value
+  ansible.builtin.assert:
+    that:
+      - (enterprise_hardening_marker.content | b64decode) is search(enterprise_hardening_sysctl_key ~ "=" ~ enterprise_hardening_sysctl_value)
+    fail_msg: "Hardening marker does not contain expected sysctl value"
+  when: enterprise_hardening_enabled | default(false) | bool

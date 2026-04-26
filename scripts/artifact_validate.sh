@@ -13,6 +13,10 @@ EXTENSIONS_JSON="[]"
 PROVISIONING_ROLE=""
 MONGODB_EDITION="community"
 MONGODB_DEPLOYMENTS_JSON="[]"
+CUSTOMIZATION_ENABLED=false
+CUSTOMIZATION_PROFILE_NAME=""
+CUSTOMIZATION_PROFILE_FILE=""
+CUSTOMIZATION_ROLES_PATH_ENV=""
 RESULT_FILE=""
 KEEP_ON_FAILURE=false
 VM_NAME=""
@@ -38,6 +42,14 @@ Options:
                          MongoDB edition: community or enterprise
   --mongodb-deployments JSON
                          MongoDB deployment list JSON (default: [])
+  --customization-enabled
+                         Run selected customization validation roles
+  --customization-profile-name NAME
+                         Customization profile name for validation context
+  --customization-profile-file FILE
+                         Customization profile file to load
+  --customization-roles-path PATH
+                         ANSIBLE_ROLES_PATH value for custom roles
   --result-file FILE     Write validation result JSON to FILE
   --keep-on-failure      Keep the disposable VM if validation fails
   -h, --help             Show this help and exit
@@ -232,6 +244,24 @@ while [[ $# -gt 0 ]]; do
       MONGODB_DEPLOYMENTS_JSON=$2
       shift
       ;;
+    --customization-enabled)
+      CUSTOMIZATION_ENABLED=true
+      ;;
+    --customization-profile-name)
+      require_option_value "$1" "$#"
+      CUSTOMIZATION_PROFILE_NAME=$2
+      shift
+      ;;
+    --customization-profile-file)
+      require_option_value "$1" "$#"
+      CUSTOMIZATION_PROFILE_FILE=$2
+      shift
+      ;;
+    --customization-roles-path)
+      require_option_value "$1" "$#"
+      CUSTOMIZATION_ROLES_PATH_ENV=$2
+      shift
+      ;;
     --result-file)
       require_option_value "$1" "$#"
       RESULT_FILE=$2
@@ -258,6 +288,12 @@ if [[ -z "$IMAGE_NAME" || -z "$NDB_VERSION" || -z "$DB_VERSION" ]]; then
   usage >&2
   exit 1
 fi
+
+if [[ "$CUSTOMIZATION_ENABLED" == "true" && -z "$CUSTOMIZATION_PROFILE_FILE" ]]; then
+  printf 'Error: --customization-profile-file is required when --customization-enabled is used.\n' >&2
+  exit 1
+fi
+CUSTOMIZATION_ROLES_PATH_ENV=${CUSTOMIZATION_ROLES_PATH_ENV#ANSIBLE_ROLES_PATH=}
 
 EXTENSIONS_JSON=$(json_string_array "$EXTENSIONS_JSON")
 MONGODB_DEPLOYMENTS_JSON=$(json_mongodb_deployments "$MONGODB_DEPLOYMENTS_JSON")
@@ -436,6 +472,10 @@ cat > "$TMPDIR/validate.yml" <<EOF
   hosts: validation
   roles:
     - ${VALIDATION_ROLE}
+    - role: customization_profile
+      vars:
+        customization_phase: validate
+      when: customization_enabled | default(false) | bool
 EOF
 
 jq -n \
@@ -443,8 +483,12 @@ jq -n \
   --arg db_type "$DB_TYPE" \
   --arg provisioning_role "$PROVISIONING_ROLE" \
   --arg mongodb_edition "$MONGODB_EDITION" \
+  --arg customization_profile_name "$CUSTOMIZATION_PROFILE_NAME" \
+  --arg customization_profile_file "$CUSTOMIZATION_PROFILE_FILE" \
+  --arg customization_repo_root "$ROOT_DIR" \
   --argjson postgres_extensions "$EXTENSIONS_JSON" \
   --argjson mongodb_deployments "$MONGODB_DEPLOYMENTS_JSON" \
+  --argjson customization_enabled "$CUSTOMIZATION_ENABLED" \
   '{
     db_version: $db_version,
     db_type: $db_type,
@@ -453,7 +497,11 @@ jq -n \
     postgres_extensions: $postgres_extensions,
     postgres_extensions_databases: ["postgres"],
     mongodb_edition: $mongodb_edition,
-    mongodb_deployments: $mongodb_deployments
+    mongodb_deployments: $mongodb_deployments,
+    customization_enabled: $customization_enabled,
+    customization_profile_name: $customization_profile_name,
+    customization_profile_file: $customization_profile_file,
+    customization_repo_root: $customization_repo_root
   }' > "$TMPDIR/vars.json"
 
 printf 'Running artifact validation playbook against %s...\n' "$VM_IP"
@@ -469,6 +517,10 @@ fi
 ANSIBLE_PLAYBOOK_CMD+=(
   -e "@${TMPDIR}/vars.json"
 )
-ANSIBLE_CONFIG="$ANSIBLE_CFG_PATH" ANSIBLE_ROLES_PATH="$ANSIBLE_DIR/roles" "${ANSIBLE_PLAYBOOK_CMD[@]}"
+if [[ -n "$CUSTOMIZATION_ROLES_PATH_ENV" ]]; then
+  ANSIBLE_CONFIG="$ANSIBLE_CFG_PATH" ANSIBLE_ROLES_PATH="$CUSTOMIZATION_ROLES_PATH_ENV" "${ANSIBLE_PLAYBOOK_CMD[@]}"
+else
+  ANSIBLE_CONFIG="$ANSIBLE_CFG_PATH" ANSIBLE_ROLES_PATH="$ANSIBLE_DIR/roles" "${ANSIBLE_PLAYBOOK_CMD[@]}"
+fi
 
 FINAL_STATUS="passed"

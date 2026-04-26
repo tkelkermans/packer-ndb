@@ -705,6 +705,9 @@ run_artifact_validate_tests() {
     fail "artifact validation help"
   fi
 
+  grep -q -- "--customization-profile-file" "$ROOT_DIR/scripts/artifact_validate.sh" || fail "artifact validation missing customization profile file flag"
+  grep -q "validate_custom_enterprise" "$ROOT_DIR/customizations/examples/enterprise-validation/roles/validate_custom_enterprise/tasks/main.yml" || fail "missing enterprise validation role marker"
+
   mkdir -p "$tmpdir/bin"
   cat > "$tmpdir/bin/curl" <<'SH'
 #!/usr/bin/env bash
@@ -781,11 +784,22 @@ SH
 
   cat > "$tmpdir/bin/ansible-playbook" <<'SH'
 #!/usr/bin/env bash
+if [[ -n "${NDB_SELFTEST_ROLES_PATH_CAPTURE:-}" ]]; then
+  printf '%s' "${ANSIBLE_ROLES_PATH:-}" > "$NDB_SELFTEST_ROLES_PATH_CAPTURE"
+fi
+
 for arg in "$@"; do
   case "$arg" in
+    @*.yml|@*.yaml)
+      ;;
     *.yml)
       if [[ -n "${NDB_SELFTEST_PLAYBOOK_CAPTURE:-}" ]]; then
         cp "$arg" "$NDB_SELFTEST_PLAYBOOK_CAPTURE"
+      fi
+      ;;
+    @*.json)
+      if [[ -n "${NDB_SELFTEST_VARS_CAPTURE:-}" ]]; then
+        cp "${arg#@}" "$NDB_SELFTEST_VARS_CAPTURE"
       fi
       ;;
   esac
@@ -843,6 +857,37 @@ SH
   grep -q "validate_postgres" "$tmpdir/postgres-validate.yml" || fail "PostgreSQL artifact validation did not dispatch validate_postgres"
   jq -e '.status == "passed" and .cleanup_status == "deleted" and .artifact_vm_name != "" and .artifact_vm_uuid == "vm-uuid" and .cleanup.artifact_validation_vm == "deleted"' "$success_result" >/dev/null || fail "artifact validation success result JSON"
   [[ -e "$tmpdir/delete-called" ]] || fail "artifact validation success did not request VM delete"
+  rm -f "$tmpdir/delete-called"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    export PKR_VAR_cluster_name=mock-cluster
+    export PKR_VAR_subnet_name=mock-subnet
+    export NDB_SELFTEST_DELETE_MARKER="$tmpdir/delete-called"
+    export NDB_SELFTEST_ANSIBLE_RC=0
+    export NDB_SELFTEST_PLAYBOOK_CAPTURE="$tmpdir/custom-validate.yml"
+    export NDB_SELFTEST_ROLES_PATH_CAPTURE="$tmpdir/custom-roles-path"
+    export NDB_SELFTEST_VARS_CAPTURE="$tmpdir/custom-vars.json"
+    "$ROOT_DIR/scripts/artifact_validate.sh" \
+      --image-name test-image \
+      --ndb-version 2.10 \
+      --db-version 18 \
+      --customization-enabled \
+      --customization-profile-name enterprise-example \
+      --customization-profile-file "$ROOT_DIR/customizations/profiles/enterprise-example.yml" \
+      --customization-roles-path "$ROOT_DIR/ansible/2.10/roles:$ROOT_DIR/customizations/examples/enterprise-validation/roles" \
+      --result-file "$tmpdir/custom-result.json" >/dev/null
+  ) || fail "custom artifact validation success path failed"
+
+  grep -q "customization_profile" "$tmpdir/custom-validate.yml" || fail "custom artifact validation did not dispatch customization_profile"
+  grep -q "customization_phase: validate" "$tmpdir/custom-validate.yml" || fail "custom artifact validation missing validate phase"
+  grep -q "$ROOT_DIR/customizations/examples/enterprise-validation/roles" "$tmpdir/custom-roles-path" || fail "custom artifact validation did not use custom roles path"
+  jq -e '.customization_enabled == true and .customization_profile_name == "enterprise-example" and (.customization_profile_file | endswith("customizations/profiles/enterprise-example.yml"))' "$tmpdir/custom-vars.json" >/dev/null || fail "custom artifact validation vars JSON"
+  jq -e '.status == "passed"' "$tmpdir/custom-result.json" >/dev/null || fail "custom artifact validation result JSON"
+  [[ -e "$tmpdir/delete-called" ]] || fail "custom artifact validation success did not request VM delete"
   rm -f "$tmpdir/delete-called"
 
   (
