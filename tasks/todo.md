@@ -1,5 +1,22 @@
 # Task Plan
 
+# Active Plan: Single-Image Build Wizard Implementation
+
+- [x] Create the implementation plan from the approved wizard design.
+- [ ] Add failing offline wizard selftests.
+- [ ] Implement `scripts/build_wizard.sh`.
+- [ ] Add PostgreSQL extension awareness to the wizard preview.
+- [ ] Add source image and customization choices.
+- [ ] Update the README beginner workflow.
+- [ ] Run offline verification.
+- [ ] Commit the implementation.
+
+# Active Plan Review: Single-Image Build Wizard Implementation
+
+- Implementation plan saved to `docs/superpowers/plans/2026-04-26-single-image-build-wizard-implementation.md`.
+- The plan keeps the wizard as a shell-only wrapper that prints ordinary `build.sh` commands.
+- PostgreSQL extensions remain matrix-driven; the wizard will display them but will not add a new extension flag.
+
 # Active Plan: Single-Image Build Wizard Design
 
 - [x] Explore whether a TUI fits the current shell/Packer/Ansible project.
