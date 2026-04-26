@@ -1,5 +1,19 @@
 # Task Plan
 
+# Active Plan: Consolidate AGENTS Project Memory
+
+- [x] Review current lessons, task notes, README guidance, and existing AGENTS file.
+- [x] Expand `AGENTS.md` with durable project rules and learned gotchas.
+- [x] Add selftest guards for important agent guidance.
+- [x] Run verification.
+- [x] Commit and push the update.
+
+# Active Plan Review: Consolidate AGENTS Project Memory
+
+- The expanded `AGENTS.md` keeps agent-only rules out of the beginner README while preserving operational lessons for future Codex agents.
+- Important guidance now covers toolchain constraints, README boundaries, planning, the build wizard/TUI, matrix rules, source-image pitfalls, validation, customization profiles, live evidence gaps, and git hygiene.
+- Verification passed with shell syntax checks, `bash scripts/selftest.sh`, and `git diff --check`.
+
 # Active Plan: Single-Image Build Wizard Implementation
 
 - [x] Create the implementation plan from the approved wizard design.
