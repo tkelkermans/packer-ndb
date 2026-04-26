@@ -11,7 +11,7 @@
 - [x] Re-run PostgreSQL live customization smoke with the known Rocky 9.7 source image UUID.
 - [x] Re-run MongoDB live customization smoke with the known Rocky 9.7 source image UUID.
 - [x] Re-run sharded MongoDB live customization smoke with the known Rocky 9.6 source image UUID.
-- [ ] Commit and push when verification succeeds.
+- [x] Commit and push when verification succeeds.
 
 # Active Plan Review: Source Image UUID Smoke Fix
 
@@ -28,6 +28,18 @@
 - The NDB 2.9 MongoDB artifact validation exercised the local replica-set and sharded-cluster smoke validation scripts on the cloned VM.
 - Prism cleanup verification returned no matching MongoDB builder or disposable validation VMs for either successful smoke run.
 - Final offline verification passed with `bash scripts/selftest.sh`, shell syntax checks, matrix validation, `packer fmt -check packer`, explicit-var `packer validate packer`, NDB 2.9 and 2.10 Ansible syntax checks, and `git diff --check`.
+- Commit `828295f` was pushed to `origin/codex/enterprise-customization-profiles`.
+
+# Plan Audit: 2026-04-26
+
+- Current enterprise customization work is implemented, validated, committed, and pushed.
+- Source image UUID selection is implemented in `build.sh`, Packer variables, Packer disk configuration, source-image preflight, README guidance, and selftests.
+- Enterprise customization profiles are implemented across CLI selection, Ansible preflight, build-time phases, saved-artifact validation, manifest reporting, committed examples, gitignored local overlays, README guidance, and selftests.
+- Live validation evidence covers NDB 2.10 PostgreSQL 18 on Rocky 9.7, NDB 2.10 MongoDB 8.0 on Rocky 9.7, and NDB 2.9 MongoDB 8.0 on Rocky 9.6.
+- The NDB 2.9 MongoDB validation exercised both replica-set and sharded-cluster smoke scripts on the saved artifact.
+- Historical `docs/superpowers/plans/*.md` files are blueprint/spec files and still contain unchecked template steps; `tasks/todo.md` is the execution tracker for actual branch state.
+- A full MongoDB non-RHEL matrix live sweep was not run in this branch; the branch has representative PostgreSQL, MongoDB single/replica, and MongoDB sharded live smoke evidence.
+- RHEL live validation is blocked because `NDB_RHEL_9_6_IMAGE_URI` and `NDB_RHEL_9_7_IMAGE_URI` are missing from the resolved 1Password environment.
 
 # Active Plan: Final Customization Profile Review Fixes
 
@@ -195,7 +207,7 @@ Implementation plan approved for the next reliability pass:
 - [x] Write the MongoDB design spec.
 - [x] Self-review the MongoDB design spec.
 - [x] Commit the approved MongoDB design spec.
-- [ ] Ask the user to review the written spec before implementation planning.
+- [x] Ask the user to review the written spec before implementation planning.
 
 # Active Plan Review: MongoDB Image Build and Validation Design
 
@@ -207,7 +219,7 @@ Implementation plan approved for the next reliability pass:
 # Active Plan: MongoDB Implementation Plan
 
 - [x] Create detailed implementation plan from the approved MongoDB design spec.
-- [ ] User selects execution mode for implementation.
+- [x] User selects execution mode for implementation.
 
 # Active Plan Review: MongoDB Implementation Plan
 
@@ -223,7 +235,7 @@ Implementation plan approved for the next reliability pass:
 - [x] Execute Task 2: MongoDB matrix conversion.
 - [x] Run Task 2 spec-compliance and code-quality reviews.
 - [x] Execute Task 3: build and test harness dispatch.
-- [ ] Continue remaining MongoDB provisioning, validation, README, offline verification, and live Prism validation tasks one task at a time.
+- [x] Continue remaining MongoDB provisioning, validation, README, offline verification, and live Prism validation tasks one task at a time.
 
 # Worker Task 3 Plan: MongoDB Harness Dispatch
 
@@ -280,7 +292,7 @@ Implementation plan approved for the next reliability pass:
 - [x] Move customized `--preflight` profile validation ahead of source-image preflight while preserving missing-`ansible-playbook` early failure.
 - [x] Preserve customized dry-run without `ansible-playbook` friendly summary behavior.
 - [x] Run requested verification probes and `git diff --check`.
-- [ ] Stage only Task 3 fix files and commit with the requested message.
+- [x] Stage only Task 3 fix files and commit with the requested message.
 
 # Worker Task 3 Review Fix Review: Customization Preflight Profile Validation
 
@@ -514,9 +526,9 @@ Implementation plan approved for the next reliability pass:
 # Live MongoDB Validation Status
 
 - [x] Check whether Prism credentials can be resolved without printing secret values.
-- [ ] Run non-RHEL live MongoDB validation.
-- [ ] Run RHEL live MongoDB validation if RHEL image variables are available.
-- [ ] Confirm MongoDB builder and validation VM cleanup in Prism.
+- [x] Run representative non-RHEL live MongoDB validation.
+- [x] Check RHEL live MongoDB validation availability; RHEL image variables are missing, so this run is blocked.
+- [x] Confirm MongoDB builder and validation VM cleanup in Prism for the representative live validation runs.
 
 # Live MongoDB Validation Review
 
