@@ -9,7 +9,7 @@
 - [x] Add source image and customization choices.
 - [x] Update the README beginner workflow.
 - [x] Run offline verification.
-- [ ] Commit the implementation.
+- [x] Commit the implementation.
 
 # Active Plan Review: Single-Image Build Wizard Implementation
 
