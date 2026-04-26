@@ -1,5 +1,24 @@
 # Task Plan
 
+# Active Plan: Final Customization Profile Review Fixes
+
+- [x] Add a failing selftest for scalar customization phase `roles` values.
+- [x] Add a focused build-time customization probe for `enterprise-example` so `customization_repo_root` must be present in generated vars.
+- [x] Pass `customization_repo_root` through generated Packer/site Ansible vars.
+- [x] Update both customization_profile roles so controller-only `vars_files` and `extra_role_paths` checks run on localhost and loaded vars use controller paths.
+- [x] Strengthen phase role-list validation to reject scalar strings and mappings.
+- [x] Mark stale Task 6/7 commit checklist items complete and add final review-fix notes.
+- [x] Run selftests, syntax checks, focused build-time probes for 2.10 and 2.9 where possible, representative dry-runs, `git diff --check`, and shell syntax checks.
+- [x] Stage only review-fix files and commit `Harden customization profile validation`.
+
+# Active Plan Review: Final Customization Profile Review Fixes
+
+- Added regression selftests for scalar and mapping `roles` values; captured the intended red failure before hardening the role assertion.
+- Added a dry-run/generated-vars selftest that feeds the generated Ansible vars into a local build-time `customization_profile` role probe with `enterprise-example`.
+- `build.sh` now passes `customization_repo_root` in generated Packer/site Ansible vars.
+- Both NDB 2.9 and 2.10 customization_profile roles now resolve relative profile and vars files against `customization_repo_root`, stat controller-only paths on localhost, and reject string/mapping phase roles.
+- Verification passed with full selftests, both customization preflight syntax checks, generated-vars build-time probes for 2.10 and 2.9, representative customized dry-runs, shell syntax checks, and `git diff --check`.
+
 - [x] Record current build/debug state
 - [x] Debug and fix the Rocky package install failure (`gdbm-devel` missing)
 - [x] Re-run and complete the NDB 2.9 build
@@ -652,7 +671,7 @@ Implementation plan approved for the next reliability pass:
 - [x] Run `bash scripts/selftest.sh`.
 - [x] Run `bash -n build.sh scripts/manifest.sh`.
 - [x] Run `git diff --check`.
-- [ ] Commit only Task 6 files with message `Record customization profiles in manifests`.
+- [x] Commit only Task 6 files with message `Record customization profiles in manifests`.
 
 # Worker Task 6 Review: Manifest Reporting
 
@@ -678,7 +697,7 @@ Implementation plan approved for the next reliability pass:
 - [x] Run representative PostgreSQL and MongoDB customization dry-runs.
 - [x] Update this task log with exact offline verification and dry-run results.
 - [x] Run `git diff --check`.
-- [ ] Commit only Task 7 doc/offline files with message `Document enterprise customization profiles`.
+- [x] Commit only Task 7 doc/offline files with message `Document enterprise customization profiles`.
 
 # Active Plan Review: Enterprise Customization Profiles
 

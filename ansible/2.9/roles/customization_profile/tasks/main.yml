@@ -8,9 +8,16 @@
       - customization_profile_file | length > 0
     fail_msg: "customization_profile_file is required when customization_enabled=true"
 
+- name: Assert customization repository root is provided
+  ansible.builtin.assert:
+    that:
+      - customization_repo_root is defined
+      - customization_repo_root | length > 0
+    fail_msg: "customization_repo_root is required when customization_enabled=true"
+
 - name: Load customization profile
   ansible.builtin.include_vars:
-    file: "{{ customization_profile_file }}"
+    file: "{{ customization_profile_file if customization_profile_file is abs else customization_repo_root ~ '/' ~ customization_profile_file }}"
     name: customization_profile
 
 - name: Assert customization profile has required fields
@@ -33,7 +40,12 @@
 - name: Assert customization profile phase roles are lists
   ansible.builtin.assert:
     that:
-      - customization_profile.phases[item].roles is not defined or customization_profile.phases[item].roles is sequence
+      - customization_profile.phases[item].roles is not defined or
+        (
+          customization_profile.phases[item].roles is sequence and
+          customization_profile.phases[item].roles is not string and
+          customization_profile.phases[item].roles is not mapping
+        )
     fail_msg: "Customization profile phase roles must be lists"
   loop: "{{ customization_profile.phases.keys() | list }}"
 
@@ -41,6 +53,7 @@
   ansible.builtin.stat:
     path: "{{ item if item is abs else customization_repo_root ~ '/' ~ item }}"
   register: customization_vars_file_stats
+  delegate_to: localhost
   loop: "{{ customization_profile.vars_files | default([]) }}"
 
 - name: Fail when customization vars files are missing
@@ -59,6 +72,7 @@
   ansible.builtin.stat:
     path: "{{ item if item is abs else customization_repo_root ~ '/' ~ item }}"
   register: customization_role_path_stats
+  delegate_to: localhost
   loop: "{{ customization_profile.extra_role_paths | default([]) }}"
 
 - name: Fail when explicit customization role paths are missing

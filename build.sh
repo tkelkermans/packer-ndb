@@ -376,6 +376,7 @@ function generate_ansible_vars_json() {
   local customization_enabled=$9
   local customization_profile_name=${10}
   local customization_profile_file=${11}
+  local customization_repo_root=${12}
 
   jq -nc \
     --arg db_version "$db_version" \
@@ -385,6 +386,7 @@ function generate_ansible_vars_json() {
     --arg mongodb_edition "$mongodb_edition" \
     --arg customization_profile_name "$customization_profile_name" \
     --arg customization_profile_file "$customization_profile_file" \
+    --arg customization_repo_root "$customization_repo_root" \
     --argjson validate_build "$validate_build" \
     --argjson postgres_extensions "${extensions_json:-[]}" \
     --argjson mongodb_deployments "${mongodb_deployments_json:-[]}" \
@@ -400,7 +402,8 @@ function generate_ansible_vars_json() {
       mongodb_deployments: $mongodb_deployments,
       customization_enabled: $customization_enabled,
       customization_profile_name: $customization_profile_name,
-      customization_profile_file: $customization_profile_file
+      customization_profile_file: $customization_profile_file,
+      customization_repo_root: $customization_repo_root
     }'
 }
 
@@ -841,7 +844,7 @@ POSTGRES_EXTENSIONS_JSON=$(echo "$CONFIG" | jq -c '.extensions // []')
 PROVISIONING_ROLE=$(echo "$CONFIG" | jq -r '.provisioning_role // "postgresql"')
 MONGODB_EDITION=$(echo "$CONFIG" | jq -r '.mongodb_edition // "community"')
 MONGODB_DEPLOYMENTS_JSON=$(echo "$CONFIG" | jq -c '.deployment // []')
-ANSIBLE_VARS_JSON=$(generate_ansible_vars_json "$NDB_VERSION" "$DB_VERSION" "$POSTGRES_EXTENSIONS_JSON" "$DB_TYPE" "$VALIDATE_BUILD" "$PROVISIONING_ROLE" "$MONGODB_EDITION" "$MONGODB_DEPLOYMENTS_JSON" "$CUSTOMIZATION_ENABLED" "$CUSTOMIZATION_PROFILE_NAME" "$CUSTOMIZATION_PROFILE_FILE")
+ANSIBLE_VARS_JSON=$(generate_ansible_vars_json "$NDB_VERSION" "$DB_VERSION" "$POSTGRES_EXTENSIONS_JSON" "$DB_TYPE" "$VALIDATE_BUILD" "$PROVISIONING_ROLE" "$MONGODB_EDITION" "$MONGODB_DEPLOYMENTS_JSON" "$CUSTOMIZATION_ENABLED" "$CUSTOMIZATION_PROFILE_NAME" "$CUSTOMIZATION_PROFILE_FILE" "$SCRIPT_DIR")
 case "$PROVISIONING_ROLE" in
   postgresql|mongodb)
     ;;

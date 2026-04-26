@@ -345,6 +345,63 @@ SH
 
 run_customization_extra_role_path_dry_run_tests
 
+run_customization_build_time_vars_dry_run_tests() {
+  local tmpdir output vars_file probe_playbook probe_output roles_path
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/dry-run.out"
+  vars_file="$tmpdir/generated-vars.json"
+  probe_playbook="$tmpdir/build-time-probe.yml"
+  probe_output="$tmpdir/build-time-probe.out"
+
+  command -v ansible-playbook >/dev/null 2>&1 || fail "ansible-playbook is required for customization build-time vars selftest"
+
+  if (
+    cd "$ROOT_DIR"
+    SKIP_MATRIX_VALIDATION=true "$BASH" "$ROOT_DIR/build.sh" \
+      --ci \
+      --dry-run \
+      --ndb-version 2.10 \
+      --db-type pgsql \
+      --os "Rocky Linux" \
+      --os-version "9.6" \
+      --db-version 17 \
+      --source-image-name test-image \
+      --customization-profile enterprise-example >"$output" 2>&1
+  ); then
+    :
+  else
+    fail "customized dry-run with enterprise example failed: $(cat "$output")"
+  fi
+
+  grep -q "\"customization_repo_root\": \"${ROOT_DIR}\"" "$output" || fail "customized dry-run vars omitted customization_repo_root"
+
+  awk '/^Generated Ansible vars:/{flag=1;next}/^Selected matrix entry:/{flag=0}flag' "$output" > "$vars_file"
+
+  cat > "$probe_playbook" <<'YAML'
+- name: Probe build-time customization profile phase from generated vars
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    customization_phase: post_common
+  roles:
+    - role: customization_profile
+YAML
+
+  roles_path="$ROOT_DIR/ansible/2.10/roles:$ROOT_DIR/customizations/examples/internal-ca/roles:$ROOT_DIR/customizations/examples/monitoring-agent/roles:$ROOT_DIR/customizations/examples/os-hardening/roles:$ROOT_DIR/customizations/examples/enterprise-validation/roles:$ROOT_DIR/customizations/local"
+  if ANSIBLE_ROLES_PATH="$roles_path" ANSIBLE_CONFIG="$ROOT_DIR/ansible/2.10/ansible.cfg" \
+    ansible-playbook -i localhost, -c local -e "@$vars_file" "$probe_playbook" >"$probe_output" 2>&1; then
+    :
+  else
+    fail "build-time customization profile probe failed: $(cat "$probe_output")"
+  fi
+
+  pass "customization dry-run vars support build-time profile loading"
+}
+
+run_customization_build_time_vars_dry_run_tests
+
 run_customization_preflight_order_tests() {
   local tmpdir output valid_profile invalid_profile ansible_log curl_log cmd cmd_path
   tmpdir=$(mktemp -d)
@@ -501,6 +558,61 @@ SH
 }
 
 run_customization_preflight_order_tests
+
+run_customization_profile_role_type_tests() {
+  local tmpdir output scalar_profile mapping_profile profile profile_name
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/preflight.out"
+  scalar_profile="$tmpdir/scalar-roles-profile.yml"
+  mapping_profile="$tmpdir/mapping-roles-profile.yml"
+
+  command -v ansible-playbook >/dev/null 2>&1 || fail "ansible-playbook is required for customization profile role type selftest"
+
+  cat > "$scalar_profile" <<'YAML'
+name: scalar-roles-test
+description: invalid profile with scalar roles
+phases:
+  pre_common:
+    roles: custom_internal_ca
+YAML
+
+  cat > "$mapping_profile" <<'YAML'
+name: mapping-roles-test
+description: invalid profile with mapping roles
+phases:
+  pre_common:
+    roles:
+      name: custom_internal_ca
+YAML
+
+  for profile in "$scalar_profile" "$mapping_profile"; do
+    profile_name=$(basename "$profile")
+    if (
+      cd "$ROOT_DIR"
+      SKIP_MATRIX_VALIDATION=true "$BASH" "$ROOT_DIR/build.sh" \
+        --ci \
+        --dry-run \
+        --ndb-version 2.10 \
+        --db-type pgsql \
+        --os "Rocky Linux" \
+        --os-version "9.6" \
+        --db-version 17 \
+        --source-image-name test-image \
+        --customization-profile "$profile" >"$output" 2>&1
+    ); then
+      fail "${profile_name} unexpectedly passed customization preflight"
+    fi
+
+    grep -q "Customization profile phase roles must be lists" "$output" || fail "${profile_name} missed roles type error"
+    ! grep -q "Starting Packer build" "$output" || fail "${profile_name} reached build after invalid customization preflight"
+    rm -f "$output"
+  done
+
+  pass "customization profile rejects scalar and mapping roles"
+}
+
+run_customization_profile_role_type_tests
 
 run_prism_helper_tests() {
   # shellcheck source=/dev/null
