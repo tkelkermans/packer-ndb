@@ -484,10 +484,10 @@ Implementation plan approved for the next reliability pass:
 - [x] Add customization skeleton, committed examples, private overlay ignore rules, and README guidance.
 - [x] Add `build.sh` customization profile selection and dry-run reporting.
 - [x] Add Ansible profile preflight validation.
-- [ ] Add build-time customization phase dispatch.
+- [x] Add build-time customization phase dispatch.
 - [x] Add saved-artifact customization validation dispatch.
 - [x] Add manifest reporting for selected customization profiles.
-- [ ] Run offline verification and live PostgreSQL/MongoDB profile smoke builds.
+- [x] Run offline verification and document live PostgreSQL/MongoDB profile smoke as pending controller/human environment decision.
 
 # Active Plan Review: Enterprise Customization Profiles
 
@@ -662,3 +662,33 @@ Implementation plan approved for the next reliability pass:
 - `build.sh` now marks `.customization.validation` as `running`, `passed`, or `failed` around requested in-guest custom validation.
 - README now lists `customization` as a useful manifest field.
 - Verification passed with `bash scripts/selftest.sh`, `bash -n build.sh scripts/manifest.sh`, and `git diff --check`.
+
+# Worker Task 7 Plan: Final Documentation, Offline Verification, And Live Smoke
+
+**Goal:** Finish beginner-facing customization documentation, add final README self-test guards, run local offline verification, run representative customization dry-runs, and record that live smoke is pending controller/human environment selection.
+
+**Files:**
+- Modify: `README.md`
+- Modify: `scripts/selftest.sh`
+- Modify: `tasks/todo.md`
+
+- [x] Add final README customization self-test guards.
+- [x] Expand README recipes for dry-run, production validate+artifact+manifest, internal CA, OpenTelemetry Collector, hardening, secrets outside git, and `customizations/local/` ignored content.
+- [x] Run complete local offline verification available in this shell.
+- [x] Run representative PostgreSQL and MongoDB customization dry-runs.
+- [x] Update this task log with exact offline verification and dry-run results.
+- [x] Run `git diff --check`.
+- [ ] Commit only Task 7 doc/offline files with message `Document enterprise customization profiles`.
+
+# Active Plan Review: Enterprise Customization Profiles
+
+- Added optional enterprise customization profiles with committed examples and ignored private overlays.
+- Added Ansible-native profile preflight and build-time phase dispatch.
+- Added saved-artifact custom validation dispatch.
+- Added manifest reporting for selected customization profiles.
+- Added the final README customization guard in `scripts/selftest.sh`.
+- Expanded README customization recipes for the safe dry-run, production `--validate --validate-artifact --manifest` flow, internal CA, OpenTelemetry Collector, OS hardening, secrets outside git, validation roles, and gitignored `customizations/local/` overlays.
+- Offline verification passed: `bash -n build.sh test.sh scripts/*.sh ansible/2.9/roles/validate_mongodb/files/*.sh ansible/2.10/roles/validate_mongodb/files/*.sh`; `bash scripts/selftest.sh`; `scripts/matrix_validate.sh ndb/*/matrix.json`; NDB 2.9 and 2.10 `site.yml` Ansible syntax checks; NDB 2.9 and 2.10 `customization_preflight.yml` Ansible syntax checks; `packer fmt -check packer`; and `git diff --check`.
+- PostgreSQL customization dry-run passed: `./build.sh --dry-run --ci --customization-profile enterprise-example --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18` exited 0, validated the profile, showed `Enabled: true`, and showed `Profile file: customizations/profiles/enterprise-example.yml`.
+- MongoDB customization dry-run passed: `./build.sh --dry-run --ci --customization-profile enterprise-example --ndb-version 2.10 --db-type mongodb --os "Rocky Linux" --os-version 9.7 --db-version 8.0` exited 0, validated the profile, showed `Enabled: true`, and showed `Profile file: customizations/profiles/enterprise-example.yml`.
+- Live PostgreSQL and MongoDB profile smoke builds were not launched by this worker per Task 7 handoff instructions; live smoke remains pending controller/human environment decision, including source image UUID choice, Prism credentials, exact image names, manifest names, validation status, and cleanup confirmation.

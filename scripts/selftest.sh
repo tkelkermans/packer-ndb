@@ -1348,3 +1348,14 @@ run_readme_mongodb_tests() {
 }
 
 run_readme_mongodb_tests
+
+run_readme_customization_tests() {
+  grep -q "Customize The Image" "$ROOT_DIR/README.md" || fail "README missing Customize The Image"
+  grep -q "Install an internal CA certificate" "$ROOT_DIR/README.md" || fail "README missing internal CA recipe"
+  grep -q "OpenTelemetry Collector" "$ROOT_DIR/README.md" || fail "README missing OpenTelemetry explanation"
+  grep -q "customizations/local" "$ROOT_DIR/README.md" || fail "README missing private overlay explanation"
+  grep -q "validate_custom_enterprise" "$ROOT_DIR/README.md" || fail "README missing custom validation role guidance"
+  pass "README customization guidance"
+}
+
+run_readme_customization_tests

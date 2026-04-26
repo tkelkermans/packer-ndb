@@ -271,6 +271,12 @@ Start with a dry run so you can see the selected matrix row and planned customiz
 ./build.sh --dry-run --ci --customization-profile enterprise-example --ndb-version 2.10 --db-type mongodb --os "Rocky Linux" --os-version 9.7 --db-version 8.0
 ```
 
+When the dry run looks right, use the same profile with the normal production safety flags. This builds the image, runs in-guest validation, boots the saved artifact for final validation, and writes a manifest:
+
+```bash
+./build.sh --ci --customization-profile enterprise-example --validate --validate-artifact --manifest --ndb-version 2.10 --db-type mongodb --os "Rocky Linux" --os-version 9.7 --db-version 8.0
+```
+
 Profiles live in `customizations/profiles/` or `customizations/local/`. Use `customizations/examples/` as copyable reference material, then put real customer-specific profiles, private variables, and private roles under `customizations/local/`; that directory is ignored by git except for its README and `.gitkeep` so secrets and internal implementation details stay out of commits.
 
 When a customization profile is selected, even a dry run validates the profile with `ansible-playbook` before printing the dry-run summary. This catches missing profile files, unsupported phase names, missing variable files, and missing custom role paths before a long image build starts.
@@ -278,6 +284,15 @@ When a customization profile is selected, even a dry run validates the profile w
 During image builds, selected profiles can run roles before common setup, after common setup, after database installation, and during `--validate`. When `--validate-artifact` is also selected, the saved-image validation VM runs the profile's validation roles after the database validation. The example profile installs a sample internal CA, writes an OpenTelemetry Collector-style service shim, and applies one safe hardening marker so you can see the flow without adding private packages or secrets.
 
 The committed monitoring example uses OpenTelemetry Collector naming but avoids secrets. Production profiles should include validation roles so every installed enterprise tool can be checked during build or artifact validation.
+
+Common enterprise recipes:
+
+- Install an internal CA certificate: copy `customizations/examples/internal-ca/roles/custom_internal_ca` into a private role, replace the generated sample certificate with your enterprise CA distribution method, and keep private CA material outside git.
+- Install OpenTelemetry Collector monitoring: copy the monitoring-agent example, replace the marker service with your real OpenTelemetry Collector package, config, and service setup, and inject collector endpoints or tenant tokens from your secret manager at build time.
+- Apply OS hardening: copy the hardening example, add one small validated setting at a time, and keep a matching validation task so the build proves the hardening actually landed.
+- Validate custom work: keep a role like `validate_custom_enterprise` in the profile's `validate` phase so both `--validate` and `--validate-artifact` can prove the customization is present.
+
+Do not commit real enterprise tokens, tenant URLs, private certificates, private keys, or customer-specific repository details. Put local-only profile files and private roles under `customizations/local/`, or load secrets from your organization's secret manager during the build.
 
 ## Validation
 
