@@ -7,7 +7,7 @@
 - [x] Choose the separate thin wrapper approach.
 - [x] Write the single-image build wizard design spec.
 - [x] Self-review the design spec.
-- [ ] Commit the design spec.
+- [x] Commit the design spec.
 - [ ] Ask the user to review the written spec before implementation planning.
 
 # Active Plan Review: Single-Image Build Wizard Design
