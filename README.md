@@ -252,14 +252,21 @@ Each entry can be:
 - An object with `env_var` for licensed or short-lived downloads such as RHEL images.
 - An object with `prefetch: true` when the image should be downloaded locally before Packer starts.
 
-`build.sh` can use a source image in four ways:
+`build.sh` can use a source image in five ways:
 
 - Remote URI: pass the URI directly to Packer.
 - Local path: upload a local qcow2 file through Packer.
 - Existing Prism image: pass `--source-image-name`.
+- Existing Prism image UUID: pass `--source-image-uuid` when Prism has duplicate image names.
 - Pre-staged Prism image: pass `--stage-source` first, then rerun with the staged image name if needed.
 
 If a remote import is slow over VPN, staging or reusing an existing Prism image is usually faster and more reliable than asking Packer to import the remote URI every time.
+
+If Prism has duplicate images with the same source-image name or URI, use the exact Prism image UUID:
+
+```bash
+./build.sh --ci --source-image-uuid "7a6d6c2f-90b4-4acb-bf14-6f2be1bf006e" --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+```
 
 ## Customize The Image
 

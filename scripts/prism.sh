@@ -102,6 +102,18 @@ prism_image_uuid_by_name() {
   prism_find_uuid_by_name images image "$1"
 }
 
+prism_image_json() {
+  local image_uuid=$1
+
+  prism_curl GET "/api/nutanix/v3/images/${image_uuid}"
+}
+
+prism_image_uuid_exists() {
+  local image_uuid=$1
+
+  prism_image_json "$image_uuid" >/dev/null 2>&1
+}
+
 prism_vm_uuid_by_name() {
   prism_find_uuid_by_name vms vm "$1"
 }

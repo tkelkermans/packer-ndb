@@ -112,6 +112,7 @@ Options:
   --db-version VERSION      Database version from matrix.json
   --source-image-uri URI    Override images.json with an explicit source image URI or local file path
   --source-image-name NAME  Override images.json with the name of an image that already exists in Prism
+  --source-image-uuid UUID  Override images.json with the UUID of an image that already exists in Prism
   --customization-profile NAME_OR_PATH
                             Apply an enterprise customization profile
   --no-customizations        Disable NDB_CUSTOMIZATION_PROFILE for this build
@@ -533,12 +534,13 @@ Resolved files:
 Source image:
   Images file: ${IMAGES_FILE}
   Image key: ${IMAGE_KEY:-<override>}
-  Override provided: $( [[ -n "$SOURCE_IMAGE_URI_OVERRIDE" || -n "$SOURCE_IMAGE_NAME_OVERRIDE" ]] && echo "yes" || echo "no" )
+  Override provided: $( [[ -n "$SOURCE_IMAGE_URI_OVERRIDE" || -n "$SOURCE_IMAGE_NAME_OVERRIDE" || -n "$SOURCE_IMAGE_UUID_OVERRIDE" ]] && echo "yes" || echo "no" )
   Resolution status: ${SOURCE_IMAGE_RESOLUTION_STATUS}
   Raw source image input: ${SOURCE_IMAGE_RAW_DISPLAY}
   Prefetch before packer: ${PREFETCH_SOURCE_IMAGE}
   Source image mode: ${SOURCE_IMAGE_MODE}
   Effective packer source_image_name: ${PACKER_SOURCE_IMAGE_NAME}
+  Effective packer source_image_uuid: ${PACKER_SOURCE_IMAGE_UUID}
   Effective packer source_image_uri: ${PACKER_SOURCE_IMAGE_URI}
   Effective packer source_image_path: ${PACKER_SOURCE_IMAGE_PATH}
   Runtime action: ${SOURCE_IMAGE_RUNTIME_ACTION}
@@ -586,6 +588,7 @@ Packer variable preview:
   patroni_version=${PATRONI_VERSION}
   etcd_version=${ETCD_VERSION}
   source_image_name=${PACKER_SOURCE_IMAGE_NAME}
+  source_image_uuid=${PACKER_SOURCE_IMAGE_UUID}
   source_image_uri=${PACKER_SOURCE_IMAGE_URI}
   source_image_path=${PACKER_SOURCE_IMAGE_PATH}
   image_name=${IMAGE_NAME}
@@ -666,6 +669,7 @@ declare DB_VERSION=""
 declare DB_TYPE=""
 declare SOURCE_IMAGE_URI_OVERRIDE=""
 declare SOURCE_IMAGE_NAME_OVERRIDE=""
+declare SOURCE_IMAGE_UUID_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -720,6 +724,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --source-image-name)
       SOURCE_IMAGE_NAME_OVERRIDE="$2"
+      shift
+      ;;
+    --source-image-uuid)
+      SOURCE_IMAGE_UUID_OVERRIDE="$2"
       shift
       ;;
     --customization-profile)
@@ -867,10 +875,14 @@ SOURCE_IMAGE_REQUIRED_ENV_VAR=""
 SOURCE_IMAGE_DESCRIPTION=""
 SOURCE_IMAGE_RAW_DISPLAY=""
 PACKER_SOURCE_IMAGE_NAME=""
+PACKER_SOURCE_IMAGE_UUID=""
 PACKER_SOURCE_IMAGE_URI=""
 PACKER_SOURCE_IMAGE_PATH=""
 SOURCE_IMAGE_MODE=""
-if [[ -n "$SOURCE_IMAGE_NAME_OVERRIDE" ]]; then
+if [[ -n "$SOURCE_IMAGE_UUID_OVERRIDE" ]]; then
+  PREFETCH_SOURCE_IMAGE=false
+  SOURCE_IMAGE_RAW_DISPLAY="$SOURCE_IMAGE_UUID_OVERRIDE"
+elif [[ -n "$SOURCE_IMAGE_NAME_OVERRIDE" ]]; then
   PREFETCH_SOURCE_IMAGE=false
   SOURCE_IMAGE_RAW_DISPLAY="$SOURCE_IMAGE_NAME_OVERRIDE"
 elif [[ -n "$SOURCE_IMAGE_URI_OVERRIDE" ]]; then
@@ -904,8 +916,16 @@ if [[ "$OS_TYPE" == "RHEL" || "$OS_TYPE" == "Red Hat Enterprise Linux (RHEL)" ]]
 fi
 
 if [[ "$DRY_RUN" == "true" || "$PREFLIGHT_ONLY" == "true" ]]; then
-  if [[ -n "$SOURCE_IMAGE_NAME_OVERRIDE" ]]; then
+  if [[ -n "$SOURCE_IMAGE_UUID_OVERRIDE" ]]; then
+    PACKER_SOURCE_IMAGE_NAME="<not used>"
+    PACKER_SOURCE_IMAGE_UUID="$SOURCE_IMAGE_UUID_OVERRIDE"
+    PACKER_SOURCE_IMAGE_URI="<not used>"
+    PACKER_SOURCE_IMAGE_PATH="<not used>"
+    SOURCE_IMAGE_MODE="existing-prism-image-uuid"
+    SOURCE_IMAGE_RUNTIME_ACTION="reuse the existing Prism image by UUID"
+  elif [[ -n "$SOURCE_IMAGE_NAME_OVERRIDE" ]]; then
     PACKER_SOURCE_IMAGE_NAME="$SOURCE_IMAGE_NAME_OVERRIDE"
+    PACKER_SOURCE_IMAGE_UUID="<not used>"
     PACKER_SOURCE_IMAGE_URI="<not used>"
     PACKER_SOURCE_IMAGE_PATH="<not used>"
     SOURCE_IMAGE_MODE="existing-prism-image"
@@ -913,43 +933,57 @@ if [[ "$DRY_RUN" == "true" || "$PREFLIGHT_ONLY" == "true" ]]; then
   elif [[ "$SOURCE_IMAGE_RESOLUTION_STATUS" == "missing-env" ]]; then
     PACKER_SOURCE_IMAGE_URI="<unresolved until ${SOURCE_IMAGE_REQUIRED_ENV_VAR} is set>"
     PACKER_SOURCE_IMAGE_NAME="<not used>"
+    PACKER_SOURCE_IMAGE_UUID="<not used>"
     PACKER_SOURCE_IMAGE_PATH="<not used>"
     SOURCE_IMAGE_MODE="unresolved"
     SOURCE_IMAGE_RUNTIME_ACTION="source image env var required before live build"
   elif [[ "$SOURCE_IMAGE_URI" =~ ^file:// ]]; then
     PACKER_SOURCE_IMAGE_NAME="<not used>"
+    PACKER_SOURCE_IMAGE_UUID="<not used>"
     PACKER_SOURCE_IMAGE_URI="<not used>"
     PACKER_SOURCE_IMAGE_PATH="${SOURCE_IMAGE_URI#file://}"
     SOURCE_IMAGE_MODE="local-path"
     SOURCE_IMAGE_RUNTIME_ACTION="use the provided local file path via source_image_path"
   elif [[ -n "$SOURCE_IMAGE_URI" && -f "$SOURCE_IMAGE_URI" ]]; then
     PACKER_SOURCE_IMAGE_NAME="<not used>"
+    PACKER_SOURCE_IMAGE_UUID="<not used>"
     PACKER_SOURCE_IMAGE_URI="<not used>"
     PACKER_SOURCE_IMAGE_PATH="${SOURCE_IMAGE_URI}"
     SOURCE_IMAGE_MODE="local-path"
     SOURCE_IMAGE_RUNTIME_ACTION="use the provided local file path via source_image_path"
   elif [[ "$PREFETCH_SOURCE_IMAGE" == "true" ]]; then
     PACKER_SOURCE_IMAGE_NAME="<not used>"
+    PACKER_SOURCE_IMAGE_UUID="<not used>"
     PACKER_SOURCE_IMAGE_URI="<not used>"
     PACKER_SOURCE_IMAGE_PATH="<temporary local file created at runtime>"
     SOURCE_IMAGE_MODE="prefetched-local-path"
     SOURCE_IMAGE_RUNTIME_ACTION="download the remote source image to a local temp file and pass it via source_image_path"
   else
     PACKER_SOURCE_IMAGE_NAME="<not used>"
+    PACKER_SOURCE_IMAGE_UUID="<not used>"
     PACKER_SOURCE_IMAGE_URI="$SOURCE_IMAGE_URI"
     PACKER_SOURCE_IMAGE_PATH="<not used>"
     SOURCE_IMAGE_MODE="remote-uri"
     SOURCE_IMAGE_RUNTIME_ACTION="pass the resolved remote URI directly to Packer"
   fi
 else
-  if [[ -n "$SOURCE_IMAGE_NAME_OVERRIDE" ]]; then
+  if [[ -n "$SOURCE_IMAGE_UUID_OVERRIDE" ]]; then
+    PACKER_SOURCE_IMAGE_NAME=""
+    PACKER_SOURCE_IMAGE_UUID="$SOURCE_IMAGE_UUID_OVERRIDE"
+    PACKER_SOURCE_IMAGE_URI=""
+    PACKER_SOURCE_IMAGE_PATH=""
+    SOURCE_IMAGE_MODE="existing-prism-image-uuid"
+    SOURCE_IMAGE_RUNTIME_ACTION="reuse the existing Prism image by UUID"
+  elif [[ -n "$SOURCE_IMAGE_NAME_OVERRIDE" ]]; then
     PACKER_SOURCE_IMAGE_NAME="$SOURCE_IMAGE_NAME_OVERRIDE"
+    PACKER_SOURCE_IMAGE_UUID=""
     PACKER_SOURCE_IMAGE_URI=""
     PACKER_SOURCE_IMAGE_PATH=""
     SOURCE_IMAGE_MODE="existing-prism-image"
     SOURCE_IMAGE_RUNTIME_ACTION="reuse the existing Prism image by name"
   else
     PACKER_SOURCE_IMAGE_NAME=""
+    PACKER_SOURCE_IMAGE_UUID=""
     if [[ "$STAGE_SOURCE" == "true" && "$SOURCE_IMAGE_URI" =~ ^https?:// ]]; then
       PACKER_SOURCE_IMAGE_URI="$SOURCE_IMAGE_URI"
       PACKER_SOURCE_IMAGE_PATH=""
@@ -1012,6 +1046,7 @@ if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
   PREFLIGHT_STATUS=0
   source_image_preflight \
     --source-image-name "$PACKER_SOURCE_IMAGE_NAME" \
+    --source-image-uuid "$PACKER_SOURCE_IMAGE_UUID" \
     --source-image-uri "$PACKER_SOURCE_IMAGE_URI" \
     --source-image-path "$PACKER_SOURCE_IMAGE_PATH" \
     --cluster-name "$PKR_VAR_cluster_name" \
@@ -1036,7 +1071,9 @@ fi
 
 if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
   SOURCE_IMAGE_UUID=""
-  if [[ -n "$PACKER_SOURCE_IMAGE_NAME" ]]; then
+  if [[ -n "$PACKER_SOURCE_IMAGE_UUID" ]]; then
+    SOURCE_IMAGE_UUID="$PACKER_SOURCE_IMAGE_UUID"
+  elif [[ -n "$PACKER_SOURCE_IMAGE_NAME" ]]; then
     SOURCE_IMAGE_UUID=$(prism_image_uuid_by_name "$PACKER_SOURCE_IMAGE_NAME" || true)
   fi
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.mode" --value "$SOURCE_IMAGE_MODE"
@@ -1097,6 +1134,7 @@ PACKER_STATUS=0
   -var "patroni_version=${PATRONI_VERSION}" \
   -var "etcd_version=${ETCD_VERSION}" \
   -var "source_image_name=${PACKER_SOURCE_IMAGE_NAME}" \
+  -var "source_image_uuid=${PACKER_SOURCE_IMAGE_UUID}" \
   -var "source_image_uri=${PACKER_SOURCE_IMAGE_URI}" \
   -var "source_image_path=${PACKER_SOURCE_IMAGE_PATH}" \
   -var "image_name=${IMAGE_NAME}" \

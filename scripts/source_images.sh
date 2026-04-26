@@ -83,12 +83,16 @@ source_image_value_is_real() {
 }
 
 source_image_preflight() {
-  local source_image_name="" source_image_uri="" source_image_path="" cluster_name="" subnet_name=""
+  local source_image_name="" source_image_uuid="" source_image_uri="" source_image_path="" cluster_name="" subnet_name=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --source-image-name)
         source_image_name=$2
+        shift
+        ;;
+      --source-image-uuid)
+        source_image_uuid=$2
         shift
         ;;
       --source-image-uri)
@@ -129,6 +133,11 @@ source_image_preflight() {
 
   if source_image_value_is_real "$source_image_name" && [[ -z "$(prism_image_uuid_by_name "$source_image_name")" ]]; then
     printf 'Error: source image does not exist in Prism: %s\n' "$source_image_name" >&2
+    return 1
+  fi
+
+  if source_image_value_is_real "$source_image_uuid" && ! prism_image_uuid_exists "$source_image_uuid"; then
+    printf 'Error: source image UUID does not exist in Prism: %s\n' "$source_image_uuid" >&2
     return 1
   fi
 

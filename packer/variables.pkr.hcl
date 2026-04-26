@@ -26,6 +26,11 @@ variable "source_image_name" {
   default = ""
 }
 
+variable "source_image_uuid" {
+  type    = string
+  default = ""
+}
+
 variable "source_image_uri" {
   type    = string
   default = ""

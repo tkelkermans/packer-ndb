@@ -1,5 +1,21 @@
 # Task Plan
 
+# Active Plan: Source Image UUID Smoke Fix
+
+- [x] Reproduce live customization smoke blocker: Packer failed before VM creation because Prism returned more than one image with the same source image name/URI.
+- [x] Add `--source-image-uuid` support to `build.sh`, Packer variables, Packer disk configuration, source-image preflight, README, and selftests.
+- [x] Re-run offline verification after the UUID patch.
+- [x] Run live preflight with the known Rocky 9.7 source image UUID.
+- [ ] Re-run live customization smoke with the known Rocky 9.7 source image UUID.
+- [ ] Commit and push when verification succeeds.
+
+# Active Plan Review: Source Image UUID Smoke Fix
+
+- PostgreSQL live smoke reached Packer with `enterprise-example` and failed before provisioning with `your query returned more than one result with same Name/URI`.
+- The current Prism environment has duplicate `Rocky-9-GenericCloud-LVM-9.7-20251123.2.x86_64.qcow2` images, so source image UUID selection is required for reliable live testing from this branch.
+- UUID patch verification passed with `bash -n build.sh scripts/*.sh`, `bash scripts/selftest.sh`, `packer fmt -check packer`, and a dry-run showing `Source image mode: existing-prism-image-uuid`.
+- Live UUID preflight passed with `Ready for live build: yes` using source image UUID `7a6d6c2f-90b4-4acb-bf14-6f2be1bf006e`.
+
 # Active Plan: Final Customization Profile Review Fixes
 
 - [x] Add a failing selftest for scalar customization phase `roles` values.

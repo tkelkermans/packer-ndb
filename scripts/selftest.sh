@@ -725,6 +725,20 @@ JSON
 
 run_source_image_tests
 
+run_source_image_uuid_guard_tests() {
+  grep -q -- "--source-image-uuid" "$ROOT_DIR/build.sh" || fail "build.sh does not expose source image UUID override"
+  grep -q "PACKER_SOURCE_IMAGE_UUID" "$ROOT_DIR/build.sh" || fail "build.sh does not track source image UUID for Packer"
+  grep -q 'source_image_uuid=${PACKER_SOURCE_IMAGE_UUID}' "$ROOT_DIR/build.sh" || fail "build.sh dry-run does not show source image UUID"
+  grep -q 'source_image_uuid=' "$ROOT_DIR/build.sh" || fail "build.sh does not pass source image UUID to Packer"
+  grep -q 'variable "source_image_uuid"' "$ROOT_DIR/packer/variables.pkr.hcl" || fail "Packer variables do not define source_image_uuid"
+  grep -q 'source_image_uuid = var.source_image_uuid' "$ROOT_DIR/packer/database.pkr.hcl" || fail "Packer builder does not use source_image_uuid"
+  grep -q "prism_image_uuid_exists" "$ROOT_DIR/scripts/prism.sh" || fail "Prism helper does not validate source image UUIDs"
+  grep -q -- "--source-image-uuid" "$ROOT_DIR/README.md" || fail "README does not document source image UUID override"
+  pass "source image UUID override guard"
+}
+
+run_source_image_uuid_guard_tests
+
 run_manifest_tests() {
   local tmpdir manifest
   tmpdir=$(mktemp -d)
