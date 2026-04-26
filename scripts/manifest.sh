@@ -177,6 +177,13 @@ cmd_init() {
         artifact_vm_name: null,
         artifact_vm_uuid: null
       },
+      customization: {
+        enabled: false,
+        profile: null,
+        profile_file: null,
+        phases: {},
+        validation: "not-requested"
+      },
       cleanup: {},
       git: {
         commit: $git_commit,

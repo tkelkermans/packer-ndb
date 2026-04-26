@@ -347,6 +347,7 @@ Useful fields:
 - `artifact.image_name`, `artifact.image_uuid`: the saved Prism image.
 - `validation.in_guest`: in-guest validation status, such as `not-requested`, `running`, `passed`, or `failed`.
 - `validation.artifact`: final artifact validation status.
+- `customization`: selected customization profile, phase role names, and custom in-guest validation status.
 - `cleanup.artifact_validation_vm`: whether the disposable validation VM was deleted, retained, or cleanup failed.
 
 If artifact validation succeeds but the validation VM cannot be deleted, the build fails instead of hiding a leaked VM.

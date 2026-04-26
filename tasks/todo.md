@@ -486,7 +486,7 @@ Implementation plan approved for the next reliability pass:
 - [x] Add Ansible profile preflight validation.
 - [ ] Add build-time customization phase dispatch.
 - [x] Add saved-artifact customization validation dispatch.
-- [ ] Add manifest reporting for selected customization profiles.
+- [x] Add manifest reporting for selected customization profiles.
 - [ ] Run offline verification and live PostgreSQL/MongoDB profile smoke builds.
 
 # Active Plan Review: Enterprise Customization Profiles
@@ -631,3 +631,34 @@ Implementation plan approved for the next reliability pass:
 - `build.sh` now forwards selected customization profile metadata and role paths to saved-artifact validation when customization is enabled.
 - README now notes that `--validate-artifact` runs profile validation roles after database validation.
 - Verification passed with `bash scripts/selftest.sh`, `bash -n scripts/artifact_validate.sh build.sh`, and `git diff --check`.
+
+# Worker Task 6 Plan: Manifest Reporting
+
+**Goal:** Record selected customization profile metadata and custom validation status in build manifests.
+
+**Files:**
+- Modify: `scripts/selftest.sh`
+- Modify: `scripts/manifest.sh`
+- Modify: `build.sh`
+- Modify: `README.md`
+- Modify: `tasks/todo.md`
+
+- [x] Add manifest selftests for customization fields and build.sh recording guards.
+- [x] Run `bash scripts/selftest.sh` and capture the intended failure before implementation.
+- [x] Initialize default customization fields in `scripts/manifest.sh`.
+- [x] Add `build.sh` customization manifest JSON helper.
+- [x] Set `.customization` after manifest initialization and update custom validation status around requested in-guest validation.
+- [x] Update README/tasks for manifest customization behavior.
+- [x] Run `bash scripts/selftest.sh`.
+- [x] Run `bash -n build.sh scripts/manifest.sh`.
+- [x] Run `git diff --check`.
+- [ ] Commit only Task 6 files with message `Record customization profiles in manifests`.
+
+# Worker Task 6 Review: Manifest Reporting
+
+- Added manifest selftests for customization JSON and captured the intended red failure: `FAIL: build.sh does not record customization manifest fields`.
+- `scripts/manifest.sh` now initializes `.customization` with disabled defaults.
+- `build.sh` now writes `.customization` from the preflight summary when available, falls back to selected profile metadata before summary generation, and records disabled defaults when no profile is selected.
+- `build.sh` now marks `.customization.validation` as `running`, `passed`, or `failed` around requested in-guest custom validation.
+- README now lists `customization` as a useful manifest field.
+- Verification passed with `bash scripts/selftest.sh`, `bash -n build.sh scripts/manifest.sh`, and `git diff --check`.

@@ -665,6 +665,13 @@ run_manifest_tests() {
 
   jq -e '.source_image.name == "rocky" and .source_image.mode == "existing-prism-image" and .source_image.uuid == "source-image-uuid-1" and .artifact.image_name == "ndb-test" and .validation.in_guest == "passed" and .packer.duration_seconds == 12' "$manifest" >/dev/null || fail "manifest set JSON"
 
+  "$ROOT_DIR/scripts/manifest.sh" set-json \
+    --file "$manifest" \
+    --key ".customization" \
+    --json-value '{"enabled":true,"profile":"enterprise-example","profile_file":"customizations/profiles/enterprise-example.yml","phases":{"pre_common":["custom_internal_ca"],"post_common":[],"post_database":["custom_monitoring_agent","custom_os_hardening"],"validate":["validate_custom_enterprise"]},"validation":"not-requested"}'
+
+  jq -e '.customization.enabled == true and .customization.profile == "enterprise-example" and (.customization.phases.validate | index("validate_custom_enterprise"))' "$manifest" >/dev/null || fail "manifest customization JSON"
+
   printf '' > "$tmpdir/empty-artifact-result.json"
   "$ROOT_DIR/scripts/manifest.sh" record-artifact-validation \
     --file "$manifest" \
@@ -686,6 +693,7 @@ run_manifest_tests() {
     --artifact-image-uuid "image-uuid-1"
 
   jq -e '.status == "success" and .artifact.image_name == "ndb-test" and .artifact.image_uuid == "image-uuid-1"' "$manifest" >/dev/null || fail "manifest finalize JSON"
+  grep -Fq ".customization" "$ROOT_DIR/build.sh" || fail "build.sh does not record customization manifest fields"
   pass "manifest helper"
 }
 

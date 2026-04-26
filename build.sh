@@ -70,6 +70,11 @@ function on_exit() {
       if [[ "$in_guest_status" == "running" ]]; then
         "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.in_guest" --value "failed" >/dev/null 2>&1 || true
       fi
+      local customization_validation_status
+      customization_validation_status=$(jq -r '.customization.validation // ""' "$MANIFEST_FILE" 2>/dev/null || printf '')
+      if [[ "$customization_validation_status" == "running" ]]; then
+        "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".customization.validation" --value "failed" >/dev/null 2>&1 || true
+      fi
     fi
     if [[ -n "${PACKER_STARTED_EPOCH:-}" ]]; then
       local failed_at failed_epoch
@@ -434,6 +439,23 @@ function run_customization_preflight() {
     -e "customization_repo_root=${SCRIPT_DIR}" \
     -e "customization_summary_file=${CUSTOMIZATION_SUMMARY_FILE}" \
     "$preflight_playbook"
+}
+
+function customization_manifest_json() {
+  if [[ "$CUSTOMIZATION_ENABLED" != "true" ]]; then
+    jq -nc '{enabled:false, profile:null, profile_file:null, phases:{}, validation:"not-requested"}'
+    return
+  fi
+
+  if [[ -z "${CUSTOMIZATION_SUMMARY_FILE:-}" || ! -s "$CUSTOMIZATION_SUMMARY_FILE" ]]; then
+    jq -nc \
+      --arg profile "$CUSTOMIZATION_PROFILE_NAME" \
+      --arg profile_file "$(customization_profile_abs_path)" \
+      '{enabled:true, profile:$profile, profile_file:$profile_file, phases:{}, validation:"not-requested"}'
+    return
+  fi
+
+  jq -c '.' "$CUSTOMIZATION_SUMMARY_FILE"
 }
 
 function print_dry_run_summary() {
@@ -971,6 +993,8 @@ if [[ "$WRITE_MANIFEST" == "true" && "$DRY_RUN" != "true" && "$PREFLIGHT_ONLY" !
     --os-version "$OS_VERSION" \
     --provisioning-role "$PROVISIONING_ROLE" \
     --matrix-row-json "$CONFIG"
+  CUSTOMIZATION_MANIFEST_JSON=$(customization_manifest_json)
+  "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".customization" --json-value "$CUSTOMIZATION_MANIFEST_JSON"
 fi
 
 if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
@@ -1027,6 +1051,11 @@ fi
 
 run_customization_preflight
 
+if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
+  CUSTOMIZATION_MANIFEST_JSON=$(customization_manifest_json)
+  "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".customization" --json-value "$CUSTOMIZATION_MANIFEST_JSON"
+fi
+
 if [[ "$DRY_RUN" == "true" ]]; then
   print_dry_run_summary
   exit 0
@@ -1045,6 +1074,9 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".packer.started_at" --value "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   if [[ "$VALIDATE_BUILD" == "true" ]]; then
     "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.in_guest" --value "running"
+    if [[ "$CUSTOMIZATION_ENABLED" == "true" ]]; then
+      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".customization.validation" --value "running"
+    fi
   fi
 fi
 
@@ -1085,6 +1117,9 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".artifact.image_uuid" --value "$ARTIFACT_IMAGE_UUID"
   if [[ "$VALIDATE_BUILD" == "true" ]]; then
     "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".validation.in_guest" --value "passed"
+    if [[ "$CUSTOMIZATION_ENABLED" == "true" ]]; then
+      "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".customization.validation" --value "passed"
+    fi
   fi
 fi
 
