@@ -6,7 +6,11 @@
 - [x] Add `--source-image-uuid` support to `build.sh`, Packer variables, Packer disk configuration, source-image preflight, README, and selftests.
 - [x] Re-run offline verification after the UUID patch.
 - [x] Run live preflight with the known Rocky 9.7 source image UUID.
-- [ ] Re-run live customization smoke with the known Rocky 9.7 source image UUID.
+- [x] Reproduce second live smoke blocker: example roles attempted system writes without privilege escalation.
+- [x] Add `become: yes` to committed example install and validation tasks that touch system paths or services.
+- [x] Re-run PostgreSQL live customization smoke with the known Rocky 9.7 source image UUID.
+- [x] Re-run MongoDB live customization smoke with the known Rocky 9.7 source image UUID.
+- [x] Re-run sharded MongoDB live customization smoke with the known Rocky 9.6 source image UUID.
 - [ ] Commit and push when verification succeeds.
 
 # Active Plan Review: Source Image UUID Smoke Fix
@@ -15,6 +19,15 @@
 - The current Prism environment has duplicate `Rocky-9-GenericCloud-LVM-9.7-20251123.2.x86_64.qcow2` images, so source image UUID selection is required for reliable live testing from this branch.
 - UUID patch verification passed with `bash -n build.sh scripts/*.sh`, `bash scripts/selftest.sh`, `packer fmt -check packer`, and a dry-run showing `Source image mode: existing-prism-image-uuid`.
 - Live UUID preflight passed with `Ready for live build: yes` using source image UUID `7a6d6c2f-90b4-4acb-bf14-6f2be1bf006e`.
+- PostgreSQL live smoke with UUID reached in-guest customization execution, then failed creating `/etc/ndb-enterprise` as `packer`; failed builder VM cleanup succeeded.
+- The example customization roles now use privilege escalation for system file, trust-store, systemd, sysctl, and validation reads.
+- PostgreSQL live smoke passed after the privilege fix with image `ndb-2.10-pgsql-18-Rocky Linux-9.7-20260426134316` (`78f1e6d1-db88-4759-9f39-31d413eda27a`), in-guest validation `passed`, saved-artifact validation `passed`, customization validation `passed`, and validation VM cleanup `deleted`.
+- Prism cleanup verification returned no matching PostgreSQL builder or disposable validation VMs for the successful smoke run.
+- MongoDB NDB 2.10 live smoke passed with image `ndb-2.10-mongodb-8.0-Rocky Linux-9.7-20260426134924` (`ccdfa044-3c5b-4479-952f-5a01e3d912ba`), in-guest validation `passed`, saved-artifact validation `passed`, customization validation `passed`, and validation VM cleanup `deleted`.
+- MongoDB NDB 2.9 live smoke passed with image `ndb-2.9-mongodb-8.0-Rocky Linux-9.6-20260426135554` (`e4373c6f-41bb-42d7-863d-56305ed198bc`), in-guest validation `passed`, saved-artifact validation `passed`, customization validation `passed`, and validation VM cleanup `deleted`.
+- The NDB 2.9 MongoDB artifact validation exercised the local replica-set and sharded-cluster smoke validation scripts on the cloned VM.
+- Prism cleanup verification returned no matching MongoDB builder or disposable validation VMs for either successful smoke run.
+- Final offline verification passed with `bash scripts/selftest.sh`, shell syntax checks, matrix validation, `packer fmt -check packer`, explicit-var `packer validate packer`, NDB 2.9 and 2.10 Ansible syntax checks, and `git diff --check`.
 
 # Active Plan: Final Customization Profile Review Fixes
 

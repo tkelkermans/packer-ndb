@@ -290,7 +290,7 @@ When a customization profile is selected, even a dry run validates the profile w
 
 During image builds, selected profiles can run roles before common setup, after common setup, after database installation, and during `--validate`. When `--validate-artifact` is also selected, the saved-image validation VM runs the profile's validation roles after the database validation. The example profile installs a sample internal CA, writes an OpenTelemetry Collector-style service shim, and applies one safe hardening marker so you can see the flow without adding private packages or secrets.
 
-The committed monitoring example uses OpenTelemetry Collector naming but avoids secrets. Production profiles should include validation roles so every installed enterprise tool can be checked during build or artifact validation.
+The committed examples use Ansible `become` for system paths and services, use OpenTelemetry Collector naming, and avoid secrets. Production profiles should include validation roles so every installed enterprise tool can be checked during build or artifact validation.
 
 Common enterprise recipes:
 

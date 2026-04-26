@@ -3,6 +3,7 @@
     msg: "vm.swappiness"
 
 - name: Ensure hardening marker directory exists
+  become: yes
   ansible.builtin.file:
     path: "{{ enterprise_hardening_marker_path | dirname }}"
     state: directory
@@ -12,6 +13,7 @@
   when: enterprise_hardening_enabled | default(false) | bool
 
 - name: Persist safe hardening sysctl
+  become: yes
   ansible.builtin.copy:
     dest: /etc/sysctl.d/99-ndb-enterprise-hardening.conf
     owner: root
@@ -21,6 +23,7 @@
   when: enterprise_hardening_enabled | default(false) | bool
 
 - name: Apply safe hardening sysctl at runtime
+  become: yes
   ansible.builtin.command:
     argv:
       - sysctl
@@ -30,6 +33,7 @@
   when: enterprise_hardening_enabled | default(false) | bool
 
 - name: Write hardening marker file
+  become: yes
   ansible.builtin.copy:
     dest: "{{ enterprise_hardening_marker_path }}"
     owner: root

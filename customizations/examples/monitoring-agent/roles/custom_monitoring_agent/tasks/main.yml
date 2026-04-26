@@ -3,6 +3,7 @@
     msg: "ndb-example-otelcol"
 
 - name: Ensure OpenTelemetry Collector example directory exists
+  become: yes
   ansible.builtin.file:
     path: "{{ enterprise_otel_config_path | dirname }}"
     state: directory
@@ -12,6 +13,7 @@
   when: enterprise_monitoring_enabled | default(false) | bool
 
 - name: Write OpenTelemetry Collector example config
+  become: yes
   ansible.builtin.copy:
     dest: "{{ enterprise_otel_config_path }}"
     owner: root
@@ -34,6 +36,7 @@
   when: enterprise_monitoring_enabled | default(false) | bool
 
 - name: Write OpenTelemetry Collector example marker
+  become: yes
   ansible.builtin.copy:
     dest: "{{ enterprise_otel_marker_path }}"
     owner: root
@@ -43,6 +46,7 @@
   when: enterprise_monitoring_enabled | default(false) | bool
 
 - name: Install example OpenTelemetry Collector systemd unit
+  become: yes
   ansible.builtin.copy:
     dest: "/etc/systemd/system/{{ enterprise_otel_service_name }}.service"
     owner: root
@@ -63,6 +67,7 @@
   when: enterprise_monitoring_enabled | default(false) | bool
 
 - name: Enable and start example monitoring service
+  become: yes
   ansible.builtin.systemd:
     name: "{{ enterprise_otel_service_name }}"
     enabled: true

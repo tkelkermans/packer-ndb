@@ -3,6 +3,7 @@
     msg: "custom_internal_ca"
 
 - name: Ensure enterprise marker directory exists
+  become: yes
   ansible.builtin.file:
     path: /etc/ndb-enterprise
     state: directory
@@ -11,6 +12,7 @@
     mode: "0755"
 
 - name: Generate sample internal CA certificate on RedHat family
+  become: yes
   ansible.builtin.command:
     argv:
       - openssl
@@ -34,6 +36,7 @@
     - ansible_os_family == "RedHat"
 
 - name: Set RedHat sample CA certificate permissions
+  become: yes
   ansible.builtin.file:
     path: "{{ enterprise_internal_ca_path_redhat }}"
     owner: root
@@ -44,6 +47,7 @@
     - ansible_os_family == "RedHat"
 
 - name: Generate sample internal CA certificate on Debian family
+  become: yes
   ansible.builtin.command:
     argv:
       - openssl
@@ -67,6 +71,7 @@
     - ansible_os_family == "Debian"
 
 - name: Set Debian sample CA certificate permissions
+  become: yes
   ansible.builtin.file:
     path: "{{ enterprise_internal_ca_path_debian }}"
     owner: root
@@ -77,6 +82,7 @@
     - ansible_os_family == "Debian"
 
 - name: Update RedHat trust store
+  become: yes
   ansible.builtin.command: update-ca-trust
   changed_when: true
   when:
@@ -84,6 +90,7 @@
     - ansible_os_family == "RedHat"
 
 - name: Update Debian trust store
+  become: yes
   ansible.builtin.command: update-ca-certificates
   changed_when: true
   when:
