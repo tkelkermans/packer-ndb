@@ -433,6 +433,32 @@ YAML
 
 run_customization_build_time_vars_dry_run_tests
 
+run_build_extension_selection_tests() {
+  local output
+
+  output=$(cd "$ROOT_DIR" && ./build.sh --ci --dry-run --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18 2>&1)
+  grep -q '"postgres_extensions": \[\]' <<<"$output" || fail "default build should select no PostgreSQL extensions"
+  grep -q '"selected_extensions": \[\]' <<<"$output" || fail "dry-run should show selected extensions"
+
+  output=$(cd "$ROOT_DIR" && ./build.sh --ci --dry-run --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18 --extensions pgvector,postgis 2>&1)
+  grep -q '"postgres_extensions": \[' <<<"$output" || fail "selected extensions missing from generated vars"
+  grep -q '"pgvector"' <<<"$output" || fail "pgvector missing from generated vars"
+  grep -q '"postgis"' <<<"$output" || fail "postgis missing from generated vars"
+  grep -q "not release-note-qualified for this matrix row" <<<"$output" || fail "non-qualified extension warning missing"
+
+  if (cd "$ROOT_DIR" && ./build.sh --ci --dry-run --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18 --extensions not_real >/dev/null 2>&1); then
+    fail "unknown PostgreSQL extension unexpectedly passed"
+  fi
+
+  if (cd "$ROOT_DIR" && ./build.sh --ci --dry-run --ndb-version 2.10 --db-type mongodb --os "Rocky Linux" --os-version 9.7 --db-version 8.0 --extensions pgvector >/dev/null 2>&1); then
+    fail "MongoDB build accepted PostgreSQL extensions"
+  fi
+
+  pass "build.sh PostgreSQL extension selection"
+}
+
+run_build_extension_selection_tests
+
 run_customization_preflight_order_tests() {
   local tmpdir output valid_profile invalid_profile ansible_log curl_log cmd cmd_path
   tmpdir=$(mktemp -d)

@@ -10,7 +10,7 @@
 - [x] Execute Task 1: shared PostgreSQL extension catalog helper.
 - [x] Execute Task 2: qualified extension matrix validation.
 - [x] Execute Task 3: matrix migration from install lists to release-note metadata.
-- [ ] Execute Task 4: `build.sh --extensions` explicit selection.
+- [x] Execute Task 4: `build.sh --extensions` explicit selection.
 - [ ] Execute Task 5: artifact validation and test harness semantics.
 - [ ] Execute Task 6: wizard/TUI individual extension selection.
 - [ ] Execute Task 7: README and agent memory updates.

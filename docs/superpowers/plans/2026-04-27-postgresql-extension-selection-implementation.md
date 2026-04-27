@@ -466,7 +466,7 @@ git commit -m "Migrate PostgreSQL matrix extensions to qualified metadata"
 - Modify: `build.sh`
 - Modify: `scripts/selftest.sh`
 
-- [ ] **Step 1: Add failing CLI/dry-run selftests**
+- [x] **Step 1: Add failing CLI/dry-run selftests**
 
 Add tests that call `build.sh --dry-run` with synthetic or real matrix rows and assert generated vars:
 
@@ -498,7 +498,7 @@ run_build_extension_selection_tests() {
 run_build_extension_selection_tests
 ```
 
-- [ ] **Step 2: Run selftests and verify they fail**
+- [x] **Step 2: Run selftests and verify they fail**
 
 Run:
 
@@ -508,7 +508,7 @@ bash scripts/selftest.sh
 
 Expected: FAIL because `build.sh` has no `--extensions` option and still reads matrix `extensions`.
 
-- [ ] **Step 3: Source the helper and add CLI state**
+- [x] **Step 3: Source the helper and add CLI state**
 
 Near the top of `build.sh`, after helper path setup:
 
@@ -541,7 +541,7 @@ Add parser case:
       ;;
 ```
 
-- [ ] **Step 4: Resolve selected extensions after matrix row selection**
+- [x] **Step 4: Resolve selected extensions after matrix row selection**
 
 Replace the current matrix extension assignment:
 
@@ -584,7 +584,7 @@ fi
 
 Remove the old later `PROVISIONING_ROLE=$(...)` duplicate assignment. Update the `generate_ansible_vars_json` call to pass `POSTGRES_SELECTED_EXTENSIONS_JSON`.
 
-- [ ] **Step 5: Add dry-run and manifest visibility**
+- [x] **Step 5: Add dry-run and manifest visibility**
 
 In the dry-run output after `Provisioning role`, add:
 
@@ -601,7 +601,7 @@ After manifest init, add:
 "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".extensions.not_release_note_qualified" --json-value "$POSTGRES_EXTENSION_WARNINGS_JSON"
 ```
 
-- [ ] **Step 6: Pass selected extensions to artifact validation**
+- [x] **Step 6: Pass selected extensions to artifact validation**
 
 Replace the artifact validation argument:
 
@@ -615,7 +615,7 @@ with:
 --extensions "$POSTGRES_SELECTED_EXTENSIONS_JSON"
 ```
 
-- [ ] **Step 7: Run selftests**
+- [x] **Step 7: Run selftests**
 
 Run:
 
@@ -625,7 +625,7 @@ bash scripts/selftest.sh
 
 Expected: build extension selection tests pass.
 
-- [ ] **Step 8: Commit Task 4**
+- [x] **Step 8: Commit Task 4**
 
 ```bash
 git add build.sh scripts/selftest.sh
@@ -926,7 +926,7 @@ else
 fi
 ```
 
-- [ ] **Step 7: Run selftests**
+- [x] **Step 7: Run selftests**
 
 Run:
 

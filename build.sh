@@ -10,6 +10,8 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MANIFEST_HELPER="${SCRIPT_DIR}/scripts/manifest.sh"
 # shellcheck source=scripts/source_images.sh
 source "${SCRIPT_DIR}/scripts/source_images.sh"
+# shellcheck source=scripts/postgres_extensions.sh
+source "${SCRIPT_DIR}/scripts/postgres_extensions.sh"
 
 REQUIRED_ENV_VARS=(
   "PKR_VAR_pc_username"
@@ -110,6 +112,7 @@ Options:
   --os NAME                 Operating system name from matrix.json
   --os-version VERSION      Operating system version from matrix.json
   --db-version VERSION      Database version from matrix.json
+  --extensions LIST         PostgreSQL extensions to install: none, all-qualified, or comma-separated names
   --source-image-uri URI    Override images.json with an explicit source image URI or local file path
   --source-image-name NAME  Override images.json with the name of an image that already exists in Prism
   --source-image-uuid UUID  Override images.json with the UUID of an image that already exists in Prism
@@ -378,6 +381,7 @@ function generate_ansible_vars_json() {
   local customization_profile_name=${10}
   local customization_profile_file=${11}
   local customization_repo_root=${12}
+  local qualified_extensions_json=${13:-[]}
 
   jq -nc \
     --arg db_version "$db_version" \
@@ -390,6 +394,7 @@ function generate_ansible_vars_json() {
     --arg customization_repo_root "$customization_repo_root" \
     --argjson validate_build "$validate_build" \
     --argjson postgres_extensions "${extensions_json:-[]}" \
+    --argjson qualified_extensions "${qualified_extensions_json:-[]}" \
     --argjson mongodb_deployments "${mongodb_deployments_json:-[]}" \
     --argjson customization_enabled "$customization_enabled" \
     '{
@@ -399,6 +404,8 @@ function generate_ansible_vars_json() {
       provisioning_role: $provisioning_role,
       validate_build: $validate_build,
       postgres_extensions: $postgres_extensions,
+      selected_extensions: $postgres_extensions,
+      qualified_extensions: $qualified_extensions,
       mongodb_edition: $mongodb_edition,
       mongodb_deployments: $mongodb_deployments,
       customization_enabled: $customization_enabled,
@@ -524,6 +531,8 @@ Selection:
   DB version: ${DB_VERSION}
   OS: ${OS_TYPE} ${OS_VERSION}
   Provisioning role: ${PROVISIONING_ROLE}
+  Qualified PostgreSQL extensions: $(jq -r 'if length > 0 then join(", ") else "none" end' <<<"$POSTGRES_QUALIFIED_EXTENSIONS_JSON")
+  Selected PostgreSQL extensions: $(jq -r 'if length > 0 then join(", ") else "none" end' <<<"$POSTGRES_SELECTED_EXTENSIONS_JSON")
 
 Resolved files:
   Matrix file: ${MATRIX_FILE}
@@ -661,6 +670,11 @@ CUSTOMIZATION_ENABLED=false
 CUSTOMIZATION_NO_CUSTOMIZATIONS=false
 CUSTOMIZATION_ROLE_PATHS=()
 CUSTOMIZATION_SUMMARY_FILE=""
+POSTGRES_EXTENSIONS_SELECTION="none"
+POSTGRES_SELECTED_EXTENSIONS_JSON="[]"
+POSTGRES_QUALIFIED_EXTENSIONS_JSON="[]"
+POSTGRES_EXTENSION_WARNINGS_JSON="[]"
+POSTGRES_ALL_QUALIFIED_SKIPPED_JSON="[]"
 
 declare NDB_VERSION=""
 declare OS_TYPE=""
@@ -716,6 +730,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --db-type)
       DB_TYPE="$2"
+      shift
+      ;;
+    --extensions)
+      POSTGRES_EXTENSIONS_SELECTION="$2"
       shift
       ;;
     --source-image-uri)
@@ -848,11 +866,38 @@ if [[ -z "$CONFIG" ]]; then
 fi
 
 ENGINE_NAME=$(echo "$CONFIG" | jq -r '.engine // ""')
-POSTGRES_EXTENSIONS_JSON=$(echo "$CONFIG" | jq -c '.extensions // []')
 PROVISIONING_ROLE=$(echo "$CONFIG" | jq -r '.provisioning_role // "postgresql"')
+POSTGRES_QUALIFIED_EXTENSIONS_JSON=$(echo "$CONFIG" | jq -c '.qualified_extensions // []')
+
+if [[ "$PROVISIONING_ROLE" != "postgresql" && "$POSTGRES_EXTENSIONS_SELECTION" != "none" ]]; then
+  echo "Error: --extensions is only valid for PostgreSQL builds." >&2
+  exit 1
+fi
+
+POSTGRES_SELECTED_EXTENSIONS_JSON=$(postgres_extensions_resolve_selection_json "$POSTGRES_EXTENSIONS_SELECTION" "$POSTGRES_QUALIFIED_EXTENSIONS_JSON")
+POSTGRES_UNKNOWN_EXTENSIONS_JSON=$(postgres_extensions_unknown_json "$POSTGRES_SELECTED_EXTENSIONS_JSON")
+if [[ "$(jq 'length' <<<"$POSTGRES_UNKNOWN_EXTENSIONS_JSON")" -gt 0 ]]; then
+  echo "Error: Unknown or not installable PostgreSQL extensions: $(jq -r 'join(", ")' <<<"$POSTGRES_UNKNOWN_EXTENSIONS_JSON")" >&2
+  exit 1
+fi
+
+POSTGRES_EXTENSION_WARNINGS_JSON=$(postgres_extensions_not_qualified_json "$POSTGRES_SELECTED_EXTENSIONS_JSON" "$POSTGRES_QUALIFIED_EXTENSIONS_JSON")
+if [[ "$(jq 'length' <<<"$POSTGRES_EXTENSION_WARNINGS_JSON")" -gt 0 ]]; then
+  while IFS= read -r extension_name; do
+    echo "Warning: Extension ${extension_name} is installable by this tool, but is not release-note-qualified for this matrix row." >&2
+  done < <(jq -r '.[]' <<<"$POSTGRES_EXTENSION_WARNINGS_JSON")
+fi
+
+if [[ "$POSTGRES_EXTENSIONS_SELECTION" == "all-qualified" ]]; then
+  POSTGRES_ALL_QUALIFIED_SKIPPED_JSON=$(postgres_extensions_all_qualified_skipped_json "$POSTGRES_QUALIFIED_EXTENSIONS_JSON")
+  if [[ "$(jq 'length' <<<"$POSTGRES_ALL_QUALIFIED_SKIPPED_JSON")" -gt 0 ]]; then
+    echo "Warning: Some release-note-qualified extensions are not installable by this tool yet and were skipped: $(jq -r 'join(", ")' <<<"$POSTGRES_ALL_QUALIFIED_SKIPPED_JSON")" >&2
+  fi
+fi
+
 MONGODB_EDITION=$(echo "$CONFIG" | jq -r '.mongodb_edition // "community"')
 MONGODB_DEPLOYMENTS_JSON=$(echo "$CONFIG" | jq -c '.deployment // []')
-ANSIBLE_VARS_JSON=$(generate_ansible_vars_json "$NDB_VERSION" "$DB_VERSION" "$POSTGRES_EXTENSIONS_JSON" "$DB_TYPE" "$VALIDATE_BUILD" "$PROVISIONING_ROLE" "$MONGODB_EDITION" "$MONGODB_DEPLOYMENTS_JSON" "$CUSTOMIZATION_ENABLED" "$CUSTOMIZATION_PROFILE_NAME" "$CUSTOMIZATION_PROFILE_FILE" "$SCRIPT_DIR")
+ANSIBLE_VARS_JSON=$(generate_ansible_vars_json "$NDB_VERSION" "$DB_VERSION" "$POSTGRES_SELECTED_EXTENSIONS_JSON" "$DB_TYPE" "$VALIDATE_BUILD" "$PROVISIONING_ROLE" "$MONGODB_EDITION" "$MONGODB_DEPLOYMENTS_JSON" "$CUSTOMIZATION_ENABLED" "$CUSTOMIZATION_PROFILE_NAME" "$CUSTOMIZATION_PROFILE_FILE" "$SCRIPT_DIR" "$POSTGRES_QUALIFIED_EXTENSIONS_JSON")
 case "$PROVISIONING_ROLE" in
   postgresql|mongodb)
     ;;
@@ -1032,6 +1077,9 @@ if [[ "$WRITE_MANIFEST" == "true" && "$DRY_RUN" != "true" && "$PREFLIGHT_ONLY" !
     --matrix-row-json "$CONFIG"
   CUSTOMIZATION_MANIFEST_JSON=$(customization_manifest_json)
   "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".customization" --json-value "$CUSTOMIZATION_MANIFEST_JSON"
+  "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".extensions.qualified" --json-value "$POSTGRES_QUALIFIED_EXTENSIONS_JSON"
+  "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".extensions.selected" --json-value "$POSTGRES_SELECTED_EXTENSIONS_JSON"
+  "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".extensions.not_release_note_qualified" --json-value "$POSTGRES_EXTENSION_WARNINGS_JSON"
 fi
 
 if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
@@ -1173,7 +1221,7 @@ if [[ "$VALIDATE_ARTIFACT" == "true" ]]; then
     --ndb-version "$NDB_VERSION"
     --db-version "$DB_VERSION"
     --db-type "$DB_TYPE"
-    --extensions "$POSTGRES_EXTENSIONS_JSON"
+    --extensions "$POSTGRES_SELECTED_EXTENSIONS_JSON"
     --provisioning-role "$PROVISIONING_ROLE"
     --mongodb-edition "$MONGODB_EDITION"
     --mongodb-deployments "$MONGODB_DEPLOYMENTS_JSON"
