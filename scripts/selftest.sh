@@ -1734,8 +1734,9 @@ run_readme_mongodb_tests
 
 run_readme_wizard_tests() {
   grep -q "scripts/build_wizard.sh" "$ROOT_DIR/README.md" || fail "README missing build wizard command"
-  grep -q "PostgreSQL rows, the wizard shows" "$ROOT_DIR/README.md" || fail "README missing wizard PostgreSQL extension guidance"
-  grep -q "Extension installation is still controlled by" "$ROOT_DIR/README.md" || fail "README missing matrix-driven extension guidance"
+  grep -q "PostgreSQL extensions are optional" "$ROOT_DIR/README.md" || fail "README missing optional PostgreSQL extension guidance"
+  grep -q -- "--extensions pgvector,postgis" "$ROOT_DIR/README.md" || fail "README missing direct PostgreSQL extension CLI example"
+  grep -q "not release-note-qualified for this matrix row" "$ROOT_DIR/README.md" || fail "README missing advisory qualification warning wording"
   ! grep -q "Maintainer rule:" "$ROOT_DIR/README.md" || fail "README should not contain agent maintainer rules"
   pass "README build wizard guidance"
 }
@@ -1748,9 +1749,10 @@ run_agent_guidance_tests() {
   grep -q "Packer, Terraform, Ansible, and shell" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing toolchain guidance"
   grep -q "op run --env-file .env" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing 1Password env guidance"
   grep -q -- "--source-image-uuid" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing source image UUID guidance"
-  grep -q "PostgreSQL extensions are matrix-driven" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing PostgreSQL extension guidance"
+  grep -q "qualified_extensions" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing qualified extension metadata guidance"
   grep -q "RHEL live validation has been blocked" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing RHEL validation blocker"
   grep -q "update the shell wizard/TUI in the same work item" "$ROOT_DIR/tasks/lessons.md" || fail "lessons missing wizard maintenance rule"
+  grep -q "Do not treat qualified_extensions as default installs" "$ROOT_DIR/tasks/lessons.md" || fail "lessons missing qualified extension correction"
   pass "agent guidance"
 }
 

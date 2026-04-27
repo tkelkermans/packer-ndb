@@ -33,13 +33,15 @@ This file is project memory for Codex agents working in this repository. Keep it
 
 - `scripts/build_wizard.sh` is a thin shell wrapper for single-image builds. It must generate ordinary `./build.sh --ci ...` commands rather than becoming a second build engine.
 - When adding or changing single-image build behavior, update the shell wizard/TUI in the same work item if the change affects user choices, generated flags, warnings, validation defaults, or preview text.
-- PostgreSQL extensions are matrix-driven. The wizard should display selected-row extensions and `extensions_empty_reason`; it should not invent separate extension flags unless `build.sh` gains that capability.
+- PostgreSQL extension matrix data is advisory release-note metadata. Use `qualified_extensions` for what Nutanix release notes qualify, and use build-time `--extensions` / wizard selections for what gets installed.
+- Do not treat `qualified_extensions` as default installs. Default selected PostgreSQL extensions should be empty.
+- When changing extension choices, warnings, validation defaults, or generated flags, update `scripts/build_wizard.sh` in the same change.
 - Keep the wizard print-only path safe: it must be possible to preview a command without Prism credentials and without starting Packer.
 
 ## Matrix And Release Rules
 
 - Run `scripts/matrix_validate.sh ndb/*/matrix.json` after matrix edits.
-- Buildable PostgreSQL rows with empty or missing `extensions` must include a non-empty `extensions_empty_reason`.
+- Buildable PostgreSQL rows with empty or missing `qualified_extensions` must include a non-empty `qualified_extensions_empty_reason`.
 - MongoDB rows require `mongodb_edition` and a non-empty `deployment` list using `single-instance`, `replica-set`, and/or `sharded-cluster`.
 - Do not encode MongoDB topology in `os_version`; use `deployment` metadata.
 - When adding a new NDB release, scaffold first if useful, then compare the copied matrix against the release notes before building.

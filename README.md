@@ -65,13 +65,9 @@ If you are new to the project, start with the single-image wizard:
 scripts/build_wizard.sh
 ```
 
-The wizard does not replace `build.sh`. It asks beginner-friendly questions, shows the selected matrix row, prints the exact `./build.sh --ci ...` command, and lets you either print the command or run it.
+The wizard does not replace `build.sh`. It asks beginner-friendly questions, shows the selected matrix row, lets you choose PostgreSQL extensions one by one when the selected row is PostgreSQL, prints the exact `./build.sh --ci ...` command, and lets you either print the command or run it.
 
-For PostgreSQL rows, the wizard shows the matrix-defined extension list before you build. Extension installation is still controlled by `ndb/<version>/matrix.json`; to change extensions, edit or add a matrix row, then run:
-
-```bash
-scripts/matrix_validate.sh ndb/*/matrix.json
-```
+PostgreSQL extensions are optional. The wizard defaults to no extensions, shows which extensions are release-note-qualified for the selected row, and warns if you select an installable extension that is not release-note-qualified for this matrix row.
 
 ### 4. Run A Safe Dry Run
 
@@ -147,7 +143,7 @@ op run --env-file .env -- ./test.sh --include-db-type mongodb --validate --valid
 
 `test.sh` skips RHEL rows unless you add `--allow-rhel`. Only add it after the licensed RHEL source image environment variables are set.
 
-Run every buildable PostgreSQL row that requests extension installation. This is the full extension coverage command for the matrix. It includes RHEL rows, validates the temporary build VM, validates the saved artifact, writes manifests, and keeps going after failures so you get a complete report. Each background build runs with stdin isolated from the matrix reader so every selected row is tested.
+Run every buildable PostgreSQL row that has installable release-note-qualified extensions and select those extensions automatically. This is the extension coverage command for the matrix. It includes RHEL rows, validates the temporary build VM, validates the saved artifact, writes manifests, and keeps going after failures so you get a complete report. Each background build runs with stdin isolated from the matrix reader so every selected row is tested.
 
 ```bash
 ./test.sh --extensions-only --continue-on-error --allow-rhel --validate --validate-artifact --manifest --max-parallel 1
@@ -364,7 +360,7 @@ Add `--debug` to keep the validation VM on failure:
 ./build.sh --debug --ci --validate-artifact --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
-The validation role maps matrix extension names to SQL extension names. For example, `pgvector` is validated as SQL extension `vector`. By default, every extension listed in a buildable matrix row must be installable and must exist in PostgreSQL after provisioning. If a listed extension is marked unsupported by the Ansible metadata, the build or artifact validation fails instead of silently skipping it.
+The validation role maps selected extension names to SQL extension names. For example, `pgvector` is validated as SQL extension `vector`. By default, every selected extension must be installable and must exist in PostgreSQL after provisioning. If a selected extension is not installable by the Ansible metadata, the build or artifact validation fails instead of silently skipping it.
 
 ## Manifests
 
@@ -508,7 +504,7 @@ export NDB_RHEL_9_6_IMAGE_URI="/path/to/rhel-9.6.qcow2"
 
 ### Matrix Files
 
-The matrix file is the support contract for one NDB version. Each buildable PostgreSQL row should include:
+The matrix file is the support contract for one NDB version. Each buildable PostgreSQL row should include release-note qualification metadata:
 
 ```json
 {
@@ -527,13 +523,13 @@ The matrix file is the support contract for one NDB version. Each buildable Post
     "haproxy": ["2.8.9"],
     "keepalived": ["2.2.8"]
   },
-  "extensions": ["pg_stat_statements", "pgvector"]
+  "qualified_extensions": []
 }
 ```
 
-If `extensions` is omitted or empty, the PostgreSQL role does not install extension packages or create extensions.
+`qualified_extensions` records what Nutanix release notes qualify for that exact NDB version, OS version, PostgreSQL distribution, and PostgreSQL version. It is not an install list. PostgreSQL extension installation is a per-build choice through the wizard or `build.sh --extensions`.
 
-For buildable PostgreSQL rows, an empty extension list must be intentional. Add `extensions_empty_reason` so the validator can tell the difference between "we checked and chose none" and "we forgot to add extension coverage":
+For buildable PostgreSQL rows, an empty qualified extension list must be intentional. Add `qualified_extensions_empty_reason` so the validator can tell the difference between "the release notes do not qualify extensions for this exact row" and "we forgot to check the release notes":
 
 ```json
 {
@@ -544,8 +540,8 @@ For buildable PostgreSQL rows, an empty extension list must be intentional. Add 
   "os_version": "9.7",
   "db_version": "18",
   "provisioning_role": "postgresql",
-  "extensions": [],
-  "extensions_empty_reason": "Extension package coverage is pending for this newly supported OS or PostgreSQL combination."
+  "qualified_extensions": [],
+  "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
 }
 ```
 
@@ -583,8 +579,8 @@ Each object must include ndb_version, engine, db_type, os_type, os_version, db_v
 Add patroni_version, etcd_version, and ha_components when the release notes include PostgreSQL HA component data.
 Use provisioning_role=postgresql only for combinations that are actually buildable by the current PostgreSQL pipeline.
 Use provisioning_role=mongodb only for combinations that are actually buildable by the current MongoDB pipeline, and include mongodb_edition plus deployment metadata for those rows.
-For buildable PostgreSQL rows, add the qualified PostgreSQL extensions in extensions.
-If a buildable PostgreSQL row intentionally has no extension coverage yet, set extensions to [] and add a clear extensions_empty_reason.
+For buildable PostgreSQL rows, add release-note-qualified PostgreSQL extensions in qualified_extensions.
+If Nutanix release notes do not list qualified extensions for the exact row, set qualified_extensions to [] and add a clear qualified_extensions_empty_reason.
 Use provisioning_role=metadata for documentation-only rows and for database engines that are not buildable yet.
 ```
 
@@ -592,7 +588,25 @@ Always review the generated matrix manually against the release notes before bui
 
 ### PostgreSQL Extensions
 
-The PostgreSQL role can install and enable these NDB-qualified extensions when they are listed in a matrix row:
+PostgreSQL extensions are optional. The tool installs no extensions unless you select them.
+
+For most DBA workflows, select only the extensions required by the application. Nutanix release notes list which extensions are qualified for specific OS and PostgreSQL combinations; this project stores that release-note metadata as `qualified_extensions` in each PostgreSQL matrix row.
+
+The wizard is the easiest way to choose extensions for one image:
+
+```bash
+scripts/build_wizard.sh
+```
+
+Direct CLI users can pass a comma-separated list:
+
+```bash
+./build.sh --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18 --extensions pgvector,postgis
+```
+
+Use `--extensions none` or omit `--extensions` to install no extensions. Use `--extensions all-qualified` only for coverage-style builds where you want every release-note-qualified extension that this project can install today.
+
+The build tool currently knows how to install and validate these PostgreSQL extensions:
 
 - `pg_cron`
 - `pglogical`
@@ -604,13 +618,17 @@ The PostgreSQL role can install and enable these NDB-qualified extensions when t
 - `set_user`
 - `timescaledb`
 
-The role installs the matching packages and runs `CREATE EXTENSION IF NOT EXISTS ...` in the `postgres` database by default. Red Hat family systems use PGDG packages for these extensions. Ubuntu systems use PGDG for the PostgreSQL extension packages and add the official TimescaleDB packagecloud repository when `timescaledb` is requested, including the dearmored packagecloud keyring apt expects. Override target databases with `postgres_extensions_databases` if needed.
+If you choose an installable extension that is not listed as qualified for the selected row, the build continues and prints this warning:
+
+```text
+Extension <name> is installable by this tool, but is not release-note-qualified for this matrix row.
+```
+
+The role installs the matching packages for selected extensions and runs `CREATE EXTENSION IF NOT EXISTS ...` in the `postgres` database by default. Red Hat family systems use PGDG packages for these extensions. Ubuntu systems use PGDG for the PostgreSQL extension packages and add the official TimescaleDB packagecloud repository when `timescaledb` is requested, including the dearmored packagecloud keyring apt expects. Override target databases with `postgres_extensions_databases` if needed.
 
 Package names are not always obvious. For example, Red Hat family systems use `pgaudit_16` and `timescaledb_16`, while Ubuntu uses `postgresql-16-pgaudit`, `postgresql-contrib-16`, and `timescaledb-2-postgresql-16`.
 
-Requested extension skips fail by default. This keeps the matrix honest: if an extension is listed in a buildable row, the automation must install it and validation must find it in PostgreSQL.
-
-The matrix validator fails buildable PostgreSQL rows that have no extension list unless `extensions_empty_reason` is present. This keeps extension gaps visible before a long Packer run starts.
+Requested extension skips fail by default. If you select an extension, the automation must install it and validation must find it in PostgreSQL.
 
 ### Current PostgreSQL Coverage
 

@@ -13,7 +13,7 @@
 - [x] Execute Task 4: `build.sh --extensions` explicit selection.
 - [x] Execute Task 5: artifact validation and test harness semantics.
 - [x] Execute Task 6: wizard/TUI individual extension selection.
-- [ ] Execute Task 7: README and agent memory updates.
+- [x] Execute Task 7: README and agent memory updates.
 - [ ] Execute Task 8: final offline verification and review notes.
 
 # Active Plan: Consolidate AGENTS Project Memory

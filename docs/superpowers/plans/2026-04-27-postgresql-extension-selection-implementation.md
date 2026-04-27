@@ -953,7 +953,7 @@ git commit -m "Add wizard PostgreSQL extension selection"
 - Modify: `tasks/lessons.md`
 - Modify: `scripts/selftest.sh`
 
-- [ ] **Step 1: Add failing documentation guards**
+- [x] **Step 1: Add failing documentation guards**
 
 Update `run_documentation_tests` or the equivalent README/AGENTS selftest block in `scripts/selftest.sh`:
 
@@ -975,7 +975,7 @@ bash scripts/selftest.sh
 
 Expected: FAIL until docs are updated.
 
-- [ ] **Step 3: Update README beginner guidance**
+- [x] **Step 3: Update README beginner guidance**
 
 Add or replace the PostgreSQL extension section with beginner wording:
 
@@ -1007,7 +1007,7 @@ Extension <name> is installable by this tool, but is not release-note-qualified 
 Use `--extensions none` or omit `--extensions` to install no extensions. Use `--extensions all-qualified` only for coverage-style builds where you want every release-note-qualified extension that this project can install today.
 ```
 
-- [ ] **Step 4: Update matrix authoring guidance in README**
+- [x] **Step 4: Update matrix authoring guidance in README**
 
 Replace references to `extensions` and `extensions_empty_reason` with:
 
@@ -1017,7 +1017,7 @@ Replace references to `extensions` and `extensions_empty_reason` with:
 - Do not use `qualified_extensions` as a default install list. Extension installation is a per-build choice via the wizard or `build.sh --extensions`.
 ```
 
-- [ ] **Step 5: Update agent memory**
+- [x] **Step 5: Update agent memory**
 
 Add to `AGENTS.md`:
 
@@ -1043,7 +1043,7 @@ bash scripts/selftest.sh
 
 Expected: documentation guards pass.
 
-- [ ] **Step 7: Commit Task 7**
+- [x] **Step 7: Commit Task 7**
 
 ```bash
 git add README.md AGENTS.md tasks/lessons.md scripts/selftest.sh
