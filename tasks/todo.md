@@ -1,5 +1,37 @@
 # Task Plan
 
+# Active Plan: PostgreSQL Extension Image Name Suffix
+
+- [x] Add failing selftest coverage that selected PostgreSQL extensions appear in generated image names.
+- [x] Implement a shell-only extension image-name suffix helper in `build.sh`.
+- [x] Keep no-extension builds on the current image naming pattern.
+- [x] Update the single-image wizard/TUI preview so operators know extension choices affect the image name.
+- [x] Update README image naming and PostgreSQL extension guidance.
+- [x] Update durable lessons for this naming pitfall.
+- [x] Run verification: targeted selftest, shell syntax, full selftest if feasible, dry-run checks, and `git diff --check`.
+
+# Active Plan Review: PostgreSQL Extension Image Name Suffix
+
+- Added a shared shell helper that converts selected PostgreSQL extensions into an image-name suffix such as `ext-pg-stat-statements` or `ext-pgvector-postgis`.
+- Builds with no PostgreSQL extensions keep the existing image naming pattern.
+- Builds with selected PostgreSQL extensions now include the suffix before the timestamp in both the saved image name and generated VM name base.
+- The dry-run summary now shows `Image variant suffix`, and the wizard/TUI previews the extension suffix after individual extension selection.
+- Long extension selections keep the first three extension names and add a checksum-backed `plus-N-<hash>` tail.
+- README now explains the extension suffix in both PostgreSQL extension guidance and image naming guidance.
+- Verification passed: red selftest first failed with `FAIL: selected extensions missing from image name`; `bash -n build.sh test.sh scripts/*.sh`; selected-extension dry-run; no-extension dry-run; `bash scripts/selftest.sh`; `bash scripts/matrix_validate.sh ndb/2.9/matrix.json ndb/2.10/matrix.json`; and `git diff --check`.
+- Live validation passed on Prism with `--validate --validate-artifact --manifest --extensions pg_stat_statements` using source image UUID `7a6d6c2f-90b4-4acb-bf14-6f2be1bf006e`.
+- Live saved image: `ndb-2.10-pgsql-18-Rocky Linux-9.7-ext-pg-stat-statements-20260427091501` (`d44c8a46-58b9-40b2-9e09-529c25bc7a86`).
+- Live manifest recorded `validation.in_guest == "passed"`, `validation.artifact == "passed"`, `cleanup.artifact_validation_vm == "deleted"`, and `extensions.selected == ["pg_stat_statements"]`.
+
+# Active Plan Review: Live PostgreSQL Extension Selection Smoke
+
+- Live preflight passed for NDB 2.10 PostgreSQL 18 on Rocky Linux 9.7 using source image UUID `7a6d6c2f-90b4-4acb-bf14-6f2be1bf006e` and selected extension `pg_stat_statements`.
+- Live build command passed with `--validate --validate-artifact --manifest --extensions pg_stat_statements`.
+- Saved Prism image: `ndb-2.10-pgsql-18-Rocky Linux-9.7-20260427090011` (`e530a5d2-71bc-45a5-9e00-a91a24182a45`).
+- In-guest validation passed, saved-artifact validation passed, and the manifest records the disposable validation VM cleanup as `deleted`.
+- Manifest evidence: `extensions.selected == ["pg_stat_statements"]`, `extensions.qualified == []`, and `extensions.not_release_note_qualified == ["pg_stat_statements"]`, matching the expected advisory warning path for this matrix row.
+- Follow-up debt observed during live Ansible runs: top-level `ansible_*` fact usage emits Ansible 2.20 deprecation warnings and should be migrated to `ansible_facts[...]` before Ansible 2.24.
+
 # Active Plan: PostgreSQL Extension Selection Implementation
 
 - [x] Approve advisory extension qualification design.

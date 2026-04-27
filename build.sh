@@ -22,6 +22,7 @@ REQUIRED_ENV_VARS=(
 )
 
 COMMON_REQUIRED_COMMANDS=(
+  "cksum"
   "jq"
 )
 
@@ -576,6 +577,7 @@ EOF
 
 Generated identifiers:
   Image name: ${IMAGE_NAME}
+  Image variant suffix: ${POSTGRES_IMAGE_NAME_SUFFIX:-none}
   VM name: ${VM_NAME}
 
 Generated Ansible vars:
@@ -1059,8 +1061,13 @@ fi
 
 # --- Generate Image Name ---
 TIMESTAMP=$(date +%Y%m%d%H%M%S)
-IMAGE_NAME="ndb-${NDB_VERSION}-${DB_TYPE}-${DB_VERSION}-${OS_TYPE}-${OS_VERSION}-${TIMESTAMP}"
-VM_NAME_BASE=$(slugify "${NDB_VERSION}-${DB_TYPE}-${DB_VERSION}-${OS_TYPE}-${OS_VERSION}")
+IMAGE_VARIANT_SUFFIX=""
+POSTGRES_IMAGE_NAME_SUFFIX=$(postgres_extensions_image_name_suffix_json "$POSTGRES_SELECTED_EXTENSIONS_JSON")
+if [[ -n "$POSTGRES_IMAGE_NAME_SUFFIX" ]]; then
+  IMAGE_VARIANT_SUFFIX="-${POSTGRES_IMAGE_NAME_SUFFIX}"
+fi
+IMAGE_NAME="ndb-${NDB_VERSION}-${DB_TYPE}-${DB_VERSION}-${OS_TYPE}-${OS_VERSION}${IMAGE_VARIANT_SUFFIX}-${TIMESTAMP}"
+VM_NAME_BASE=$(slugify "${NDB_VERSION}-${DB_TYPE}-${DB_VERSION}-${OS_TYPE}-${OS_VERSION}${IMAGE_VARIANT_SUFFIX}")
 VM_NAME="ndb-${VM_NAME_BASE:0:40}-${TIMESTAMP}"
 
 if [[ "$WRITE_MANIFEST" == "true" && "$DRY_RUN" != "true" && "$PREFLIGHT_ONLY" != "true" ]]; then

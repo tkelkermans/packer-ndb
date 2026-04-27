@@ -107,3 +107,35 @@ postgres_extensions_all_qualified_skipped_json() {
 postgres_extensions_json_to_csv() {
   jq -r 'if type == "array" and length > 0 then join(",") else "" end'
 }
+
+postgres_extensions_image_name_suffix_json() {
+  local selected_json=${1:-[]}
+  local slugs_json count joined prefix remaining checksum short_hash
+
+  count=$(jq -r 'length' <<<"$selected_json")
+  if [[ "$count" == "0" ]]; then
+    printf '\n'
+    return 0
+  fi
+
+  slugs_json=$(jq -c '
+    map(
+      ascii_downcase
+      | gsub("[^a-z0-9]+"; "-")
+      | gsub("(^-+|-+$)"; "")
+    )
+  ' <<<"$selected_json")
+  joined=$(jq -r 'join("-")' <<<"$slugs_json")
+
+  if (( count <= 3 && ${#joined} <= 60 )); then
+    printf 'ext-%s\n' "$joined"
+    return 0
+  fi
+
+  prefix=$(jq -r '.[0:3] | join("-")' <<<"$slugs_json")
+  remaining=$((count - 3))
+  checksum=$(printf '%s' "$joined" | cksum)
+  checksum=${checksum%% *}
+  short_hash=${checksum:0:8}
+  printf 'ext-%s-plus-%s-%s\n' "$prefix" "$remaining" "$short_hash"
+}

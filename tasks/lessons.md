@@ -10,3 +10,4 @@
 - When adding or changing single-image build behavior, update the shell wizard/TUI in the same work item if the change affects user choices, generated flags, warnings, validation defaults, or preview text.
 - Keep agent-only maintainer rules out of the beginner README. Put those rules in `AGENTS.md` and `tasks/lessons.md`, while the README stays focused on operator usage.
 - Do not treat qualified_extensions as default installs. They are release-note qualification metadata only; DBAs should explicitly select individual PostgreSQL extensions per build.
+- If a selected option changes the content of an image variant, make that option visible in generated image names when practical. Manifests are audit evidence, but operators browsing Prism also need names that distinguish extension/customization variants.

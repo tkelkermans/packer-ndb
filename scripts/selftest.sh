@@ -267,7 +267,7 @@ run_customization_dry_run_missing_ansible_tests() {
   output="$tmpdir/dry-run.out"
   mkdir -p "$tmpdir/bin"
 
-  for cmd in jq dirname mktemp date tr sed rm cat; do
+  for cmd in jq cksum dirname mktemp date tr sed rm cat; do
     cmd_path=$(command -v "$cmd") || fail "selftest missing required command: $cmd"
     ln -s "$cmd_path" "$tmpdir/bin/$cmd"
   done
@@ -310,7 +310,7 @@ run_customization_extra_role_path_dry_run_tests() {
   extra_roles="$ROOT_DIR/$relative_extra_roles"
   mkdir -p "$tmpdir/bin" "$extra_roles/custom_test_role/tasks"
 
-  for cmd in jq dirname mktemp date tr sed rm cat grep chmod bash; do
+  for cmd in jq cksum dirname mktemp date tr sed rm cat grep chmod bash; do
     cmd_path=$(command -v "$cmd") || fail "selftest missing required command: $cmd"
     ln -s "$cmd_path" "$tmpdir/bin/$cmd"
   done
@@ -439,12 +439,15 @@ run_build_extension_selection_tests() {
   output=$(cd "$ROOT_DIR" && ./build.sh --ci --dry-run --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18 2>&1)
   grep -q '"postgres_extensions": \[\]' <<<"$output" || fail "default build should select no PostgreSQL extensions"
   grep -q '"selected_extensions": \[\]' <<<"$output" || fail "dry-run should show selected extensions"
+  grep -Eq 'Image name: ndb-2\.10-pgsql-18-Rocky Linux-9\.7-[0-9]{14}' <<<"$output" || fail "default image name changed unexpectedly"
+  ! grep -q 'ext-' <<<"$output" || fail "default image name should not include extension suffix"
 
   output=$(cd "$ROOT_DIR" && ./build.sh --ci --dry-run --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18 --extensions pgvector,postgis 2>&1)
   grep -q '"postgres_extensions": \[' <<<"$output" || fail "selected extensions missing from generated vars"
   grep -q '"pgvector"' <<<"$output" || fail "pgvector missing from generated vars"
   grep -q '"postgis"' <<<"$output" || fail "postgis missing from generated vars"
   grep -q "not release-note-qualified for this matrix row" <<<"$output" || fail "non-qualified extension warning missing"
+  grep -Eq 'Image name: ndb-2\.10-pgsql-18-Rocky Linux-9\.7-ext-pgvector-postgis-[0-9]{14}' <<<"$output" || fail "selected extensions missing from image name"
 
   if (cd "$ROOT_DIR" && ./build.sh --ci --dry-run --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18 --extensions not_real >/dev/null 2>&1); then
     fail "unknown PostgreSQL extension unexpectedly passed"
@@ -470,7 +473,7 @@ run_customization_preflight_order_tests() {
   curl_log="$tmpdir/curl.log"
   mkdir -p "$tmpdir/bin"
 
-  for cmd in jq dirname mktemp date tr sed rm grep basename bash cat head; do
+  for cmd in jq cksum dirname mktemp date tr sed rm grep basename bash cat head; do
     cmd_path=$(command -v "$cmd") || fail "selftest missing required command: $cmd"
     ln -s "$cmd_path" "$tmpdir/bin/$cmd"
   done
@@ -1155,7 +1158,7 @@ run_release_scaffold_tests() {
 run_release_scaffold_tests
 
 run_postgres_extension_helper_tests() {
-  local selected unknown nonqualified resolved skipped
+  local selected unknown nonqualified resolved skipped suffix
 
   # shellcheck source=/dev/null
   source "$ROOT_DIR/scripts/postgres_extensions.sh"
@@ -1176,6 +1179,12 @@ run_postgres_extension_helper_tests() {
   skipped=$(postgres_extensions_all_qualified_skipped_json '["pgvector","citext","pg_cron"]')
   jq -e '. == ["pg_cron","pgvector"]' <<<"$resolved" >/dev/null || fail "all-qualified installable subset"
   jq -e '. == ["citext"]' <<<"$skipped" >/dev/null || fail "all-qualified skipped non-installable extensions"
+
+  suffix=$(postgres_extensions_image_name_suffix_json '["pg_stat_statements"]')
+  [[ "$suffix" == "ext-pg-stat-statements" ]] || fail "single extension image suffix"
+
+  suffix=$(postgres_extensions_image_name_suffix_json '["pg_cron","pglogical","pg_partman","pg_stat_statements"]')
+  [[ "$suffix" =~ ^ext-pg-cron-pglogical-pg-partman-plus-1-[0-9]+$ ]] || fail "long extension image suffix"
 
   pass "PostgreSQL extension helper"
 }
@@ -1289,6 +1298,7 @@ SH
     printf '1\n1\n1\n1\n1 3\n1\n1\n1\n' | "$wizard" >"$output" 2>&1
   ) || fail "wizard individual PostgreSQL extension selection failed"
   grep -Fq "Selected extensions: pgvector, pg_cron" "$output" || fail "wizard did not show selected extensions"
+  grep -Fq "Image name suffix: ext-pg-cron-pgvector" "$output" || fail "wizard did not preview extension image name suffix"
   grep -Fq -- "--extensions" "$output" || fail "wizard command missing selected extension flag"
   grep -Fq "pgvector,pg_cron" "$output" || fail "wizard command missing selected extension list"
   grep -Fq "not release-note-qualified for this matrix row" "$output" || fail "wizard did not warn for advanced extension selection"
@@ -1736,6 +1746,7 @@ run_readme_wizard_tests() {
   grep -q "scripts/build_wizard.sh" "$ROOT_DIR/README.md" || fail "README missing build wizard command"
   grep -q "PostgreSQL extensions are optional" "$ROOT_DIR/README.md" || fail "README missing optional PostgreSQL extension guidance"
   grep -q -- "--extensions pgvector,postgis" "$ROOT_DIR/README.md" || fail "README missing direct PostgreSQL extension CLI example"
+  grep -q "ext-pgvector-postgis" "$ROOT_DIR/README.md" || fail "README missing extension image naming example"
   grep -q "not release-note-qualified for this matrix row" "$ROOT_DIR/README.md" || fail "README missing advisory qualification warning wording"
   ! grep -q "Maintainer rule:" "$ROOT_DIR/README.md" || fail "README should not contain agent maintainer rules"
   pass "README build wizard guidance"

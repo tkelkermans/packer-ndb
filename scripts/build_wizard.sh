@@ -264,6 +264,7 @@ prompt_multi_select() {
 append_postgres_extension_args() {
   local row_json=$1
   local qualified_json installable_json qualified_installable_json advanced_json selected_json selected_csv warnings_json
+  local resolved_for_suffix_json image_suffix
   local options=() extension
 
   qualified_json=$(jq -c '.qualified_extensions // []' <<<"$row_json")
@@ -290,6 +291,8 @@ append_postgres_extension_args() {
   selected_csv=$(postgres_extensions_json_to_csv <<<"$selected_json")
   if [[ -n "$selected_csv" ]]; then
     COMMAND_ARGS+=("--extensions" "$selected_csv")
+    resolved_for_suffix_json=$(postgres_extensions_resolve_selection_json "$selected_csv" "$qualified_json")
+    image_suffix=$(postgres_extensions_image_name_suffix_json "$resolved_for_suffix_json")
     warnings_json=$(postgres_extensions_not_qualified_json "$selected_json" "$qualified_json")
     if [[ "$(jq 'length' <<<"$warnings_json")" -gt 0 ]]; then
       while IFS= read -r extension; do
@@ -297,8 +300,10 @@ append_postgres_extension_args() {
       done < <(jq -r '.[]' <<<"$warnings_json")
     fi
     printf 'Selected extensions: %s\n' "$(jq -r 'join(", ")' <<<"$selected_json")"
+    printf 'Image name suffix: %s\n' "$image_suffix"
   else
     printf 'Selected extensions: none\n'
+    printf 'Image name suffix: none\n'
   fi
 }
 
@@ -381,6 +386,7 @@ main() {
   fi
 
   require_command jq
+  require_command cksum
   cd "$ROOT_DIR"
 
   while IFS= read -r version; do

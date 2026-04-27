@@ -606,6 +606,8 @@ Direct CLI users can pass a comma-separated list:
 
 Use `--extensions none` or omit `--extensions` to install no extensions. Use `--extensions all-qualified` only for coverage-style builds where you want every release-note-qualified extension that this project can install today.
 
+When extensions are selected, the generated image name includes an `ext-...` suffix before the timestamp. This makes multiple images for the same NDB, OS, and PostgreSQL version easy to tell apart in Prism.
+
 The build tool currently knows how to install and validate these PostgreSQL extensions:
 
 - `pg_cron`
@@ -657,6 +659,20 @@ Example:
 ```text
 ndb-2.10-pgsql-18-Rocky Linux-9.7-20260424000000
 ```
+
+PostgreSQL images with selected extensions add a readable extension suffix before the timestamp:
+
+```text
+ndb-<ndb_version>-pgsql-<db_version>-<os_type>-<os_version>-ext-<extensions>-<timestamp>
+```
+
+Example:
+
+```text
+ndb-2.10-pgsql-18-Rocky Linux-9.7-ext-pgvector-postgis-20260424000000
+```
+
+If many extensions are selected, the suffix keeps the first few extension names and adds a short checksum so the name stays shorter while still distinguishing the variant. The manifest remains the source of truth for the exact selected extension list.
 
 ### Multi-Engine Roadmap
 
