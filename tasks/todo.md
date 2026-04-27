@@ -1,5 +1,26 @@
 # Task Plan
 
+# Active Plan: First Build Assistant
+
+- [x] Add failing selftests for wizard readiness and safe setup paths.
+- [x] Implement wizard readiness summary and safe local setup actions.
+- [x] Add run-now prerequisite guards for live actions.
+- [x] Improve selected image recipe and production safety prompts.
+- [x] Update README beginner guidance.
+- [x] Run offline verification and wizard smoke checks.
+- [x] Record final review.
+
+# Active Plan Review: First Build Assistant
+
+- Added a first-build readiness assistant to `scripts/build_wizard.sh`.
+- The wizard now reports local tools, SSH key files, `.env` presence, and required Prism variables without printing secret values.
+- The wizard can create the local Packer SSH keypair, copy `.env.example` to `.env`, and run `packer init packer/` only after explicit user selection.
+- Dry-run and print-only command previews remain available without Prism credentials.
+- Run-now live actions stop early with beginner-readable missing prerequisite guidance.
+- The selected image recipe now summarizes source image strategy, validation, manifest, PostgreSQL extensions, image variant suffixes, MongoDB edition, and MongoDB validation shape.
+- README now recommends the wizard as the safest first path and keeps direct `build.sh` examples as the repeat/automation path.
+- Verification passed: shell syntax checks, full selftests, matrix validation, `packer fmt -check packer`, representative print-only wizard smoke, and `git diff --check`.
+
 # Active Plan: Ansible Fact Normalization Cleanup
 
 - [x] Add static selftest guard for deprecated top-level Ansible facts.

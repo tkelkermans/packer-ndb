@@ -67,7 +67,23 @@ scripts/build_wizard.sh
 
 The wizard does not replace `build.sh`. It asks beginner-friendly questions, shows the selected matrix row, lets you choose PostgreSQL extensions one by one when the selected row is PostgreSQL, prints the exact `./build.sh --ci ...` command, and lets you either print the command or run it.
 
+The wizard is the safest first path because it checks your workstation before it asks image questions. It reports local tools, the Packer SSH keypair, `.env` presence, and required Prism variables as `present` or `missing` without printing secret values.
+
+When something local is missing, the wizard can offer safe setup help:
+
+- create `packer/id_rsa` and `packer/id_rsa.pub`
+- run `packer init packer/`
+- copy `.env.example` to `.env`
+
+The wizard never creates Prism credentials and never prints secret values. If `.env` is managed by 1Password, run the wizard through `op` so the variables resolve inside the wizard:
+
+```bash
+op run --env-file .env -- scripts/build_wizard.sh
+```
+
 PostgreSQL extensions are optional. The wizard defaults to no extensions, shows which extensions are release-note-qualified for the selected row, and warns if you select an installable extension that is not release-note-qualified for this matrix row.
+
+If you already know the exact image you want, you can skip the wizard and use `build.sh` directly. The direct commands below are useful for automation and repeat builds, but the wizard is easier for first-time users.
 
 ### 4. Run A Safe Dry Run
 
