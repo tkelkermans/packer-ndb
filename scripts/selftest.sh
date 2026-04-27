@@ -1101,6 +1101,34 @@ run_release_scaffold_tests() {
 
 run_release_scaffold_tests
 
+run_postgres_extension_helper_tests() {
+  local selected unknown nonqualified resolved skipped
+
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/scripts/postgres_extensions.sh"
+
+  selected=$(postgres_extensions_selection_to_json "pg_vector, PostGIS,pg_cron")
+  jq -e '. == ["pg_cron","pgvector","postgis"]' <<<"$selected" >/dev/null || fail "extension selection normalization"
+
+  selected=$(postgres_extensions_selection_to_json "none")
+  jq -e '. == []' <<<"$selected" >/dev/null || fail "extension selection none"
+
+  unknown=$(postgres_extensions_unknown_json '["pgvector","not_real"]')
+  jq -e '. == ["not_real"]' <<<"$unknown" >/dev/null || fail "unknown extension detection"
+
+  nonqualified=$(postgres_extensions_not_qualified_json '["pgvector","postgis"]' '["pgvector"]')
+  jq -e '. == ["postgis"]' <<<"$nonqualified" >/dev/null || fail "non-qualified extension detection"
+
+  resolved=$(postgres_extensions_resolve_selection_json "all-qualified" '["pgvector","citext","pg_cron"]')
+  skipped=$(postgres_extensions_all_qualified_skipped_json '["pgvector","citext","pg_cron"]')
+  jq -e '. == ["pg_cron","pgvector"]' <<<"$resolved" >/dev/null || fail "all-qualified installable subset"
+  jq -e '. == ["citext"]' <<<"$skipped" >/dev/null || fail "all-qualified skipped non-installable extensions"
+
+  pass "PostgreSQL extension helper"
+}
+
+run_postgres_extension_helper_tests
+
 run_build_wizard_tests() {
   local tmpdir output build_log wizard
   tmpdir=$(mktemp -d)

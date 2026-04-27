@@ -59,7 +59,7 @@ Release-note-qualified but not-yet-installable extensions may appear in `qualifi
 - Create: `scripts/postgres_extensions.sh`
 - Modify: `scripts/selftest.sh`
 
-- [ ] **Step 1: Add failing selftests for extension helper behavior**
+- [x] **Step 1: Add failing selftests for extension helper behavior**
 
 Add a new `run_postgres_extension_helper_tests` function near the other helper/selftest functions in `scripts/selftest.sh`, before wizard tests.
 
@@ -95,7 +95,7 @@ run_postgres_extension_helper_tests() {
 run_postgres_extension_helper_tests
 ```
 
-- [ ] **Step 2: Run the focused selftest and verify it fails**
+- [x] **Step 2: Run the focused selftest and verify it fails**
 
 Run:
 
@@ -105,7 +105,7 @@ bash scripts/selftest.sh
 
 Expected: FAIL because `scripts/postgres_extensions.sh` does not exist.
 
-- [ ] **Step 3: Create the shared helper**
+- [x] **Step 3: Create the shared helper**
 
 Create `scripts/postgres_extensions.sh`:
 
@@ -212,7 +212,7 @@ postgres_extensions_json_to_csv() {
 }
 ```
 
-- [ ] **Step 4: Run the focused selftest and verify it passes**
+- [x] **Step 4: Run the focused selftest and verify it passes**
 
 Run:
 
@@ -222,7 +222,7 @@ bash scripts/selftest.sh
 
 Expected: PASS for `PostgreSQL extension helper`; later tests may still reflect old behavior until subsequent tasks update them.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```bash
 git add scripts/postgres_extensions.sh scripts/selftest.sh
