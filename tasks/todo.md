@@ -1,5 +1,20 @@
 # Task Plan
 
+# Active Plan: PostgreSQL Extension Selection Implementation
+
+- [x] Approve advisory extension qualification design.
+- [x] Write and commit the design spec.
+- [x] Write detailed implementation plan.
+- [ ] Confirm execution approach before implementation.
+- [ ] Execute Task 1: shared PostgreSQL extension catalog helper.
+- [ ] Execute Task 2: qualified extension matrix validation.
+- [ ] Execute Task 3: matrix migration from install lists to release-note metadata.
+- [ ] Execute Task 4: `build.sh --extensions` explicit selection.
+- [ ] Execute Task 5: artifact validation and test harness semantics.
+- [ ] Execute Task 6: wizard/TUI individual extension selection.
+- [ ] Execute Task 7: README and agent memory updates.
+- [ ] Execute Task 8: final offline verification and review notes.
+
 # Active Plan: Consolidate AGENTS Project Memory
 
 - [x] Review current lessons, task notes, README guidance, and existing AGENTS file.
