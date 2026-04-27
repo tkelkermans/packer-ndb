@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=scripts/postgres_extensions.sh
+source "$ROOT_DIR/scripts/postgres_extensions.sh"
 
 fail() {
   printf 'Error: %s\n' "$*" >&2
@@ -100,10 +102,10 @@ load_buildable_rows() {
       jq -c '.[] | select((.provisioning_role // "") as $role | ($role == "postgresql" or $role == "mongodb"))' "$matrix_file"
       ;;
     pgsql_extensions)
-      jq -c '.[] | select((.provisioning_role // "") == "postgresql" and ((.extensions // []) | length) > 0)' "$matrix_file"
+      jq -c '.[] | select((.provisioning_role // "") == "postgresql" and ((.qualified_extensions // []) | length) > 0)' "$matrix_file"
       ;;
     pgsql_no_extensions)
-      jq -c '.[] | select((.provisioning_role // "") == "postgresql" and ((.extensions // []) | length) == 0)' "$matrix_file"
+      jq -c '.[] | select((.provisioning_role // "") == "postgresql" and ((.qualified_extensions // []) | length) == 0)' "$matrix_file"
       ;;
     mongodb)
       jq -c '.[] | select((.provisioning_role // "") == "mongodb")' "$matrix_file"
@@ -119,10 +121,10 @@ row_label() {
   jq -r '
     if .provisioning_role == "postgresql" then
       "PostgreSQL \(.db_version) on \(.os_type) \(.os_version)"
-      + (if ((.extensions // []) | length) > 0 then
-          " (extensions: \((.extensions // []) | join(", ")))"
+      + (if ((.qualified_extensions // []) | length) > 0 then
+          " (qualified extensions: \((.qualified_extensions // []) | join(", ")))"
         else
-          " (no extensions)"
+          " (no qualified extensions)"
         end)
     elif .provisioning_role == "mongodb" then
       "MongoDB \(.db_version) on \(.os_type) \(.os_version)"
@@ -146,16 +148,16 @@ print_row_details() {
   printf '  OS: %s %s\n' "$os_type" "$os_version"
 
   if [[ "$role" == "postgresql" ]]; then
-    extensions=$(jq -c '.extensions // []' <<<"$row_json" | join_json_array)
+    extensions=$(jq -c '.qualified_extensions // []' <<<"$row_json" | join_json_array)
     if [[ -n "$extensions" ]]; then
-      printf '  Extensions: %s\n' "$extensions"
+      printf '  Qualified extensions: %s\n' "$extensions"
     else
-      printf '  Extensions: No PostgreSQL extensions requested.\n'
-      reason=$(jq -r '.extensions_empty_reason // ""' <<<"$row_json")
+      printf '  Qualified extensions: none listed for this row.\n'
+      reason=$(jq -r '.qualified_extensions_empty_reason // ""' <<<"$row_json")
       if [[ -n "$reason" ]]; then
-        printf '  Extension reason: %s\n' "$reason"
+        printf '  Qualified extension reason: %s\n' "$reason"
       else
-        printf '  Extension warning: missing extensions_empty_reason; run scripts/matrix_validate.sh ndb/*/matrix.json before building.\n'
+        printf '  Extension warning: missing qualified_extensions_empty_reason; run scripts/matrix_validate.sh ndb/*/matrix.json before building.\n'
       fi
     fi
   elif [[ "$role" == "mongodb" ]]; then
@@ -220,6 +222,84 @@ choose_yes_no() {
   local choice
   choice=$(prompt_menu "$title" "Yes" "No")
   [[ "$choice" == "0" ]]
+}
+
+prompt_multi_select() {
+  local title=$1
+  shift
+  local options=("$@")
+  local value token index valid
+  local selected=()
+
+  printf '\n%s\n' "$title" >&2
+  printf '  0. None\n' >&2
+  for index in "${!options[@]}"; do
+    printf '  %d. %s\n' "$((index + 1))" "${options[$index]}" >&2
+  done
+
+  while true; do
+    printf 'Choose numbers separated by spaces [0-%d]: ' "${#options[@]}" >&2
+    IFS= read -r value || fail "No selection provided for ${title}."
+    if [[ -z "$value" || "$value" == "0" ]]; then
+      return 0
+    fi
+
+    selected=()
+    valid=true
+    for token in $value; do
+      if [[ "$token" =~ ^[0-9]+$ ]] && (( token >= 1 && token <= ${#options[@]} )); then
+        selected+=("${options[$((token - 1))]%% *}")
+      else
+        valid=false
+      fi
+    done
+    if [[ "$valid" == "true" ]]; then
+      printf '%s\n' "${selected[@]}" | awk '!seen[$0]++'
+      return 0
+    fi
+    printf 'Invalid selection. Please try again.\n' >&2
+  done
+}
+
+append_postgres_extension_args() {
+  local row_json=$1
+  local qualified_json installable_json qualified_installable_json advanced_json selected_json selected_csv warnings_json
+  local options=() extension
+
+  qualified_json=$(jq -c '.qualified_extensions // []' <<<"$row_json")
+  installable_json=$(postgres_installable_extensions_json)
+  qualified_installable_json=$(jq -nc --argjson qualified "$qualified_json" --argjson installable "$installable_json" '$qualified | map(select(. as $name | $installable | index($name)))')
+  advanced_json=$(jq -nc --argjson qualified "$qualified_json" --argjson installable "$installable_json" '$installable | map(select(. as $name | $qualified | index($name) | not))')
+
+  printf '\nPostgreSQL extensions are optional. Default: none.\n'
+  printf 'Qualified extensions: %s\n' "$(jq -r 'if length > 0 then join(", ") else "none" end' <<<"$qualified_json")"
+
+  while IFS= read -r extension; do
+    options+=("${extension} (qualified)")
+  done < <(jq -r '.[]' <<<"$qualified_installable_json")
+  while IFS= read -r extension; do
+    options+=("${extension} (advanced: not release-note-qualified for this row)")
+  done < <(jq -r '.[]' <<<"$advanced_json")
+
+  if (( ${#options[@]} == 0 )); then
+    printf 'No installable PostgreSQL extensions are available for selection.\n'
+    return 0
+  fi
+
+  selected_json=$(prompt_multi_select "PostgreSQL extensions to install" "${options[@]}" | jq -R . | jq -s 'map(select(length > 0))')
+  selected_csv=$(postgres_extensions_json_to_csv <<<"$selected_json")
+  if [[ -n "$selected_csv" ]]; then
+    COMMAND_ARGS+=("--extensions" "$selected_csv")
+    warnings_json=$(postgres_extensions_not_qualified_json "$selected_json" "$qualified_json")
+    if [[ "$(jq 'length' <<<"$warnings_json")" -gt 0 ]]; then
+      while IFS= read -r extension; do
+        printf 'Warning: Extension %s is installable by this tool, but is not release-note-qualified for this matrix row.\n' "$extension"
+      done < <(jq -r '.[]' <<<"$warnings_json")
+    fi
+    printf 'Selected extensions: %s\n' "$(jq -r 'join(", ")' <<<"$selected_json")"
+  else
+    printf 'Selected extensions: none\n'
+  fi
 }
 
 append_source_args() {
@@ -313,8 +393,8 @@ main() {
 
   filter_choice=$(prompt_menu "Rows to show" \
     "All buildable rows" \
-    "PostgreSQL rows with extensions" \
-    "PostgreSQL rows without extensions" \
+    "PostgreSQL rows with qualified extensions" \
+    "PostgreSQL rows without qualified extensions" \
     "MongoDB rows")
   case "$filter_choice" in
     0) filter_name="all" ;;
@@ -374,6 +454,10 @@ main() {
     "--os-version" "$os_version"
     "--db-version" "$db_version"
   )
+
+  if [[ "$(jq -r '.provisioning_role' <<<"$row_json")" == "postgresql" ]]; then
+    append_postgres_extension_args "$row_json"
+  fi
 
   append_source_args "$action_arg"
   append_customization_args

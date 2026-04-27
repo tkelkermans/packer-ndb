@@ -1192,6 +1192,7 @@ run_build_wizard_tests() {
 
   mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts" "$tmpdir/customizations/profiles"
   cp "$ROOT_DIR/scripts/build_wizard.sh" "$wizard"
+  cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
   chmod +x "$wizard"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
@@ -1204,7 +1205,7 @@ run_build_wizard_tests() {
     "os_version": "9.9",
     "db_version": "16",
     "provisioning_role": "postgresql",
-    "extensions": ["pgvector", "postgis"]
+    "qualified_extensions": ["pgvector", "postgis"]
   },
   {
     "ndb_version": "9.99",
@@ -1214,8 +1215,8 @@ run_build_wizard_tests() {
     "os_version": "22.04",
     "db_version": "15",
     "provisioning_role": "postgresql",
-    "extensions": [],
-    "extensions_empty_reason": "Self-test empty extension row."
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Self-test empty extension row."
   },
   {
     "ndb_version": "9.99",
@@ -1236,8 +1237,8 @@ run_build_wizard_tests() {
     "os_version": "9.7",
     "db_version": "14",
     "provisioning_role": "postgresql",
-    "extensions": [],
-    "extensions_empty_reason": "Self-test licensed source image row."
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Self-test licensed source image row."
   },
   {
     "ndb_version": "9.99",
@@ -1247,7 +1248,7 @@ run_build_wizard_tests() {
     "os_version": "9.9",
     "db_version": "14",
     "provisioning_role": "metadata",
-    "extensions": ["pg_stat_statements"]
+    "qualified_extensions": ["pg_stat_statements"]
   }
 ]
 JSON
@@ -1276,22 +1277,32 @@ SH
 
   (
     cd "$tmpdir"
-    printf '1\n1\n1\n1\n1\n1\n1\n' | "$wizard" >"$output" 2>&1
+    printf '1\n1\n1\n1\n0\n1\n1\n1\n' | "$wizard" >"$output" 2>&1
   ) || fail "wizard default PostgreSQL dry-run failed"
-  grep -Fq "Extensions: pgvector, postgis" "$output" || fail "wizard did not show PostgreSQL extension list"
+  grep -Fq "Qualified extensions: pgvector, postgis" "$output" || fail "wizard did not show PostgreSQL qualified extension list"
+  grep -Fq "Selected extensions: none" "$output" || fail "wizard default did not select no extensions"
   grep -Fq "./build.sh --ci --dry-run --ndb-version 9.99 --db-type pgsql --os 'Rocky Linux' --os-version 9.9 --db-version 16" "$output" || fail "wizard dry-run command mismatch"
   ! grep -Fq "Metadata Only" "$output" || fail "wizard exposed metadata-only rows"
 
   (
     cd "$tmpdir"
-    printf '1\n1\n2\n1\n1\n1\n1\n' | "$wizard" >"$output" 2>&1
+    printf '1\n1\n1\n1\n1 3\n1\n1\n1\n' | "$wizard" >"$output" 2>&1
+  ) || fail "wizard individual PostgreSQL extension selection failed"
+  grep -Fq "Selected extensions: pgvector, pg_cron" "$output" || fail "wizard did not show selected extensions"
+  grep -Fq -- "--extensions" "$output" || fail "wizard command missing selected extension flag"
+  grep -Fq "pgvector,pg_cron" "$output" || fail "wizard command missing selected extension list"
+  grep -Fq "not release-note-qualified for this matrix row" "$output" || fail "wizard did not warn for advanced extension selection"
+
+  (
+    cd "$tmpdir"
+    printf '1\n1\n2\n1\n0\n1\n1\n1\n' | "$wizard" >"$output" 2>&1
   ) || fail "wizard empty-extension PostgreSQL dry-run failed"
-  grep -Fq "No PostgreSQL extensions requested." "$output" || fail "wizard did not show empty extension status"
+  grep -Fq "Qualified extensions: none listed for this row." "$output" || fail "wizard did not show empty qualified extension status"
   grep -Fq "Self-test empty extension row." "$output" || fail "wizard did not show empty extension reason"
 
   (
     cd "$tmpdir"
-    printf '1\n1\n1\n4\n1\n1\n1\n1\n1\n1\n' | "$wizard" >"$output" 2>&1
+    printf '1\n1\n1\n4\n1\n1\n1\n0\n1\n1\n1\n' | "$wizard" >"$output" 2>&1
   ) || fail "wizard validated build preview failed"
   grep -Fq "./build.sh --ci --validate --validate-artifact --manifest --ndb-version 9.99 --db-type pgsql --os 'Rocky Linux' --os-version 9.9 --db-version 16" "$output" || fail "wizard build command missing validation defaults"
 
@@ -1304,20 +1315,20 @@ SH
 
   (
     cd "$tmpdir"
-    printf '1\n1\n4\n1\n1\n1\n1\n' | NDB_RHEL_9_7_IMAGE_URI="" "$wizard" >"$output" 2>&1
+    printf '1\n1\n4\n1\n0\n1\n1\n1\n' | NDB_RHEL_9_7_IMAGE_URI="" "$wizard" >"$output" 2>&1
   ) || fail "wizard RHEL source warning preview failed"
   grep -Fq "Warning: source image variable NDB_RHEL_9_7_IMAGE_URI is not set." "$output" || fail "wizard did not warn about missing RHEL source image variable"
 
   (
     cd "$tmpdir"
-    printf '1\n1\n1\n1\n3\n11111111-2222-3333-4444-555555555555\n3\n1\n1\n' | "$wizard" >"$output" 2>&1
+    printf '1\n1\n1\n1\n0\n3\n11111111-2222-3333-4444-555555555555\n3\n1\n1\n' | "$wizard" >"$output" 2>&1
   ) || fail "wizard source UUID and customization preview failed"
   grep -Fq -- "--source-image-uuid 11111111-2222-3333-4444-555555555555" "$output" || fail "wizard source UUID command mismatch"
   grep -Fq -- "--customization-profile enterprise-example" "$output" || fail "wizard customization command mismatch"
 
   (
     cd "$tmpdir"
-    printf '1\n1\n1\n1\n1\n1\n2\n' | NDB_SELFTEST_BUILD_LOG="$build_log" "$wizard" >"$output" 2>&1
+    printf '1\n1\n1\n1\n0\n1\n1\n2\n' | NDB_SELFTEST_BUILD_LOG="$build_log" "$wizard" >"$output" 2>&1
   ) || fail "wizard run-now path failed"
   grep -Fq -- "--dry-run" "$build_log" || fail "wizard did not execute generated build command"
 

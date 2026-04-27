@@ -758,7 +758,7 @@ git commit -m "Update extension coverage harness semantics"
 - Modify: `scripts/build_wizard.sh`
 - Modify: `scripts/selftest.sh`
 
-- [ ] **Step 1: Add failing wizard selftests**
+- [x] **Step 1: Add failing wizard selftests**
 
 Update the wizard fixture matrix rows from `extensions` to `qualified_extensions`.
 
@@ -792,7 +792,7 @@ bash scripts/selftest.sh
 
 Expected: FAIL because the wizard still displays matrix extension lists and has no selection prompt.
 
-- [ ] **Step 3: Source the helper and update row filters**
+- [x] **Step 3: Source the helper and update row filters**
 
 Near the top of `scripts/build_wizard.sh`:
 
@@ -819,7 +819,7 @@ PostgreSQL rows with qualified extensions
 PostgreSQL rows without qualified extensions
 ```
 
-- [ ] **Step 4: Add multi-select prompt helper**
+- [x] **Step 4: Add multi-select prompt helper**
 
 Add this function before `append_source_args`:
 
@@ -856,7 +856,7 @@ prompt_multi_select() {
 }
 ```
 
-- [ ] **Step 5: Add extension selection flow**
+- [x] **Step 5: Add extension selection flow**
 
 Add a function:
 
@@ -911,7 +911,7 @@ if [[ "$(jq -r '.provisioning_role' <<<"$row_json")" == "postgresql" ]]; then
 fi
 ```
 
-- [ ] **Step 6: Update row details and labels**
+- [x] **Step 6: Update row details and labels**
 
 Replace extension display text with qualified/selected language:
 
@@ -936,7 +936,7 @@ bash scripts/selftest.sh
 
 Expected: wizard tests pass with individual extension selection and warnings.
 
-- [ ] **Step 8: Commit Task 6**
+- [x] **Step 8: Commit Task 6**
 
 ```bash
 git add scripts/build_wizard.sh scripts/selftest.sh
