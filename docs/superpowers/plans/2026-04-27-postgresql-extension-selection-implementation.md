@@ -239,7 +239,7 @@ git commit -m "Add PostgreSQL extension catalog helper"
 
 This task intentionally continues into Task 3 before committing, because the validator will reject the current real matrices until they are migrated.
 
-- [ ] **Step 1: Update failing matrix selftests**
+- [x] **Step 1: Update failing matrix selftests**
 
 Replace the current legacy extension assertions in `scripts/selftest.sh` with new `qualified_extensions` cases.
 
@@ -252,7 +252,7 @@ assert_invalid_matrix "empty PostgreSQL qualified extensions require reason" '[{
 assert_invalid_matrix "legacy extensions rejected" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","extensions":["pgvector"],"qualified_extensions":["pgvector"]}]' "legacy.*extensions"
 ```
 
-- [ ] **Step 2: Run the focused selftest and verify it fails**
+- [x] **Step 2: Run the focused selftest and verify it fails**
 
 Run:
 
@@ -262,7 +262,7 @@ bash scripts/selftest.sh
 
 Expected: FAIL because `scripts/matrix_validate.sh` still validates legacy `extensions`.
 
-- [ ] **Step 3: Update matrix validator jq rules**
+- [x] **Step 3: Update matrix validator jq rules**
 
 In `scripts/matrix_validate.sh`, replace the `extensions` validation block with:
 
@@ -306,7 +306,7 @@ In `scripts/matrix_validate.sh`, replace the `extensions` validation block with:
 )
 ```
 
-- [ ] **Step 4: Run the focused selftest and verify it passes**
+- [x] **Step 4: Run the focused selftest and verify it passes**
 
 Run:
 
@@ -316,7 +316,7 @@ bash scripts/selftest.sh
 
 Expected: the matrix tests pass after later test fixtures are migrated from `extensions` to `qualified_extensions`.
 
-- [ ] **Step 5: Hold the validator changes for Task 3**
+- [x] **Step 5: Hold the validator changes for Task 3**
 
 Do not commit after this task. Continue directly to Task 3 so the repository does not contain a validator that rejects its own checked-in matrix files.
 
@@ -329,7 +329,7 @@ Do not commit after this task. Continue directly to Task 3 so the repository doe
 - Modify: `ndb/2.10/matrix.json`
 - Modify: `scripts/selftest.sh`
 
-- [ ] **Step 1: Add release-note migration expectations to selftests**
+- [x] **Step 1: Add release-note migration expectations to selftests**
 
 Add a selftest function that proves no legacy keys remain and buildable PostgreSQL rows have qualified metadata:
 
@@ -358,7 +358,7 @@ run_qualified_extension_matrix_tests() {
 run_qualified_extension_matrix_tests
 ```
 
-- [ ] **Step 2: Run the selftest and verify it fails**
+- [x] **Step 2: Run the selftest and verify it fails**
 
 Run:
 
@@ -368,7 +368,7 @@ bash scripts/selftest.sh
 
 Expected: FAIL because the real matrices still use `extensions`.
 
-- [ ] **Step 3: Migrate real matrix files**
+- [x] **Step 3: Migrate real matrix files**
 
 Use `jq` to transform existing keys, then manually tighten the values against release-note tables:
 
@@ -429,7 +429,7 @@ If a buildable row does not exactly match one of those release-note rows, set:
 "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
 ```
 
-- [ ] **Step 4: Format and validate matrices**
+- [x] **Step 4: Format and validate matrices**
 
 Run:
 
@@ -441,7 +441,7 @@ bash scripts/matrix_validate.sh ndb/2.9/matrix.json ndb/2.10/matrix.json
 
 Expected: both matrix files validate successfully.
 
-- [ ] **Step 5: Run selftests**
+- [x] **Step 5: Run selftests**
 
 Run:
 
@@ -451,7 +451,7 @@ bash scripts/selftest.sh
 
 Expected: matrix metadata tests pass after selftest fixtures are migrated.
 
-- [ ] **Step 6: Commit Tasks 2 and 3 together**
+- [x] **Step 6: Commit Tasks 2 and 3 together**
 
 ```bash
 git add scripts/matrix_validate.sh scripts/selftest.sh ndb/2.9/matrix.json ndb/2.10/matrix.json
@@ -733,7 +733,7 @@ with:
   --extensions JSON      Selected PostgreSQL extensions JSON (default: [])
 ```
 
-- [ ] **Step 5: Run selftests**
+- [x] **Step 5: Run selftests**
 
 Run:
 
@@ -1033,7 +1033,7 @@ Add to `tasks/lessons.md`:
 - Do not treat qualified_extensions as default installs. They are release-note qualification metadata only; DBAs should explicitly select individual PostgreSQL extensions per build.
 ```
 
-- [ ] **Step 6: Run selftests**
+- [x] **Step 6: Run selftests**
 
 Run:
 
@@ -1067,7 +1067,7 @@ bash -n build.sh test.sh scripts/*.sh
 
 Expected: no output and exit 0.
 
-- [ ] **Step 2: Run selftests**
+- [x] **Step 2: Run selftests**
 
 Run:
 

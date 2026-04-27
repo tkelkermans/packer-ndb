@@ -31,7 +31,7 @@ run_matrix_validator_tests() {
     "os_version": "9.9",
     "db_version": "18",
     "provisioning_role": "postgresql",
-    "extensions": ["pg_stat_statements"],
+    "qualified_extensions": ["pg_stat_statements"],
     "ha_components": {
       "patroni": ["4.0.5"],
       "etcd": ["3.5.12"]
@@ -50,7 +50,7 @@ JSON
     "os_version": "9.9",
     "db_version": "18/17",
     "provisioning_role": "postgresql",
-    "extensions": ["pg_stat_statements", ""],
+    "qualified_extensions": ["pg_stat_statements", ""],
     "ha_components": {
       "patroni": "4.0.5"
     }
@@ -66,13 +66,15 @@ JSON
   grep -q "os_type" "$invalid_output" || fail "invalid matrix output missed null required-field error"
   grep -q "db_version contains '/'" "$invalid_output" || fail "invalid matrix output missed db_version error"
   grep -q "provisioning_role.*requires db_type" "$invalid_output" || fail "invalid matrix output missed provisioning/db_type error"
-  grep -q "extensions.*non-empty strings" "$invalid_output" || fail "invalid matrix output missed extension element error"
+  grep -q "qualified_extensions.*non-empty strings" "$invalid_output" || fail "invalid matrix output missed qualified extension element error"
   grep -q "ha_components.*list of non-empty strings" "$invalid_output" || fail "invalid matrix output missed ha_components list error"
 
   assert_invalid_matrix "non-array root" '"not an array"' "Matrix must be a JSON array"
   assert_invalid_matrix "non-object entry" '[null]' "entry must be an object"
-  assert_invalid_matrix "extensions type" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","extensions":"pg_stat_statements"}]' "extensions.*list"
-  assert_invalid_matrix "empty PostgreSQL extensions require reason" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","extensions":[]}]' "extensions_empty_reason"
+  assert_invalid_matrix "qualified_extensions type" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","qualified_extensions":"pgvector"}]' "qualified_extensions.*list"
+  assert_invalid_matrix "qualified_extensions element" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","qualified_extensions":["pgvector",""]}]' "qualified_extensions.*non-empty strings"
+  assert_invalid_matrix "empty PostgreSQL qualified extensions require reason" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","qualified_extensions":[]}]' "qualified_extensions_empty_reason"
+  assert_invalid_matrix "legacy extensions rejected" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","extensions":["pgvector"],"qualified_extensions":["pgvector"]}]' "legacy.*extensions"
   assert_invalid_matrix "ha_components type" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","ha_components":[]}]' "ha_components.*object"
   assert_invalid_matrix "duplicate combination" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql"},{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql"}]' "duplicate combination"
   assert_invalid_matrix "mongodb role requires mongodb db type" '[{"ndb_version":"2.99","engine":"MongoDB","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"8.0","provisioning_role":"mongodb","mongodb_edition":"community","deployment":["single-instance"]}]' "provisioning_role.*mongodb.*requires db_type"
@@ -173,6 +175,31 @@ run_mongodb_matrix_coverage_tests() {
 }
 
 run_mongodb_matrix_coverage_tests
+
+run_qualified_extension_matrix_tests() {
+  local legacy_keys missing_qualified
+  legacy_keys=$(jq -s -r '
+    [.[]
+      | .[]
+      | select((.provisioning_role // "") == "postgresql")
+      | select(has("extensions") or has("extensions_empty_reason"))
+    ] | length
+  ' "$ROOT_DIR/ndb/2.9/matrix.json" "$ROOT_DIR/ndb/2.10/matrix.json")
+  [[ "$legacy_keys" == "0" ]] || fail "PostgreSQL matrix rows still use legacy extension keys"
+
+  missing_qualified=$(jq -s -r '
+    [.[]
+      | .[]
+      | select((.db_type // "") == "pgsql" and (.provisioning_role // "") == "postgresql")
+      | select((has("qualified_extensions") | not) and ((.qualified_extensions_empty_reason // "") == ""))
+    ] | length
+  ' "$ROOT_DIR/ndb/2.9/matrix.json" "$ROOT_DIR/ndb/2.10/matrix.json")
+  [[ "$missing_qualified" == "0" ]] || fail "buildable PostgreSQL rows missing qualified extension metadata"
+
+  pass "qualified extension matrix metadata"
+}
+
+run_qualified_extension_matrix_tests
 
 run_customization_profile_static_tests() {
   [[ -f "$ROOT_DIR/customizations/profiles/enterprise-example.yml" ]] || fail "missing enterprise example profile"

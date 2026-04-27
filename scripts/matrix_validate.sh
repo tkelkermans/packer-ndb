@@ -97,33 +97,41 @@ validate_matrix_file() {
               | "\(ctx($idx; $entry)): MongoDB deployment values must not contain duplicates"
             ),
             (
-              select(($entry | has("extensions")) and ($entry.extensions != null) and (($entry.extensions | type) != "array"))
-              | "\(ctx($idx; $entry)): '\''extensions'\'' must be a list or omitted"
+              select(($entry | has("extensions")))
+              | "\(ctx($idx; $entry)): legacy '\''extensions'\'' is ambiguous; use '\''qualified_extensions'\'' for release-note metadata and --extensions for build-time selection"
             ),
             (
-              select(($entry.extensions | type) == "array" and any($entry.extensions[]; (nonempty_string | not)))
-              | "\(ctx($idx; $entry)): '\''extensions'\'' must only contain non-empty strings"
+              select(($entry | has("extensions_empty_reason")))
+              | "\(ctx($idx; $entry)): legacy '\''extensions_empty_reason'\'' is ambiguous; use '\''qualified_extensions_empty_reason'\''"
+            ),
+            (
+              select(($entry | has("qualified_extensions")) and ($entry.qualified_extensions != null) and (($entry.qualified_extensions | type) != "array"))
+              | "\(ctx($idx; $entry)): '\''qualified_extensions'\'' must be a list or omitted"
+            ),
+            (
+              select(($entry.qualified_extensions | type) == "array" and any($entry.qualified_extensions[]; (nonempty_string | not)))
+              | "\(ctx($idx; $entry)): '\''qualified_extensions'\'' must only contain non-empty strings"
             ),
             (
               select(
                 ($entry.db_type // null) == "pgsql"
                 and ($entry.provisioning_role // null) == "postgresql"
                 and (
-                  (($entry | has("extensions")) | not)
-                  or ($entry.extensions == null)
-                  or (($entry.extensions | type) == "array" and ($entry.extensions | length) == 0)
+                  (($entry | has("qualified_extensions")) | not)
+                  or ($entry.qualified_extensions == null)
+                  or (($entry.qualified_extensions | type) == "array" and ($entry.qualified_extensions | length) == 0)
                 )
-                and (($entry.extensions_empty_reason // "") | nonempty_string | not)
+                and (($entry.qualified_extensions_empty_reason // "") | nonempty_string | not)
               )
-              | "\(ctx($idx; $entry)): buildable PostgreSQL rows with no extensions must include non-empty '\''extensions_empty_reason'\''"
+              | "\(ctx($idx; $entry)): buildable PostgreSQL rows with no qualified extensions must include non-empty '\''qualified_extensions_empty_reason'\''"
             ),
             (
-              select(($entry | has("extensions_empty_reason")) and (($entry.extensions_empty_reason | nonempty_string) | not))
-              | "\(ctx($idx; $entry)): '\''extensions_empty_reason'\'' must be a non-empty string when present"
+              select(($entry | has("qualified_extensions_empty_reason")) and (($entry.qualified_extensions_empty_reason | nonempty_string) | not))
+              | "\(ctx($idx; $entry)): '\''qualified_extensions_empty_reason'\'' must be a non-empty string when present"
             ),
             (
-              select(($entry.extensions | type) == "array" and ($entry.extensions | length) > 0 and ($entry | has("extensions_empty_reason")))
-              | "\(ctx($idx; $entry)): omit '\''extensions_empty_reason'\'' when '\''extensions'\'' contains values"
+              select(($entry.qualified_extensions | type) == "array" and ($entry.qualified_extensions | length) > 0 and ($entry | has("qualified_extensions_empty_reason")))
+              | "\(ctx($idx; $entry)): omit '\''qualified_extensions_empty_reason'\'' when '\''qualified_extensions'\'' contains values"
             ),
             (
               select(($entry | has("ha_components")) and ($entry.ha_components != null) and (($entry.ha_components | type) != "object"))

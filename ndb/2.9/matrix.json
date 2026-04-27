@@ -1,1255 +1,1042 @@
 [
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Rocky Linux",
-        "os_version": "9.6",
-        "db_version": "17",
-        "patroni_version": "4.0.5",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "4.0.5",
-                "3.2.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "postgresql"
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.6",
+    "db_version": "17",
+    "patroni_version": "4.0.5",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "4.0.5",
+        "3.2.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Rocky Linux",
-        "os_version": "9.6",
-        "db_version": "16",
-        "patroni_version": "4.0.5",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "4.0.5",
-                "3.2.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.6",
+    "db_version": "16",
+    "patroni_version": "4.0.5",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "4.0.5",
+        "3.2.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Rocky Linux",
-        "os_version": "9.6",
-        "db_version": "15",
-        "patroni_version": "4.0.5",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "4.0.5",
-                "3.2.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.6",
+    "db_version": "15",
+    "patroni_version": "4.0.5",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "4.0.5",
+        "3.2.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Rocky Linux",
-        "os_version": "9.6",
-        "db_version": "14",
-        "patroni_version": "4.0.5",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "4.0.5",
-                "3.2.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.6",
+    "db_version": "14",
+    "patroni_version": "4.0.5",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "4.0.5",
+        "3.2.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.6",
-        "db_version": "17",
-        "patroni_version": "4.0.5",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "4.0.5",
-                "3.3.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.6",
+    "db_version": "17",
+    "patroni_version": "4.0.5",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "4.0.5",
+        "3.3.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.6",
-        "db_version": "16",
-        "patroni_version": "4.0.5",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "4.0.5",
-                "3.3.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.6",
+    "db_version": "16",
+    "patroni_version": "4.0.5",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "4.0.5",
+        "3.3.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.6",
-        "db_version": "15",
-        "patroni_version": "4.0.5",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "4.0.5",
-                "3.3.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.6",
+    "db_version": "15",
+    "patroni_version": "4.0.5",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "4.0.5",
+        "3.3.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.6",
-        "db_version": "14",
-        "patroni_version": "4.0.5",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "4.0.5",
-                "3.3.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.6",
+    "db_version": "14",
+    "patroni_version": "4.0.5",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "4.0.5",
+        "3.3.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Ubuntu Linux",
-        "os_version": "22.04",
-        "db_version": "17",
-        "patroni_version": "3.2.2",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "3.2.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Ubuntu Linux",
+    "os_version": "22.04",
+    "db_version": "17",
+    "patroni_version": "3.2.2",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "3.2.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Ubuntu Linux",
-        "os_version": "22.04",
-        "db_version": "16",
-        "patroni_version": "3.2.2",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "3.2.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Ubuntu Linux",
+    "os_version": "22.04",
+    "db_version": "16",
+    "patroni_version": "3.2.2",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "3.2.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Ubuntu Linux",
-        "os_version": "22.04",
-        "db_version": "15",
-        "patroni_version": "3.2.2",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "3.2.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Ubuntu Linux",
+    "os_version": "22.04",
+    "db_version": "15",
+    "patroni_version": "3.2.2",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "3.2.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Ubuntu Linux",
-        "os_version": "22.04",
-        "db_version": "14",
-        "patroni_version": "3.2.2",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "3.2.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "postgresql"
+    "provisioning_role": "postgresql",
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Ubuntu Linux",
+    "os_version": "22.04",
+    "db_version": "14",
+    "patroni_version": "3.2.2",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "3.2.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.4",
-        "db_version": "17",
-        "patroni_version": "4.0.5",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "4.0.5",
-                "3.3.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "metadata"
+    "provisioning_role": "postgresql",
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.4",
+    "db_version": "17",
+    "patroni_version": "4.0.5",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "4.0.5",
+        "3.3.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "8.10",
-        "db_version": "17",
-        "patroni_version": "4.0.5",
-        "etcd_version": "3.5.12",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "4.0.5",
-                "3.3.2"
-            ],
-            "etcd": [
-                "3.5.12"
-            ],
-            "haproxy": [
-                "2.8.9"
-            ],
-            "keepalived": [
-                "2.2.8"
-            ]
-        },
-        "provisioning_role": "metadata"
+    "provisioning_role": "metadata",
+    "qualified_extensions": []
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "8.10",
+    "db_version": "17",
+    "patroni_version": "4.0.5",
+    "etcd_version": "3.5.12",
+    "ha_components": {
+      "patroni": [
+        "4.0.5",
+        "3.3.2"
+      ],
+      "etcd": [
+        "3.5.12"
+      ],
+      "haproxy": [
+        "2.8.9"
+      ],
+      "keepalived": [
+        "2.2.8"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "8.8",
-        "db_version": "16",
-        "patroni_version": "3.2.2",
-        "etcd_version": "3.4.20",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "3.2.2"
-            ],
-            "etcd": [
-                "3.4.20"
-            ],
-            "haproxy": [
-                "1.8.27"
-            ],
-            "keepalived": [
-                "2.1.5"
-            ]
-        },
-        "provisioning_role": "metadata"
+    "provisioning_role": "metadata",
+    "qualified_extensions": []
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "8.8",
+    "db_version": "16",
+    "patroni_version": "3.2.2",
+    "etcd_version": "3.4.20",
+    "ha_components": {
+      "patroni": [
+        "3.2.2"
+      ],
+      "etcd": [
+        "3.4.20"
+      ],
+      "haproxy": [
+        "1.8.27"
+      ],
+      "keepalived": [
+        "2.1.5"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "8.6",
-        "db_version": "15",
-        "patroni_version": "2.1.4",
-        "etcd_version": "3.4.20",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "2.1.4"
-            ],
-            "etcd": [
-                "3.4.20"
-            ],
-            "haproxy": [
-                "1.8.27"
-            ],
-            "keepalived": [
-                "2.1.5"
-            ]
-        },
-        "provisioning_role": "metadata"
+    "provisioning_role": "metadata",
+    "qualified_extensions": []
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "8.6",
+    "db_version": "15",
+    "patroni_version": "2.1.4",
+    "etcd_version": "3.4.20",
+    "ha_components": {
+      "patroni": [
+        "2.1.4"
+      ],
+      "etcd": [
+        "3.4.20"
+      ],
+      "haproxy": [
+        "1.8.27"
+      ],
+      "keepalived": [
+        "2.1.5"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Ubuntu Linux",
-        "os_version": "20.04",
-        "db_version": "15",
-        "patroni_version": "2.1.4",
-        "etcd_version": "3.2.26",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "2.1.4"
-            ],
-            "etcd": [
-                "3.2.26"
-            ],
-            "haproxy": [
-                "2.0.29"
-            ],
-            "keepalived": [
-                "2.0.19"
-            ]
-        },
-        "provisioning_role": "metadata"
+    "provisioning_role": "metadata",
+    "qualified_extensions": []
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Ubuntu Linux",
+    "os_version": "20.04",
+    "db_version": "15",
+    "patroni_version": "2.1.4",
+    "etcd_version": "3.2.26",
+    "ha_components": {
+      "patroni": [
+        "2.1.4"
+      ],
+      "etcd": [
+        "3.2.26"
+      ],
+      "haproxy": [
+        "2.0.29"
+      ],
+      "keepalived": [
+        "2.0.19"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL Community Edition",
-        "db_type": "pgsql",
-        "os_type": "Ubuntu Linux",
-        "os_version": "20.04",
-        "db_version": "14",
-        "patroni_version": "2.1.4",
-        "etcd_version": "3.2.26",
-        "extensions": [
-            "pg_cron",
-            "pglogical",
-            "pg_partman",
-            "pg_stat_statements",
-            "pgvector",
-            "pgaudit",
-            "postgis",
-            "set_user",
-            "timescaledb"
-        ],
-        "ha_components": {
-            "patroni": [
-                "2.1.4"
-            ],
-            "etcd": [
-                "3.2.26"
-            ],
-            "haproxy": [
-                "2.0.29"
-            ],
-            "keepalived": [
-                "2.0.19"
-            ]
-        },
-        "provisioning_role": "metadata"
+    "provisioning_role": "metadata",
+    "qualified_extensions": []
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Ubuntu Linux",
+    "os_version": "20.04",
+    "db_version": "14",
+    "patroni_version": "2.1.4",
+    "etcd_version": "3.2.26",
+    "ha_components": {
+      "patroni": [
+        "2.1.4"
+      ],
+      "etcd": [
+        "3.2.26"
+      ],
+      "haproxy": [
+        "2.0.29"
+      ],
+      "keepalived": [
+        "2.0.19"
+      ]
     },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL EDB Advanced Server",
-        "db_type": "pgsql_edb",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.6",
-        "db_version": "17.2-17.6",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL EDB Advanced Server",
-        "db_type": "pgsql_edb",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.4",
-        "db_version": "16.1-16.10",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL EDB Advanced Server",
-        "db_type": "pgsql_edb",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "8.10",
-        "db_version": "15.2-15.14",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL EDB Advanced Server",
-        "db_type": "pgsql_edb",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "8.8",
-        "db_version": "16.1-16.10",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "PostgreSQL EDB Advanced Server",
-        "db_type": "pgsql_edb",
-        "os_type": "Ubuntu Linux",
-        "os_version": "20.04",
-        "db_version": "15.2-15.14",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Oracle Enterprise Edition",
-        "db_type": "oracle",
-        "os_type": "Oracle Enterprise Linux (OEL)",
-        "os_version": "9.6",
-        "db_version": "19.26-19.28",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "See NDB 2.9 release notes Oracle compatibility table"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Oracle Enterprise Edition",
-        "db_type": "oracle",
-        "os_type": "Oracle Enterprise Linux (OEL)",
-        "os_version": "8.10",
-        "db_version": "19.23-19.28",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "See NDB 2.9 release notes Oracle compatibility table"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Oracle Enterprise Edition",
-        "db_type": "oracle",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.6",
-        "db_version": "19.26-19.28",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "See NDB 2.9 release notes Oracle compatibility table"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Oracle Enterprise Edition",
-        "db_type": "oracle",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "8.10",
-        "db_version": "19.23-19.28",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "See NDB 2.9 release notes Oracle compatibility table"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2025",
-        "db_version": "SQL Server 2022",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2025",
-        "db_version": "2019",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2022",
-        "db_version": "SQL Server 2022",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2022",
-        "db_version": "2019",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2022",
-        "db_version": "2017",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2019",
-        "db_version": "SQL Server 2022",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2019",
-        "db_version": "2019",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2019",
-        "db_version": "2017",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2019",
-        "db_version": "2016",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2019",
-        "db_version": "2014",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2016",
-        "db_version": "SQL Server 2022",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2016",
-        "db_version": "2019",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2016",
-        "db_version": "2017",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2016",
-        "db_version": "2016",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "Microsoft SQL Server",
-        "db_type": "sqlserver",
-        "os_type": "Windows Server",
-        "os_version": "2016",
-        "db_version": "2014",
-        "extensions": [],
-        "provisioning_role": "metadata",
-        "notes": "Includes AG/FCI workflows per release notes",
-        "deployment": [
-            "single-instance",
-            "ag",
-            "fci"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MySQL Community & Enterprise",
-        "db_type": "mysql",
-        "os_type": "Rocky Linux",
-        "os_version": "9.6",
-        "db_version": "8.4.5",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MySQL Community & Enterprise",
-        "db_type": "mysql",
-        "os_type": "Rocky Linux",
-        "os_version": "9.6",
-        "db_version": "8.0.36-8.0.43",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MySQL Community & Enterprise",
-        "db_type": "mysql",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.6",
-        "db_version": "8.4.5",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MySQL Community & Enterprise",
-        "db_type": "mysql",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.6",
-        "db_version": "8.0.36-8.0.45",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MySQL Community & Enterprise",
-        "db_type": "mysql",
-        "os_type": "Ubuntu Linux",
-        "os_version": "22.04",
-        "db_version": "8.0.36-8.0.45",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MySQL Community & Enterprise",
-        "db_type": "mysql",
-        "os_type": "Debian",
-        "os_version": "12",
-        "db_version": "8.0.36-8.0.45",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MariaDB",
-        "db_type": "mariadb",
-        "os_type": "Rocky Linux",
-        "os_version": "9.5",
-        "db_version": "10.11 Community",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MariaDB",
-        "db_type": "mariadb",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.5",
-        "db_version": "10.11 Community",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MariaDB",
-        "db_type": "mariadb",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.5",
-        "db_version": "10.6 Enterprise",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MariaDB",
-        "db_type": "mariadb",
-        "os_type": "Ubuntu Linux",
-        "os_version": "22.04",
-        "db_version": "10.11 Community",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MariaDB",
-        "db_type": "mariadb",
-        "os_type": "Debian",
-        "os_version": "12",
-        "db_version": "10.11 Community",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MariaDB",
-        "db_type": "mariadb",
-        "os_type": "Debian",
-        "os_version": "12",
-        "db_version": "Enterprise",
-        "extensions": [],
-        "provisioning_role": "metadata"
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MongoDB",
-        "db_type": "mongodb",
-        "os_type": "Rocky Linux",
-        "os_version": "9.6",
-        "db_version": "8.0",
-        "extensions": [],
-        "provisioning_role": "mongodb",
-        "mongodb_edition": "community",
-        "deployment": [
-            "single-instance",
-            "replica-set",
-            "sharded-cluster"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MongoDB",
-        "db_type": "mongodb",
-        "os_type": "Rocky Linux",
-        "os_version": "9.6",
-        "db_version": "7.0",
-        "extensions": [],
-        "provisioning_role": "mongodb",
-        "mongodb_edition": "community",
-        "deployment": [
-            "single-instance",
-            "replica-set",
-            "sharded-cluster"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MongoDB",
-        "db_type": "mongodb",
-        "os_type": "Rocky Linux",
-        "os_version": "9.6",
-        "db_version": "6.0",
-        "extensions": [],
-        "provisioning_role": "mongodb",
-        "mongodb_edition": "community",
-        "deployment": [
-            "single-instance",
-            "replica-set",
-            "sharded-cluster"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MongoDB",
-        "db_type": "mongodb",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.6",
-        "db_version": "8.0",
-        "extensions": [],
-        "provisioning_role": "mongodb",
-        "mongodb_edition": "community",
-        "deployment": [
-            "single-instance",
-            "replica-set",
-            "sharded-cluster"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MongoDB",
-        "db_type": "mongodb",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.6",
-        "db_version": "7.0",
-        "extensions": [],
-        "provisioning_role": "mongodb",
-        "mongodb_edition": "community",
-        "deployment": [
-            "single-instance",
-            "replica-set",
-            "sharded-cluster"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MongoDB",
-        "db_type": "mongodb",
-        "os_type": "Red Hat Enterprise Linux (RHEL)",
-        "os_version": "9.6",
-        "db_version": "6.0",
-        "extensions": [],
-        "provisioning_role": "mongodb",
-        "mongodb_edition": "community",
-        "deployment": [
-            "single-instance",
-            "replica-set",
-            "sharded-cluster"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MongoDB",
-        "db_type": "mongodb",
-        "os_type": "Ubuntu Linux",
-        "os_version": "22.04",
-        "db_version": "8.0",
-        "extensions": [],
-        "provisioning_role": "mongodb",
-        "mongodb_edition": "community",
-        "deployment": [
-            "single-instance",
-            "replica-set"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MongoDB",
-        "db_type": "mongodb",
-        "os_type": "Ubuntu Linux",
-        "os_version": "22.04",
-        "db_version": "7.0",
-        "extensions": [],
-        "provisioning_role": "mongodb",
-        "mongodb_edition": "community",
-        "deployment": [
-            "single-instance",
-            "replica-set"
-        ]
-    },
-    {
-        "ndb_version": "2.9",
-        "engine": "MongoDB",
-        "db_type": "mongodb",
-        "os_type": "Ubuntu Linux",
-        "os_version": "22.04",
-        "db_version": "6.0",
-        "extensions": [],
-        "provisioning_role": "mongodb",
-        "mongodb_edition": "community",
-        "deployment": [
-            "single-instance",
-            "replica-set"
-        ]
-    }
+    "provisioning_role": "metadata",
+    "qualified_extensions": []
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL EDB Advanced Server",
+    "db_type": "pgsql_edb",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.6",
+    "db_version": "17.2-17.6",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL EDB Advanced Server",
+    "db_type": "pgsql_edb",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.4",
+    "db_version": "16.1-16.10",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL EDB Advanced Server",
+    "db_type": "pgsql_edb",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "8.10",
+    "db_version": "15.2-15.14",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL EDB Advanced Server",
+    "db_type": "pgsql_edb",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "8.8",
+    "db_version": "16.1-16.10",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "PostgreSQL EDB Advanced Server",
+    "db_type": "pgsql_edb",
+    "os_type": "Ubuntu Linux",
+    "os_version": "20.04",
+    "db_version": "15.2-15.14",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Oracle Enterprise Edition",
+    "db_type": "oracle",
+    "os_type": "Oracle Enterprise Linux (OEL)",
+    "os_version": "9.6",
+    "db_version": "19.26-19.28",
+    "provisioning_role": "metadata",
+    "notes": "See NDB 2.9 release notes Oracle compatibility table"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Oracle Enterprise Edition",
+    "db_type": "oracle",
+    "os_type": "Oracle Enterprise Linux (OEL)",
+    "os_version": "8.10",
+    "db_version": "19.23-19.28",
+    "provisioning_role": "metadata",
+    "notes": "See NDB 2.9 release notes Oracle compatibility table"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Oracle Enterprise Edition",
+    "db_type": "oracle",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.6",
+    "db_version": "19.26-19.28",
+    "provisioning_role": "metadata",
+    "notes": "See NDB 2.9 release notes Oracle compatibility table"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Oracle Enterprise Edition",
+    "db_type": "oracle",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "8.10",
+    "db_version": "19.23-19.28",
+    "provisioning_role": "metadata",
+    "notes": "See NDB 2.9 release notes Oracle compatibility table"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2025",
+    "db_version": "SQL Server 2022",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2025",
+    "db_version": "2019",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2022",
+    "db_version": "SQL Server 2022",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2022",
+    "db_version": "2019",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2022",
+    "db_version": "2017",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2019",
+    "db_version": "SQL Server 2022",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2019",
+    "db_version": "2019",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2019",
+    "db_version": "2017",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2019",
+    "db_version": "2016",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2019",
+    "db_version": "2014",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2016",
+    "db_version": "SQL Server 2022",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2016",
+    "db_version": "2019",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2016",
+    "db_version": "2017",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2016",
+    "db_version": "2016",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "Microsoft SQL Server",
+    "db_type": "sqlserver",
+    "os_type": "Windows Server",
+    "os_version": "2016",
+    "db_version": "2014",
+    "provisioning_role": "metadata",
+    "notes": "Includes AG/FCI workflows per release notes",
+    "deployment": [
+      "single-instance",
+      "ag",
+      "fci"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MySQL Community & Enterprise",
+    "db_type": "mysql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.6",
+    "db_version": "8.4.5",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MySQL Community & Enterprise",
+    "db_type": "mysql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.6",
+    "db_version": "8.0.36-8.0.43",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MySQL Community & Enterprise",
+    "db_type": "mysql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.6",
+    "db_version": "8.4.5",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MySQL Community & Enterprise",
+    "db_type": "mysql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.6",
+    "db_version": "8.0.36-8.0.45",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MySQL Community & Enterprise",
+    "db_type": "mysql",
+    "os_type": "Ubuntu Linux",
+    "os_version": "22.04",
+    "db_version": "8.0.36-8.0.45",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MySQL Community & Enterprise",
+    "db_type": "mysql",
+    "os_type": "Debian",
+    "os_version": "12",
+    "db_version": "8.0.36-8.0.45",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MariaDB",
+    "db_type": "mariadb",
+    "os_type": "Rocky Linux",
+    "os_version": "9.5",
+    "db_version": "10.11 Community",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MariaDB",
+    "db_type": "mariadb",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.5",
+    "db_version": "10.11 Community",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MariaDB",
+    "db_type": "mariadb",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.5",
+    "db_version": "10.6 Enterprise",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MariaDB",
+    "db_type": "mariadb",
+    "os_type": "Ubuntu Linux",
+    "os_version": "22.04",
+    "db_version": "10.11 Community",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MariaDB",
+    "db_type": "mariadb",
+    "os_type": "Debian",
+    "os_version": "12",
+    "db_version": "10.11 Community",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MariaDB",
+    "db_type": "mariadb",
+    "os_type": "Debian",
+    "os_version": "12",
+    "db_version": "Enterprise",
+    "provisioning_role": "metadata"
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Rocky Linux",
+    "os_version": "9.6",
+    "db_version": "8.0",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
+    "deployment": [
+      "single-instance",
+      "replica-set",
+      "sharded-cluster"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Rocky Linux",
+    "os_version": "9.6",
+    "db_version": "7.0",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
+    "deployment": [
+      "single-instance",
+      "replica-set",
+      "sharded-cluster"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Rocky Linux",
+    "os_version": "9.6",
+    "db_version": "6.0",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
+    "deployment": [
+      "single-instance",
+      "replica-set",
+      "sharded-cluster"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.6",
+    "db_version": "8.0",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
+    "deployment": [
+      "single-instance",
+      "replica-set",
+      "sharded-cluster"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.6",
+    "db_version": "7.0",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
+    "deployment": [
+      "single-instance",
+      "replica-set",
+      "sharded-cluster"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.6",
+    "db_version": "6.0",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
+    "deployment": [
+      "single-instance",
+      "replica-set",
+      "sharded-cluster"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Ubuntu Linux",
+    "os_version": "22.04",
+    "db_version": "8.0",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
+    "deployment": [
+      "single-instance",
+      "replica-set"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Ubuntu Linux",
+    "os_version": "22.04",
+    "db_version": "7.0",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
+    "deployment": [
+      "single-instance",
+      "replica-set"
+    ]
+  },
+  {
+    "ndb_version": "2.9",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Ubuntu Linux",
+    "os_version": "22.04",
+    "db_version": "6.0",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
+    "deployment": [
+      "single-instance",
+      "replica-set"
+    ]
+  }
 ]
