@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+# shellcheck source=scripts/postgres_extensions.sh
+source "scripts/postgres_extensions.sh"
+
 INCLUDE_OS=()
 EXCLUDE_OS=()
 INCLUDE_NDB=()
@@ -14,6 +17,7 @@ VALIDATE_ARTIFACTS=false
 WRITE_MANIFEST=false
 EXTENSIONS_ONLY=false
 CONTINUE_ON_ERROR=false
+POSTGRES_INSTALLABLE_EXTENSIONS_JSON=$(postgres_installable_extensions_json)
 
 function usage() {
   cat <<EOF
@@ -30,7 +34,7 @@ Options:
   --validate            Run in-guest validation after provisioning for each build
   --validate-artifact   Boot and validate each saved artifact after Packer succeeds
   --manifest            Write build manifests for each live build
-  --extensions-only     Only run rows that request PostgreSQL extensions
+  --extensions-only     Only run PostgreSQL rows with installable qualified extensions and select --extensions all-qualified
   --continue-on-error   Run all selected rows even if one build fails
   -h, --help            Show this help and exit
 EOF
@@ -260,8 +264,10 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
       continue
     fi
 
-    extensions_count=$(echo "$build" | jq -r '(.extensions // []) | length')
-    if [[ "$EXTENSIONS_ONLY" == "true" && "$extensions_count" -eq 0 ]]; then
+    qualified_installable_extensions_count=$(echo "$build" | jq -r \
+      --argjson installable "$POSTGRES_INSTALLABLE_EXTENSIONS_JSON" \
+      '(.qualified_extensions // []) | map(select(. as $name | $installable | index($name))) | length')
+    if [[ "$EXTENSIONS_ONLY" == "true" && "$qualified_installable_extensions_count" -eq 0 ]]; then
       continue
     fi
 
@@ -281,6 +287,9 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
       fi
       if [[ "$WRITE_MANIFEST" == "true" ]]; then
         BUILD_ARGS+=(--manifest)
+      fi
+      if [[ "$EXTENSIONS_ONLY" == "true" && "$provisioning_role" == "postgresql" ]]; then
+        BUILD_ARGS+=(--extensions all-qualified)
       fi
       "${BUILD_ARGS[@]}"
     ) </dev/null &

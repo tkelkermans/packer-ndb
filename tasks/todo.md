@@ -11,7 +11,7 @@
 - [x] Execute Task 2: qualified extension matrix validation.
 - [x] Execute Task 3: matrix migration from install lists to release-note metadata.
 - [x] Execute Task 4: `build.sh --extensions` explicit selection.
-- [ ] Execute Task 5: artifact validation and test harness semantics.
+- [x] Execute Task 5: artifact validation and test harness semantics.
 - [ ] Execute Task 6: wizard/TUI individual extension selection.
 - [ ] Execute Task 7: README and agent memory updates.
 - [ ] Execute Task 8: final offline verification and review notes.

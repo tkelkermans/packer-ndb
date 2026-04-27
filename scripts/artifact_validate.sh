@@ -35,7 +35,7 @@ Options:
   --ndb-version VERSION  NDB/Ansible version to use, for example 2.10
   --db-version VERSION   PostgreSQL major version expected in the image
   --db-type TYPE         Database type expected in the image (default: pgsql)
-  --extensions JSON      Matrix extension list JSON (default: [])
+  --extensions JSON      Selected PostgreSQL extensions JSON (default: [])
   --provisioning-role ROLE
                          Provisioning role from the selected matrix row
   --mongodb-edition EDITION

@@ -1334,6 +1334,7 @@ run_test_harness_tests() {
 
   mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
+  cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
 [
@@ -1401,6 +1402,7 @@ run_test_harness_extensions_only_tests() {
 
   mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
+  cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
 [
@@ -1412,7 +1414,7 @@ run_test_harness_extensions_only_tests() {
     "os_version": "9.99",
     "db_version": "1",
     "provisioning_role": "postgresql",
-    "extensions": ["pg_stat_statements"]
+    "qualified_extensions": ["pg_stat_statements"]
   },
   {
     "ndb_version": "9.99",
@@ -1422,8 +1424,8 @@ run_test_harness_extensions_only_tests() {
     "os_version": "9.99",
     "db_version": "2",
     "provisioning_role": "postgresql",
-    "extensions": [],
-    "extensions_empty_reason": "self-test row without extension coverage"
+    "qualified_extensions": [],
+    "qualified_extensions_empty_reason": "self-test row without extension coverage"
   }
 ]
 JSON
@@ -1432,16 +1434,21 @@ JSON
 #!/usr/bin/env bash
 set -euo pipefail
 db_version=""
+extension_selection=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --db-version)
       db_version=$2
       shift
       ;;
+    --extensions)
+      extension_selection=$2
+      shift
+      ;;
   esac
   shift
 done
-printf '%s\n' "$db_version" >> "${NDB_SELFTEST_BUILD_LOG:?}"
+printf '%s|%s\n' "$db_version" "$extension_selection" >> "${NDB_SELFTEST_BUILD_LOG:?}"
 SH
   chmod +x "$tmpdir/test.sh" "$tmpdir/build.sh"
 
@@ -1450,7 +1457,7 @@ SH
     SKIP_MATRIX_VALIDATION=true NDB_SELFTEST_BUILD_LOG="$build_log" ./test.sh --include-ndb 9.99 --extensions-only >/dev/null 2>"$harness_stderr"
   ) || fail "test harness extensions-only run failed"
 
-  [[ "$(cat "$build_log")" == "1" ]] || fail "test harness extensions-only did not limit builds to extension rows"
+  [[ "$(cat "$build_log")" == "1|all-qualified" ]] || fail "test harness extensions-only did not limit builds to extension rows with all-qualified"
   [[ ! -s "$harness_stderr" ]] || fail "test harness extensions-only wrote unexpected stderr: $(cat "$harness_stderr")"
   pass "test harness extensions-only filter"
 }
@@ -1465,6 +1472,7 @@ run_test_harness_build_stdin_isolation_tests() {
 
   mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
+  cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
 [
@@ -1476,7 +1484,7 @@ run_test_harness_build_stdin_isolation_tests() {
     "os_version": "9.99",
     "db_version": "1",
     "provisioning_role": "postgresql",
-    "extensions": ["pg_stat_statements"]
+    "qualified_extensions": ["pg_stat_statements"]
   },
   {
     "ndb_version": "9.99",
@@ -1486,7 +1494,7 @@ run_test_harness_build_stdin_isolation_tests() {
     "os_version": "9.99",
     "db_version": "2",
     "provisioning_role": "postgresql",
-    "extensions": ["pg_stat_statements"]
+    "qualified_extensions": ["pg_stat_statements"]
   }
 ]
 JSON
@@ -1528,6 +1536,7 @@ run_test_harness_continue_on_error_tests() {
 
   mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
+  cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
 [
@@ -1539,7 +1548,7 @@ run_test_harness_continue_on_error_tests() {
     "os_version": "9.99",
     "db_version": "1",
     "provisioning_role": "postgresql",
-    "extensions": ["pg_stat_statements"]
+    "qualified_extensions": ["pg_stat_statements"]
   },
   {
     "ndb_version": "9.99",
@@ -1549,7 +1558,7 @@ run_test_harness_continue_on_error_tests() {
     "os_version": "9.99",
     "db_version": "2",
     "provisioning_role": "postgresql",
-    "extensions": ["pg_stat_statements"]
+    "qualified_extensions": ["pg_stat_statements"]
   }
 ]
 JSON

@@ -641,7 +641,7 @@ git commit -m "Add explicit PostgreSQL extension selection"
 - Modify: `test.sh`
 - Modify: `scripts/selftest.sh`
 
-- [ ] **Step 1: Update failing selftests for harness behavior**
+- [x] **Step 1: Update failing selftests for harness behavior**
 
 Replace the old `run_test_harness_extensions_only_tests` fixture fields with `qualified_extensions`.
 
@@ -671,7 +671,7 @@ Expected assertion:
 [[ "$(cat "$build_log")" == "1|all-qualified" ]] || fail "test harness extensions-only did not select qualified extension row with all-qualified"
 ```
 
-- [ ] **Step 2: Run selftests and verify failure**
+- [x] **Step 2: Run selftests and verify failure**
 
 Run:
 
@@ -681,7 +681,7 @@ bash scripts/selftest.sh
 
 Expected: FAIL because `test.sh --extensions-only` still filters on `.extensions`.
 
-- [ ] **Step 3: Update `test.sh` filtering and build args**
+- [x] **Step 3: Update `test.sh` filtering and build args**
 
 Replace:
 
@@ -719,7 +719,7 @@ Update usage text:
   --extensions-only     Only run PostgreSQL rows with installable qualified extensions and select --extensions all-qualified
 ```
 
-- [ ] **Step 4: Update artifact validation help**
+- [x] **Step 4: Update artifact validation help**
 
 In `scripts/artifact_validate.sh`, replace:
 
@@ -743,7 +743,7 @@ bash scripts/selftest.sh
 
 Expected: harness tests and artifact validation tests pass.
 
-- [ ] **Step 6: Commit Task 5**
+- [x] **Step 6: Commit Task 5**
 
 ```bash
 git add test.sh scripts/artifact_validate.sh scripts/selftest.sh
@@ -782,7 +782,7 @@ This input sequence assumes the extension prompt appears after action selection 
 - Multi-select of one qualified and one advanced installable extension.
 - Warning preview before command execution.
 
-- [ ] **Step 2: Run selftests and verify failure**
+- [x] **Step 2: Run selftests and verify failure**
 
 Run:
 
@@ -965,7 +965,7 @@ grep -q "qualified_extensions" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing qua
 grep -q "Do not treat qualified_extensions as default installs" "$ROOT_DIR/tasks/lessons.md" || fail "lessons missing qualified extension correction"
 ```
 
-- [ ] **Step 2: Run selftests and verify failure**
+- [x] **Step 2: Run selftests and verify failure**
 
 Run:
 
