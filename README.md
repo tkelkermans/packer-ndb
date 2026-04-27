@@ -353,8 +353,8 @@ Artifact validation:
 
 - Finds the saved image in Prism.
 - Boots a disposable `validate-...` VM from that image.
-- Injects the repo SSH key with cloud-init.
-- Connects as `packer` with `packer/id_rsa`.
+- Injects the repo SSH key with cloud-init. By default this uses `packer/id_rsa.pub`; set `NDB_ARTIFACT_PUBLIC_KEY_PATH` only if you need a different validation public key.
+- Connects as `packer` with `packer/id_rsa`. Set `NDB_ARTIFACT_PRIVATE_KEY_PATH` only if you need a different validation private key.
 - Runs the matching validation role against the disposable VM: `validate_postgres` for PostgreSQL or `validate_mongodb` for MongoDB.
 - Deletes the disposable VM after validation by default.
 

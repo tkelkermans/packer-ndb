@@ -830,12 +830,20 @@ run_manifest_tests() {
 run_manifest_tests
 
 run_artifact_validate_tests() {
-  local tmpdir failure_result success_result cleanup_result
+  local tmpdir failure_result success_result cleanup_result test_private_key test_public_key
   tmpdir=$(mktemp -d)
   trap 'rm -rf "$tmpdir"' RETURN
   failure_result="$tmpdir/failure-result.json"
   success_result="$tmpdir/success-result.json"
   cleanup_result="$tmpdir/cleanup-result.json"
+  test_private_key="$tmpdir/id_rsa"
+  test_public_key="$tmpdir/id_rsa.pub"
+
+  printf '%s\n' "selftest-private-key" > "$test_private_key"
+  printf '%s\n' "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCselftest packer@selftest" > "$test_public_key"
+  chmod 600 "$test_private_key"
+  export NDB_ARTIFACT_PRIVATE_KEY_PATH="$test_private_key"
+  export NDB_ARTIFACT_PUBLIC_KEY_PATH="$test_public_key"
 
   if "$ROOT_DIR/scripts/artifact_validate.sh" --help >/dev/null; then
     pass "artifact validation help"

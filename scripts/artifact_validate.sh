@@ -53,6 +53,10 @@ Options:
   --result-file FILE     Write validation result JSON to FILE
   --keep-on-failure      Keep the disposable VM if validation fails
   -h, --help             Show this help and exit
+
+Environment:
+  NDB_ARTIFACT_PRIVATE_KEY_PATH  Override packer/id_rsa for validation SSH
+  NDB_ARTIFACT_PUBLIC_KEY_PATH   Override packer/id_rsa.pub for cloud-init
 EOF
 }
 
@@ -317,8 +321,8 @@ fi
 prism_require_env
 require_command jq curl ssh ansible-playbook base64
 
-PRIVATE_KEY_PATH="$ROOT_DIR/packer/id_rsa"
-PUBLIC_KEY_PATH="$ROOT_DIR/packer/id_rsa.pub"
+PRIVATE_KEY_PATH="${NDB_ARTIFACT_PRIVATE_KEY_PATH:-$ROOT_DIR/packer/id_rsa}"
+PUBLIC_KEY_PATH="${NDB_ARTIFACT_PUBLIC_KEY_PATH:-$ROOT_DIR/packer/id_rsa.pub}"
 USER_DATA_TEMPLATE="$ROOT_DIR/packer/http/user-data"
 ANSIBLE_DIR="$ROOT_DIR/ansible/$NDB_VERSION"
 ANSIBLE_CFG_PATH="$ANSIBLE_DIR/ansible.cfg"

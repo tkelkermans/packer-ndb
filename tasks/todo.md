@@ -5,7 +5,8 @@
 - [x] Approve advisory extension qualification design.
 - [x] Write and commit the design spec.
 - [x] Write detailed implementation plan.
-- [ ] Confirm execution approach before implementation.
+- [x] Confirm execution approach before implementation.
+- [x] Fix isolated-worktree baseline artifact validation selftest failure.
 - [ ] Execute Task 1: shared PostgreSQL extension catalog helper.
 - [ ] Execute Task 2: qualified extension matrix validation.
 - [ ] Execute Task 3: matrix migration from install lists to release-note metadata.
