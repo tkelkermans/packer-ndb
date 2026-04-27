@@ -1,17 +1,21 @@
 ---
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+
 - name: Derive PostgreSQL validation facts
   ansible.builtin.set_fact:
     validate_postgres_major_version: "{{ postgres_major_version | default(db_version) }}"
-    validate_postgres_psql_binary: "{{ (postgres_psql_bin_map | default(validate_postgres_psql_bin_map)).get(ansible_os_family, 'psql') | replace('%s', (postgres_major_version | default(db_version))) }}"
+    validate_postgres_psql_binary: "{{ (postgres_psql_bin_map | default(validate_postgres_psql_bin_map)).get(ndb_os_family, 'psql') | replace('%s', (postgres_major_version | default(db_version))) }}"
     validate_service_checks:
       - label: firewalld
         unit: firewalld.service
       - label: chrony
-        unit: "{{ 'chronyd.service' if ansible_os_family == 'RedHat' else 'chrony.service' }}"
+        unit: "{{ 'chronyd.service' if ndb_os_family == 'RedHat' else 'chrony.service' }}"
       - label: cron
-        unit: "{{ 'crond.service' if ansible_os_family == 'RedHat' else 'cron.service' }}"
+        unit: "{{ 'crond.service' if ndb_os_family == 'RedHat' else 'cron.service' }}"
       - label: postgresql
-        unit: "{{ 'postgresql-' + (postgres_major_version | default(db_version)) + '.service' if ansible_os_family == 'RedHat' else 'postgresql.service' }}"
+        unit: "{{ 'postgresql-' + (postgres_major_version | default(db_version)) + '.service' if ndb_os_family == 'RedHat' else 'postgresql.service' }}"
 
 - name: Check required services are active
   ansible.builtin.command:
@@ -141,7 +145,7 @@
   loop_control:
     loop_var: extension_name
   vars:
-    extension_metadata_family: "{{ postgres_extension_metadata.get(ansible_os_family, {}) }}"
+    extension_metadata_family: "{{ postgres_extension_metadata.get(ndb_os_family, {}) }}"
     extension_metadata: "{{ extension_metadata_family.get(extension_name, {}) }}"
     unsupported_versions: "{{ extension_metadata.get('unsupported_versions', []) }}"
     supported_versions: "{{ extension_metadata.get('supported_versions', []) }}"

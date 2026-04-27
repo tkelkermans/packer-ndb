@@ -1,13 +1,17 @@
 ---
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+
 - name: Build MongoDB validation service list
   ansible.builtin.set_fact:
     validate_mongodb_services:
       - label: firewalld
         unit: firewalld.service
       - label: chrony
-        unit: "{{ 'chronyd.service' if ansible_os_family == 'RedHat' else 'chrony.service' }}"
+        unit: "{{ 'chronyd.service' if ndb_os_family == 'RedHat' else 'chrony.service' }}"
       - label: cron
-        unit: "{{ 'crond.service' if ansible_os_family == 'RedHat' else 'cron.service' }}"
+        unit: "{{ 'crond.service' if ndb_os_family == 'RedHat' else 'cron.service' }}"
       - label: mongod
         unit: mongod.service
     validate_mongodb_enabled_status_values:

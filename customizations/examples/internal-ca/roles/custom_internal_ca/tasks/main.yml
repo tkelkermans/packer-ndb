@@ -1,3 +1,7 @@
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+
 - name: custom_internal_ca role marker
   ansible.builtin.debug:
     msg: "custom_internal_ca"
@@ -33,7 +37,7 @@
     creates: "{{ enterprise_internal_ca_path_redhat }}"
   when:
     - enterprise_internal_ca_enabled | default(false) | bool
-    - ansible_os_family == "RedHat"
+    - ndb_os_family == "RedHat"
 
 - name: Set RedHat sample CA certificate permissions
   become: yes
@@ -44,7 +48,7 @@
     mode: "0644"
   when:
     - enterprise_internal_ca_enabled | default(false) | bool
-    - ansible_os_family == "RedHat"
+    - ndb_os_family == "RedHat"
 
 - name: Generate sample internal CA certificate on Debian family
   become: yes
@@ -68,7 +72,7 @@
     creates: "{{ enterprise_internal_ca_path_debian }}"
   when:
     - enterprise_internal_ca_enabled | default(false) | bool
-    - ansible_os_family == "Debian"
+    - ndb_os_family == "Debian"
 
 - name: Set Debian sample CA certificate permissions
   become: yes
@@ -79,7 +83,7 @@
     mode: "0644"
   when:
     - enterprise_internal_ca_enabled | default(false) | bool
-    - ansible_os_family == "Debian"
+    - ndb_os_family == "Debian"
 
 - name: Update RedHat trust store
   become: yes
@@ -87,7 +91,7 @@
   changed_when: true
   when:
     - enterprise_internal_ca_enabled | default(false) | bool
-    - ansible_os_family == "RedHat"
+    - ndb_os_family == "RedHat"
 
 - name: Update Debian trust store
   become: yes
@@ -95,4 +99,4 @@
   changed_when: true
   when:
     - enterprise_internal_ca_enabled | default(false) | bool
-    - ansible_os_family == "Debian"
+    - ndb_os_family == "Debian"

@@ -1,7 +1,7 @@
 ---
 - name: Start PostgreSQL service
   ansible.builtin.service:
-    name: "{{ 'postgresql-' + postgres_version_map[db_version] if ansible_os_family == 'RedHat' else 'postgresql' }}"
+    name: "{{ postgres_service_name }}"
     enabled: true
     state: started
   become: yes

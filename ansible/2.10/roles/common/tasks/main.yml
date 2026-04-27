@@ -1,9 +1,15 @@
 ---
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+    ndb_distribution: "{{ ansible_facts['distribution'] }}"
+    ndb_distribution_version: "{{ ansible_facts['distribution_version'] }}"
+
 - name: Install dnf config-manager support (RedHat family)
   ansible.builtin.package:
     name: dnf-plugins-core
     state: present
-  when: ansible_os_family == "RedHat"
+  when: ndb_os_family == "RedHat"
   become: yes
 
 - name: Enable CRB repository (Rocky Linux)
@@ -13,7 +19,7 @@
       - config-manager
       - --set-enabled
       - crb
-  when: ansible_distribution == 'Rocky'
+  when: ndb_distribution == 'Rocky'
   become: yes
 
 - name: Update apt cache
@@ -24,7 +30,7 @@
   retries: 6
   delay: 10
   until: apt_cache_update_result is succeeded
-  when: ansible_os_family == "Debian"
+  when: ndb_os_family == "Debian"
   become: yes
 
 - name: Ensure OpenSSL stack is up to date (RedHat family)
@@ -33,7 +39,7 @@
       - openssl
       - openssl-libs
     state: latest
-  when: ansible_os_family == "RedHat"
+  when: ndb_os_family == "RedHat"
   become: yes
 
 - name: Ensure OpenSSL stack is up to date (Debian family)
@@ -47,7 +53,7 @@
   retries: 6
   delay: 10
   until: apt_openssl_result is succeeded
-  when: ansible_os_family == "Debian"
+  when: ndb_os_family == "Debian"
   become: yes
 
 - name: Clean dnf metadata cache (RedHat family)
@@ -61,7 +67,7 @@
   delay: 5
   until: dnf_clean_result.rc == 0
   changed_when: false
-  when: ansible_os_family == "RedHat"
+  when: ndb_os_family == "RedHat"
   become: yes
 
 - name: Refresh dnf metadata (RedHat family)
@@ -75,14 +81,14 @@
   delay: 10
   until: dnf_makecache_result.rc == 0
   changed_when: false
-  when: ansible_os_family == "RedHat"
+  when: ndb_os_family == "RedHat"
   become: yes
 
 - name: Install common packages (RedHat family)
   ansible.builtin.package:
     name: "{{ common_packages }}"
     state: present
-  when: ansible_os_family == "RedHat"
+  when: ndb_os_family == "RedHat"
   become: yes
 
 - name: Install common packages (Debian family)
@@ -94,14 +100,14 @@
   retries: 6
   delay: 10
   until: apt_common_packages_result is succeeded
-  when: ansible_os_family == "Debian"
+  when: ndb_os_family == "Debian"
   become: yes
 
 - name: Install Red Hat specific packages
   ansible.builtin.package:
     name: "{{ redhat_packages }}"
     state: present
-  when: ansible_os_family == "RedHat"
+  when: ndb_os_family == "RedHat"
   become: yes
 
 - name: Install Debian specific packages
@@ -113,7 +119,7 @@
   retries: 6
   delay: 10
   until: apt_debian_packages_result is succeeded
-  when: ansible_os_family == "Debian"
+  when: ndb_os_family == "Debian"
   become: yes
 
 - name: Remove UFW on Debian systems
@@ -125,7 +131,7 @@
   retries: 6
   delay: 10
   until: apt_remove_ufw_result is succeeded
-  when: ansible_os_family == "Debian"
+  when: ndb_os_family == "Debian"
   become: yes
 
 - name: Ensure AppArmor disable directory exists (Ubuntu 24.04 workaround)
@@ -135,7 +141,7 @@
     owner: root
     group: root
     mode: "0755"
-  when: ansible_distribution == "Ubuntu" and ansible_distribution_version == "24.04"
+  when: ndb_distribution == "Ubuntu" and ndb_distribution_version == "24.04"
   become: yes
 
 - name: Disable rsyslogd AppArmor profile for Ubuntu 24.04
@@ -144,7 +150,7 @@
     dest: /etc/apparmor.d/disable/usr.sbin.rsyslogd
     state: link
     force: true
-  when: ansible_distribution == "Ubuntu" and ansible_distribution_version == "24.04"
+  when: ndb_distribution == "Ubuntu" and ndb_distribution_version == "24.04"
   become: yes
 
 - name: Ensure firewalld service is enabled
@@ -152,19 +158,19 @@
     name: firewalld
     state: started
     enabled: true
-  when: ansible_os_family in ["RedHat", "Debian"]
+  when: ndb_os_family in ["RedHat", "Debian"]
   become: yes
 
 - name: Ensure chrony service is enabled
   ansible.builtin.service:
-    name: "{{ 'chronyd' if ansible_os_family == 'RedHat' else 'chrony' }}"
+    name: "{{ 'chronyd' if ndb_os_family == 'RedHat' else 'chrony' }}"
     state: started
     enabled: true
   become: yes
 
 - name: Ensure cron service is running
   ansible.builtin.service:
-    name: "{{ 'crond' if ansible_os_family == 'RedHat' else 'cron' }}"
+    name: "{{ 'crond' if ndb_os_family == 'RedHat' else 'cron' }}"
     state: started
     enabled: true
   become: yes

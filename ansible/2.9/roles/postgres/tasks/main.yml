@@ -1,9 +1,19 @@
 ---
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+    ndb_distribution_major_version: "{{ ansible_facts['distribution_major_version'] }}"
+    ndb_distribution_release: "{{ ansible_facts['distribution_release'] }}"
+
+- name: Derive PostgreSQL service name
+  ansible.builtin.set_fact:
+    postgres_service_name: "{{ 'postgresql-' ~ postgres_version_map[db_version] if ndb_os_family == 'RedHat' else 'postgresql' }}"
+
 - name: Import PostgreSQL GPG key (RedHat)
   ansible.builtin.rpm_key:
     state: present
     key: https://www.postgresql.org/media/keys/ACCC4CF8.asc
-  when: ansible_os_family == "RedHat"
+  when: ndb_os_family == "RedHat"
   become: yes
 
 - name: Import PostgreSQL GPG key (Debian)
@@ -13,7 +23,7 @@
     owner: root
     group: root
     mode: "0755"
-  when: ansible_os_family == "Debian"
+  when: ndb_os_family == "Debian"
   become: yes
 
 - name: Download PostgreSQL GPG key (Debian)
@@ -23,37 +33,37 @@
     owner: root
     group: root
     mode: "0644"
-  when: ansible_os_family == "Debian"
+  when: ndb_os_family == "Debian"
   become: yes
 
 - name: Add PostgreSQL repository (RHEL/Rocky)
   ansible.builtin.yum:
-    name: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ansible_distribution_major_version }}-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
+    name: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ndb_distribution_major_version }}-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
     state: present
     disable_gpg_check: yes
-  when: ansible_os_family == "RedHat"
+  when: ndb_os_family == "RedHat"
   become: yes
 
 - name: Import EPEL GPG key (RHEL/Rocky PostGIS dependencies)
   ansible.builtin.rpm_key:
     state: present
-    key: "https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-{{ ansible_distribution_major_version }}"
-  when: ansible_os_family == "RedHat" and 'postgis' in postgres_extensions
+    key: "https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-{{ ndb_distribution_major_version }}"
+  when: ndb_os_family == "RedHat" and 'postgis' in postgres_extensions
   become: yes
 
 - name: Add EPEL repository (RHEL/Rocky PostGIS dependencies)
   ansible.builtin.yum:
-    name: "https://dl.fedoraproject.org/pub/epel/epel-release-latest-{{ ansible_distribution_major_version }}.noarch.rpm"
+    name: "https://dl.fedoraproject.org/pub/epel/epel-release-latest-{{ ndb_distribution_major_version }}.noarch.rpm"
     state: present
-  when: ansible_os_family == "RedHat" and 'postgis' in postgres_extensions
+  when: ndb_os_family == "RedHat" and 'postgis' in postgres_extensions
   become: yes
 
 - name: Add PostgreSQL repository (Debian/Ubuntu)
   ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/etc/apt/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    repo: "deb [signed-by=/etc/apt/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt {{ ndb_distribution_release }}-pgdg main"
     state: present
     update_cache: true
-  when: ansible_os_family == "Debian"
+  when: ndb_os_family == "Debian"
   become: yes
 
 - name: Download TimescaleDB GPG key (Debian/Ubuntu)
@@ -63,7 +73,7 @@
     owner: root
     group: root
     mode: "0644"
-  when: ansible_os_family == "Debian" and 'timescaledb' in postgres_extensions
+  when: ndb_os_family == "Debian" and 'timescaledb' in postgres_extensions
   become: yes
 
 - name: Install TimescaleDB GPG keyring (Debian/Ubuntu)
@@ -76,28 +86,28 @@
       - /etc/apt/keyrings/timescale_timescaledb-archive-keyring.gpg
       - /etc/apt/keyrings/timescale_timescaledb.asc
     creates: /etc/apt/keyrings/timescale_timescaledb-archive-keyring.gpg
-  when: ansible_os_family == "Debian" and 'timescaledb' in postgres_extensions
+  when: ndb_os_family == "Debian" and 'timescaledb' in postgres_extensions
   become: yes
 
 - name: Add TimescaleDB repository (Debian/Ubuntu)
   ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/etc/apt/keyrings/timescale_timescaledb-archive-keyring.gpg] https://packagecloud.io/timescale/timescaledb/ubuntu/ {{ ansible_distribution_release }} main"
+    repo: "deb [signed-by=/etc/apt/keyrings/timescale_timescaledb-archive-keyring.gpg] https://packagecloud.io/timescale/timescaledb/ubuntu/ {{ ndb_distribution_release }} main"
     state: present
     update_cache: true
-  when: ansible_os_family == "Debian" and 'timescaledb' in postgres_extensions
+  when: ndb_os_family == "Debian" and 'timescaledb' in postgres_extensions
   become: yes
 
 - name: Disable the built-in PostgreSQL module (RHEL/Rocky)
   ansible.builtin.command:
     cmd: "dnf -qy module disable postgresql"
-  when: ansible_os_family == "RedHat"
+  when: ndb_os_family == "RedHat"
   become: yes
 
 - name: Install PostgreSQL (RHEL/Rocky)
   ansible.builtin.package:
     name: "postgresql{{ postgres_version_map[db_version] }}-server"
     state: present
-  when: ansible_os_family == "RedHat"
+  when: ndb_os_family == "RedHat"
   notify: Start PostgreSQL service
   become: yes
 
@@ -110,7 +120,7 @@
   retries: 6
   delay: 10
   until: apt_postgresql_install_result is succeeded
-  when: ansible_os_family == "Debian"
+  when: ndb_os_family == "Debian"
   notify: Start PostgreSQL service
   become: yes
 
@@ -118,13 +128,13 @@
   ansible.builtin.stat:
     path: "/var/lib/pgsql/{{ postgres_version_map[db_version] }}/data/postgresql.conf"
   register: postgres_data
-  when: ansible_os_family == "RedHat"
+  when: ndb_os_family == "RedHat"
   become: yes
 
 - name: Initialize the database (RHEL/Rocky)
   ansible.builtin.command:
     cmd: "/usr/pgsql-{{ postgres_version_map[db_version] }}/bin/postgresql-{{ postgres_version_map[db_version] }}-setup initdb"
-  when: ansible_os_family == "RedHat" and not postgres_data.stat.exists
+  when: ndb_os_family == "RedHat" and not postgres_data.stat.exists
   notify: Start PostgreSQL service
   become: yes
 
@@ -134,11 +144,11 @@
 
 - name: Determine psql binary path
   ansible.builtin.set_fact:
-    postgres_psql_binary: "{{ (postgres_psql_bin_map.get(ansible_os_family) | default('psql')) | replace('%s', postgres_major_version) }}"
+    postgres_psql_binary: "{{ (postgres_psql_bin_map.get(ndb_os_family) | default('psql')) | replace('%s', postgres_major_version) }}"
 
 - name: Determine postgresql.conf path
   ansible.builtin.set_fact:
-    postgres_config_file: "{{ (postgres_conf_path_map.get(ansible_os_family) | default('/var/lib/pgsql/%s/data/postgresql.conf')) | replace('%s', postgres_major_version) }}"
+    postgres_config_file: "{{ (postgres_conf_path_map.get(ndb_os_family) | default('/var/lib/pgsql/%s/data/postgresql.conf')) | replace('%s', postgres_major_version) }}"
 
 - name: Determine contrib package name
   ansible.builtin.set_fact:
@@ -146,18 +156,18 @@
       {{
         (
           'postgresql' + postgres_major_version + '-contrib' + contrib_suffix
-        ) if ansible_os_family == 'RedHat'
+        ) if ndb_os_family == 'RedHat'
         else 'postgresql-contrib-' + postgres_major_version
       }}
   vars:
-    contrib_override: "{{ (postgres_contrib_version_overrides.get(ansible_os_family, {})).get(postgres_major_version, '') }}"
+    contrib_override: "{{ (postgres_contrib_version_overrides.get(ndb_os_family, {})).get(postgres_major_version, '') }}"
     contrib_suffix: "{{ '-' + contrib_override if contrib_override | length > 0 else '' }}"
 
 - name: Install PostgreSQL contrib package (RHEL/Rocky)
   ansible.builtin.package:
     name: "{{ postgres_contrib_package_name }}"
     state: present
-  when: ansible_os_family == "RedHat"
+  when: ndb_os_family == "RedHat"
   become: yes
 
 - name: Install PostgreSQL contrib package (Debian/Ubuntu)
@@ -169,12 +179,12 @@
   retries: 6
   delay: 10
   until: apt_postgresql_contrib_result is succeeded
-  when: ansible_os_family == "Debian"
+  when: ndb_os_family == "Debian"
   become: yes
 
 - name: Ensure PostgreSQL service is enabled and running
   ansible.builtin.service:
-    name: "{{ 'postgresql-' + postgres_version_map[db_version] if ansible_os_family == 'RedHat' else 'postgresql' }}"
+    name: "{{ postgres_service_name }}"
     enabled: true
     state: started
   become: yes
@@ -203,14 +213,14 @@
       loop_control:
         loop_var: extension_name
       vars:
-        extension_metadata_family: "{{ postgres_extension_metadata.get(ansible_os_family, {}) }}"
+        extension_metadata_family: "{{ postgres_extension_metadata.get(ndb_os_family, {}) }}"
         extension_metadata: "{{ extension_metadata_family.get(extension_name, {}) }}"
         unsupported_versions: "{{ extension_metadata.get('unsupported_versions', []) }}"
         supported_versions: "{{ extension_metadata.get('supported_versions', []) }}"
         version_supported: "{{ (supported_versions | length == 0 or postgres_major_version in supported_versions) and (postgres_major_version not in unsupported_versions) }}"
         package_override_map: "{{ extension_metadata.get('package_overrides', {}) }}"
         package_override: "{{ package_override_map.get(postgres_major_version, '') }}"
-        base_template: "{{ (postgres_extension_package_map.get(ansible_os_family, {}) ).get(extension_name, '') }}"
+        base_template: "{{ (postgres_extension_package_map.get(ndb_os_family, {}) ).get(extension_name, '') }}"
         package_name: "{{ package_override if package_override | length > 0 else ((base_template | length > 0) | ternary(base_template | format(postgres_major_version), '')) }}"
         dependency_map: "{{ extension_metadata.get('dependencies', {}) }}"
         dependency_default: "{{ dependency_map.get('default', []) }}"
@@ -263,7 +273,7 @@
         name: "{{ postgres_extension_packages_to_install }}"
         state: present
       when:
-        - ansible_os_family == "RedHat"
+        - ndb_os_family == "RedHat"
         - postgres_extension_packages_to_install | length > 0
       become: yes
 
@@ -277,7 +287,7 @@
       delay: 10
       until: apt_postgres_extension_packages_result is succeeded
       when:
-        - ansible_os_family == "Debian"
+        - ndb_os_family == "Debian"
         - postgres_extension_packages_to_install | length > 0
       become: yes
 
@@ -300,7 +310,7 @@
 
     - name: Restart PostgreSQL after extension configuration changes
       ansible.builtin.service:
-        name: "{{ 'postgresql-' + postgres_version_map[db_version] if ansible_os_family == 'RedHat' else 'postgresql' }}"
+        name: "{{ postgres_service_name }}"
         state: restarted
       when: postgres_extension_preload_libraries | length > 0 or postgres_extension_configuration | length > 0
       become: yes

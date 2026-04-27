@@ -1754,6 +1754,24 @@ run_readme_wizard_tests() {
 
 run_readme_wizard_tests
 
+run_ansible_fact_normalization_guard_tests() {
+  local deprecated_pattern deprecated_refs
+  deprecated_pattern='ansible_(os_family|distribution|distribution_version|distribution_major_version|distribution_release)'
+  deprecated_refs=$(
+    find "$ROOT_DIR/ansible" "$ROOT_DIR/customizations/examples" -name '*.yml' -print0 \
+      | xargs -0 rg -n "$deprecated_pattern" || true
+  )
+
+  if [[ -n "$deprecated_refs" ]]; then
+    printf '%s\n' "$deprecated_refs" >&2
+    fail "committed Ansible YAML still uses deprecated top-level ansible_* facts"
+  fi
+
+  pass "Ansible fact normalization guard"
+}
+
+run_ansible_fact_normalization_guard_tests
+
 run_agent_guidance_tests() {
   grep -q "update the shell wizard/TUI in the same work item" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing wizard maintenance rule"
   grep -q "Keep the README beginner-facing" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing README boundary guidance"

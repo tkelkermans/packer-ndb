@@ -1,5 +1,28 @@
 # Task Plan
 
+# Active Plan: Ansible Fact Normalization Cleanup
+
+- [x] Add static selftest guard for deprecated top-level Ansible facts.
+- [x] Normalize core common and image preparation roles.
+- [x] Normalize PostgreSQL roles and handlers.
+- [x] Normalize MongoDB roles.
+- [x] Normalize validation roles.
+- [x] Normalize committed customization examples.
+- [x] Run offline verification and representative dry-runs.
+- [x] Run representative live PostgreSQL validation if environment is available.
+- [x] Record final review.
+
+# Active Plan Review: Ansible Fact Normalization Cleanup
+
+- Added `scripts/selftest.sh` guard for deprecated top-level Ansible facts across committed `ansible/**/*.yml` and `customizations/examples/**/*.yml`; it failed before normalization and now passes.
+- Normalized OS facts in NDB 2.9 and 2.10 common, image preparation, PostgreSQL, MongoDB, PostgreSQL validation, MongoDB validation, and committed customization example roles.
+- PostgreSQL service naming is now derived as `postgres_service_name` during normal role execution and reused by PostgreSQL tasks and handlers.
+- Offline verification passed: deprecated fact scan, `bash -n build.sh test.sh scripts/*.sh`, `bash scripts/matrix_validate.sh ndb/2.9/matrix.json ndb/2.10/matrix.json`, `packer fmt -check packer`, `git diff --check`, `bash scripts/selftest.sh`, both NDB site syntax checks, both customization preflight syntax checks, PostgreSQL extension dry-run, MongoDB dry-run, and enterprise customization dry-run.
+- Live validation passed for NDB 2.10 PostgreSQL 18 on Rocky Linux 9.7 with source image UUID `7a6d6c2f-90b4-4acb-bf14-6f2be1bf006e` and selected extension `pg_stat_statements`.
+- Live saved image: `ndb-2.10-pgsql-18-Rocky Linux-9.7-ext-pg-stat-statements-20260427095420` (`2f7e57fd-1838-47b7-9ec5-d432311dc297`).
+- Live manifest `manifests/ndb-2.10-pgsql-18-Rocky Linux-9.7-ext-pg-stat-statements-20260427095420.json` recorded status `success`, in-guest validation `passed`, artifact validation `passed`, and artifact validation VM cleanup `deleted`.
+- Live log check found no `INJECT_FACTS_AS_VARS` or top-level `ansible_*` deprecation warning.
+
 # Active Plan: PostgreSQL Extension Image Name Suffix
 
 - [x] Add failing selftest coverage that selected PostgreSQL extensions appear in generated image names.

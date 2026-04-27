@@ -1,3 +1,7 @@
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+
 - name: validate_custom_enterprise role marker
   ansible.builtin.debug:
     msg: "validate_custom_enterprise"
@@ -9,7 +13,7 @@
   register: enterprise_ca_redhat_stat
   when:
     - enterprise_internal_ca_enabled | default(false) | bool
-    - ansible_os_family == "RedHat"
+    - ndb_os_family == "RedHat"
 
 - name: Check Debian sample CA certificate
   become: yes
@@ -18,13 +22,13 @@
   register: enterprise_ca_debian_stat
   when:
     - enterprise_internal_ca_enabled | default(false) | bool
-    - ansible_os_family == "Debian"
+    - ndb_os_family == "Debian"
 
 - name: Assert sample CA certificate exists
   ansible.builtin.assert:
     that:
-      - (ansible_os_family == "RedHat" and enterprise_ca_redhat_stat.stat.exists) or
-        (ansible_os_family == "Debian" and enterprise_ca_debian_stat.stat.exists)
+      - (ndb_os_family == "RedHat" and enterprise_ca_redhat_stat.stat.exists) or
+        (ndb_os_family == "Debian" and enterprise_ca_debian_stat.stat.exists)
     fail_msg: "Enterprise sample CA certificate was not installed"
   when: enterprise_internal_ca_enabled | default(false) | bool
 
