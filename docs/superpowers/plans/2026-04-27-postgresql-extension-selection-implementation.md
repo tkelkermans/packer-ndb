@@ -1057,7 +1057,7 @@ git commit -m "Document advisory PostgreSQL extension selection"
 **Files:**
 - Modify only if verification finds a real defect in files from prior tasks.
 
-- [ ] **Step 1: Run shell syntax checks**
+- [x] **Step 1: Run shell syntax checks**
 
 Run:
 
@@ -1077,7 +1077,7 @@ bash scripts/selftest.sh
 
 Expected: all tests pass.
 
-- [ ] **Step 3: Run matrix validation**
+- [x] **Step 3: Run matrix validation**
 
 Run:
 
@@ -1087,7 +1087,7 @@ bash scripts/matrix_validate.sh ndb/2.9/matrix.json ndb/2.10/matrix.json
 
 Expected: both matrix files validate successfully.
 
-- [ ] **Step 4: Run representative dry-runs**
+- [x] **Step 4: Run representative dry-runs**
 
 Run:
 
@@ -1105,7 +1105,7 @@ Expected:
 - Non-qualified selected extensions print advisory warnings.
 - MongoDB dry-run still works.
 
-- [ ] **Step 5: Run Packer and Ansible static checks**
+- [x] **Step 5: Run Packer and Ansible static checks**
 
 Run:
 
@@ -1137,7 +1137,7 @@ ANSIBLE_CONFIG=ansible/2.10/ansible.cfg ansible-playbook --syntax-check ansible/
 
 Expected: all static checks pass.
 
-- [ ] **Step 6: Run diff hygiene**
+- [x] **Step 6: Run diff hygiene**
 
 Run:
 
@@ -1148,7 +1148,7 @@ git status --short
 
 Expected: no whitespace errors; only intended files modified.
 
-- [ ] **Step 7: Update task review notes**
+- [x] **Step 7: Update task review notes**
 
 Add an `Active Plan Review` section to `tasks/todo.md` summarizing:
 
@@ -1158,7 +1158,7 @@ Add an `Active Plan Review` section to `tasks/todo.md` summarizing:
 - Wizard supports individual selections and warnings.
 - Offline verification result.
 
-- [ ] **Step 8: Commit final verification notes**
+- [x] **Step 8: Commit final verification notes**
 
 ```bash
 git add tasks/todo.md

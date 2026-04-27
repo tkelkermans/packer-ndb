@@ -14,7 +14,16 @@
 - [x] Execute Task 5: artifact validation and test harness semantics.
 - [x] Execute Task 6: wizard/TUI individual extension selection.
 - [x] Execute Task 7: README and agent memory updates.
-- [ ] Execute Task 8: final offline verification and review notes.
+- [x] Execute Task 8: final offline verification and review notes.
+
+# Active Plan Review: PostgreSQL Extension Selection Implementation
+
+- PostgreSQL matrix rows now use `qualified_extensions` as release-note qualification metadata, not as a default install list.
+- Buildable PostgreSQL rows that do not match exact release-note extension qualification rows now carry an explicit `qualified_extensions_empty_reason`.
+- `build.sh --extensions` controls per-build PostgreSQL extension installation; omitted or `--extensions none` installs no extensions, and `--extensions all-qualified` selects only qualified extensions this tool can install today.
+- The single-image wizard/TUI now lets operators individually select PostgreSQL extensions, defaults to none, and warns for installable choices that are not release-note-qualified for the selected row.
+- Offline verification passed: shell syntax, selftests, matrix validation, representative dry-runs, `packer fmt -check`, `packer validate`, NDB 2.9 and 2.10 Ansible syntax checks, dry-run assertions, and `git diff --check`.
+- `packer validate` in the isolated global worktree required a temporary ignored `packer/id_rsa` keypair because Packer validates the private-key file format; the temporary keypair was removed after validation.
 
 # Active Plan: Consolidate AGENTS Project Memory
 
