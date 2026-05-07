@@ -4,6 +4,8 @@ set -euo pipefail
 
 # shellcheck source=scripts/postgres_extensions.sh
 source "scripts/postgres_extensions.sh"
+# shellcheck source=scripts/source_images.sh
+source "scripts/source_images.sh"
 
 INCLUDE_OS=()
 EXCLUDE_OS=()
@@ -17,7 +19,11 @@ VALIDATE_ARTIFACTS=false
 WRITE_MANIFEST=false
 EXTENSIONS_ONLY=false
 CONTINUE_ON_ERROR=false
+PREFLIGHT_ONLY=false
+CUSTOMIZATION_PROFILE=""
 POSTGRES_INSTALLABLE_EXTENSIONS_JSON=$(postgres_installable_extensions_json)
+SOURCE_IMAGE_UUID_MAP_KEYS=()
+SOURCE_IMAGE_UUID_MAP_VALUES=()
 
 function usage() {
   cat <<EOF
@@ -34,8 +40,14 @@ Options:
   --validate            Run in-guest validation after provisioning for each build
   --validate-artifact   Boot and validate each saved artifact after Packer succeeds
   --manifest            Write build manifests for each live build
+  --preflight           Check live Prism/source-image readiness for each selected row without invoking Packer
   --extensions-only     Only run PostgreSQL rows with installable qualified extensions and select --extensions all-qualified
   --continue-on-error   Run all selected rows even if one build fails
+  --customization-profile PROFILE
+                       Pass a build.sh customization profile to every selected row
+  --source-image-uuid-map MAP
+                       Comma-separated source image key to Prism UUID map, for example
+                       rocky-linux-9.7=UUID,ubuntu-linux-22.04=UUID
   -h, --help            Show this help and exit
 EOF
 }
@@ -64,6 +76,46 @@ function db_type_allowed() {
     return
   fi
   return 0
+}
+
+function parse_source_image_uuid_map() {
+  local spec=$1
+  local entry key value index
+
+  while IFS= read -r -d '' entry; do
+    if [[ "$entry" != *=* ]]; then
+      echo "Error: --source-image-uuid-map entries must use key=uuid." >&2
+      exit 1
+    fi
+    key=${entry%%=*}
+    value=${entry#*=}
+    if [[ -z "$key" || -z "$value" ]]; then
+      echo "Error: --source-image-uuid-map entries require non-empty key and UUID values." >&2
+      exit 1
+    fi
+    for (( index = 0; index < ${#SOURCE_IMAGE_UUID_MAP_KEYS[@]}; index++ )); do
+      if [[ "${SOURCE_IMAGE_UUID_MAP_KEYS[$index]}" == "$key" ]]; then
+        echo "Error: duplicate --source-image-uuid-map key: $key" >&2
+        exit 1
+      fi
+    done
+    SOURCE_IMAGE_UUID_MAP_KEYS+=("$key")
+    SOURCE_IMAGE_UUID_MAP_VALUES+=("$value")
+  done < <(split_csv "$spec")
+}
+
+function source_image_uuid_for_os() {
+  local os_type=$1
+  local os_version=$2
+  local key index
+
+  key=$(source_image_key_for_os "$os_type" "$os_version")
+  for (( index = 0; index < ${#SOURCE_IMAGE_UUID_MAP_KEYS[@]}; index++ )); do
+    if [[ "${SOURCE_IMAGE_UUID_MAP_KEYS[$index]}" == "$key" ]]; then
+      printf '%s\n' "${SOURCE_IMAGE_UUID_MAP_VALUES[$index]}"
+      return 0
+    fi
+  done
 }
 
 while [[ $# -gt 0 ]]; do
@@ -114,11 +166,22 @@ while [[ $# -gt 0 ]]; do
     --manifest)
       WRITE_MANIFEST=true
       ;;
+    --preflight)
+      PREFLIGHT_ONLY=true
+      ;;
     --extensions-only)
       EXTENSIONS_ONLY=true
       ;;
     --continue-on-error)
       CONTINUE_ON_ERROR=true
+      ;;
+    --customization-profile)
+      CUSTOMIZATION_PROFILE="$2"
+      shift
+      ;;
+    --source-image-uuid-map)
+      parse_source_image_uuid_map "$2"
+      shift
       ;;
     -h|--help)
       usage
@@ -273,12 +336,16 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
 
     os_version=$(echo "$build" | jq -r '.os_version')
     db_version=$(echo "$build" | jq -r '.db_version')
+    source_image_uuid=$(source_image_uuid_for_os "$os_type" "$os_version")
 
     echo "--> Testing build: ${db_type} on ${os_type} ${os_version} (DB ${db_version})"
 
     (
       set -euo pipefail
       BUILD_ARGS=(./build.sh --ci --ndb-version "$ndb_version" --db-type "$db_type" --os "$os_type" --os-version "$os_version" --db-version "$db_version")
+      if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
+        BUILD_ARGS+=(--preflight)
+      fi
       if [[ "$VALIDATE_BUILDS" == "true" ]]; then
         BUILD_ARGS+=(--validate)
       fi
@@ -290,6 +357,12 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
       fi
       if [[ "$EXTENSIONS_ONLY" == "true" && "$provisioning_role" == "postgresql" ]]; then
         BUILD_ARGS+=(--extensions all-qualified)
+      fi
+      if [[ -n "$CUSTOMIZATION_PROFILE" ]]; then
+        BUILD_ARGS+=(--customization-profile "$CUSTOMIZATION_PROFILE")
+      fi
+      if [[ -n "$source_image_uuid" ]]; then
+        BUILD_ARGS+=(--source-image-uuid "$source_image_uuid")
       fi
       "${BUILD_ARGS[@]}"
     ) </dev/null &

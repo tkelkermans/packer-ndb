@@ -21,6 +21,7 @@ RESULT_FILE=""
 KEEP_ON_FAILURE=false
 VM_NAME=""
 VM_UUID=""
+VM_IP=""
 IMAGE_UUID=""
 CLEANUP_STATUS="not-started"
 FINAL_STATUS="failed"
@@ -143,6 +144,7 @@ write_result() {
     --arg image_uuid "$IMAGE_UUID" \
     --arg vm_name "$VM_NAME" \
     --arg vm_uuid "$VM_UUID" \
+    --arg vm_ip "$VM_IP" \
     --arg status "$status" \
     --arg cleanup_status "$CLEANUP_STATUS" \
     '{
@@ -150,8 +152,10 @@ write_result() {
       image_uuid: $image_uuid,
       vm_name: $vm_name,
       vm_uuid: $vm_uuid,
+      vm_ip: $vm_ip,
       artifact_vm_name: $vm_name,
       artifact_vm_uuid: $vm_uuid,
+      artifact_vm_ip: $vm_ip,
       status: $status,
       cleanup_status: $cleanup_status,
       cleanup: {
@@ -384,6 +388,10 @@ CREATE_PAYLOAD=$(jq -n \
         num_vcpus_per_socket: 1,
         memory_size_mib: 4096,
         power_state: "OFF",
+        boot_config: {
+          boot_type: "UEFI",
+          boot_device_order_list: ["DISK", "CDROM", "NETWORK"]
+        },
         disk_list: [
           {
             data_source_reference: {
@@ -405,6 +413,12 @@ CREATE_PAYLOAD=$(jq -n \
               kind: "subnet",
               uuid: $subnet_uuid
             },
+            is_connected: true
+          }
+        ],
+        serial_port_list: [
+          {
+            index: 0,
             is_connected: true
           }
         ],

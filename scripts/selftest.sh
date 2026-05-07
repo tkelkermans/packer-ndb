@@ -204,13 +204,21 @@ run_qualified_extension_matrix_tests
 run_customization_profile_static_tests() {
   [[ -f "$ROOT_DIR/customizations/profiles/enterprise-example.yml" ]] || fail "missing enterprise example profile"
   [[ -f "$ROOT_DIR/customizations/profiles/enterprise-example.vars.yml" ]] || fail "missing enterprise example vars"
+  [[ -f "$ROOT_DIR/customizations/profiles/rhel-repositories-example.yml" ]] || fail "missing RHEL repositories example profile"
+  [[ -f "$ROOT_DIR/customizations/profiles/rhel-repositories-example.vars.yml" ]] || fail "missing RHEL repositories example vars"
+  [[ -f "$ROOT_DIR/customizations/examples/rhel-repositories/README.md" ]] || fail "missing RHEL repositories example README"
   [[ -f "$ROOT_DIR/customizations/local/README.md" ]] || fail "missing local customization README"
   grep -q "customizations/local/" "$ROOT_DIR/.gitignore" || fail ".gitignore does not ignore local customizations"
   grep -q "custom_internal_ca" "$ROOT_DIR/customizations/profiles/enterprise-example.yml" || fail "profile missing internal CA role"
   grep -q "custom_monitoring_agent" "$ROOT_DIR/customizations/profiles/enterprise-example.yml" || fail "profile missing monitoring role"
   grep -q "custom_os_hardening" "$ROOT_DIR/customizations/profiles/enterprise-example.yml" || fail "profile missing hardening role"
   grep -q "validate_custom_enterprise" "$ROOT_DIR/customizations/profiles/enterprise-example.yml" || fail "profile missing custom validation role"
+  grep -q "custom_rhel_repositories" "$ROOT_DIR/customizations/profiles/rhel-repositories-example.yml" || fail "RHEL repositories profile missing pre-common role"
+  grep -q "validate_rhel_repositories" "$ROOT_DIR/customizations/profiles/rhel-repositories-example.yml" || fail "RHEL repositories profile missing validation role"
+  grep -q "customizations/examples/rhel-repositories/roles" "$ROOT_DIR/customizations/profiles/rhel-repositories-example.yml" || fail "RHEL repositories profile missing explicit role path"
   grep -q "OpenTelemetry Collector" "$ROOT_DIR/customizations/examples/monitoring-agent/README.md" || fail "monitoring example does not document OpenTelemetry Collector"
+  grep -q "rhel-repositories-example" "$ROOT_DIR/README.md" || fail "README missing RHEL repositories profile command"
+  grep -q -- "--customization-profile customizations/local/rhel-repositories.yml" "$ROOT_DIR/VALIDATION.md" || fail "VALIDATION missing RHEL matrix customization profile command"
   grep -q "Customize The Image" "$ROOT_DIR/README.md" || fail "README missing customization section"
   grep -q -- "--customization-profile" "$ROOT_DIR/README.md" || fail "README missing customization profile command"
   pass "customization profile static skeleton"
@@ -255,6 +263,12 @@ run_customization_build_dispatch_tests() {
   grep -q "become: yes" "$ROOT_DIR/customizations/examples/monitoring-agent/roles/custom_monitoring_agent/tasks/main.yml" || fail "monitoring example does not use privilege escalation"
   grep -q "become: yes" "$ROOT_DIR/customizations/examples/os-hardening/roles/custom_os_hardening/tasks/main.yml" || fail "hardening example does not use privilege escalation"
   grep -q "become: yes" "$ROOT_DIR/customizations/examples/enterprise-validation/roles/validate_custom_enterprise/tasks/main.yml" || fail "enterprise validation example does not use privilege escalation"
+  grep -q "ansible.builtin.yum_repository" "$ROOT_DIR/customizations/examples/rhel-repositories/roles/custom_rhel_repositories/tasks/main.yml" || fail "RHEL repository role does not configure yum repositories"
+  grep -q "subscription-manager" "$ROOT_DIR/customizations/examples/rhel-repositories/roles/custom_rhel_repositories/tasks/main.yml" || fail "RHEL repository role does not support subscription-manager repo enablement"
+  grep -q "no_log" "$ROOT_DIR/customizations/examples/rhel-repositories/roles/custom_rhel_repositories/tasks/main.yml" || fail "RHEL repository role does not hide repository values"
+  grep -q "makecache" "$ROOT_DIR/customizations/examples/rhel-repositories/roles/custom_rhel_repositories/tasks/main.yml" || fail "RHEL repository role does not refresh dnf metadata"
+  grep -q "ansible.builtin.package_facts" "$ROOT_DIR/customizations/examples/rhel-repositories/roles/validate_rhel_repositories/tasks/main.yml" || fail "RHEL repository validation role does not inspect installed packages"
+  grep -q "rhel_repositories_required_packages" "$ROOT_DIR/customizations/examples/rhel-repositories/roles/validate_rhel_repositories/tasks/main.yml" || fail "RHEL repository validation role does not check required package list"
   pass "customization build dispatch guards"
 }
 
@@ -531,11 +545,15 @@ SH
 #!/usr/bin/env bash
 printf 'curl %s\n' "$*" >> "$NDB_SELFTEST_CURL_LOG"
 output_file=""
+url=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -o)
       output_file=$2
       shift
+      ;;
+    http*://*)
+      url=$1
       ;;
     -w)
       shift
@@ -543,7 +561,14 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
-body='{"entities":[{"spec":{"name":"test-cluster"},"metadata":{"uuid":"cluster-uuid"}},{"spec":{"name":"test-subnet"},"metadata":{"uuid":"subnet-uuid"}},{"spec":{"name":"test-image"},"metadata":{"uuid":"image-uuid"}}]}'
+case "$url" in
+  */api/nutanix/v3/images/image-uuid)
+    body='{"metadata":{"uuid":"image-uuid"},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[{"kind":"cluster","uuid":"cluster-uuid"}]}}}'
+    ;;
+  *)
+    body='{"entities":[{"spec":{"name":"test-cluster"},"metadata":{"uuid":"cluster-uuid"}},{"spec":{"name":"test-subnet"},"metadata":{"uuid":"subnet-uuid"}},{"spec":{"name":"test-image"},"metadata":{"uuid":"image-uuid"}}]}'
+    ;;
+esac
 if [[ -n "$output_file" ]]; then
   printf '%s' "$body" > "$output_file"
 else
@@ -785,6 +810,267 @@ JSON
 
 run_source_image_tests
 
+run_source_image_preflight_active_image_tests() {
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/scripts/source_images.sh"
+  local tmpdir output
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/preflight.out"
+
+  mkdir -p "$tmpdir/bin"
+  cat > "$tmpdir/bin/curl" <<'SH'
+#!/usr/bin/env bash
+output_file=""
+url=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output_file=$2
+      shift
+      ;;
+    http*://*)
+      url=$1
+      ;;
+  esac
+  shift
+done
+
+case "$url" in
+  */api/nutanix/v3/clusters/list)
+    body='{"entities":[{"spec":{"name":"test-cluster"},"metadata":{"uuid":"cluster-uuid"}}]}'
+    ;;
+  */api/nutanix/v3/subnets/list)
+    body='{"entities":[{"spec":{"name":"test-subnet"},"metadata":{"uuid":"subnet-uuid"}}]}'
+    ;;
+  */api/nutanix/v3/images/active-image-uuid)
+    body='{"metadata":{"uuid":"active-image-uuid"},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[],"current_cluster_reference_list":[{"kind":"cluster","uuid":"cluster-uuid"}]}}}'
+    ;;
+  */api/nutanix/v3/images/inactive-image-uuid)
+    body='{"metadata":{"uuid":"inactive-image-uuid"},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[]}}}'
+    ;;
+  *)
+    body='{"metadata":{"uuid":"unknown"},"status":{"resources":{}}}'
+    ;;
+esac
+
+if [[ -n "$output_file" ]]; then
+  printf '%s' "$body" > "$output_file"
+else
+  printf '%s' "$body"
+fi
+printf '200'
+SH
+  chmod +x "$tmpdir/bin/curl"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    source_image_preflight \
+      --source-image-uuid active-image-uuid \
+      --cluster-name test-cluster \
+      --subnet-name test-subnet >"$output" 2>&1
+  ) || fail "source image preflight rejected active image UUID: $(cat "$output")"
+
+  if (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    source_image_preflight \
+      --source-image-uuid inactive-image-uuid \
+      --cluster-name test-cluster \
+      --subnet-name test-subnet >"$output" 2>&1
+  ); then
+    fail "source image preflight unexpectedly accepted inactive image UUID"
+  fi
+  grep -q "inactive or unavailable on the selected Prism cluster" "$output" || fail "source image preflight inactive image error was not actionable"
+
+  pass "source image preflight active image guard"
+}
+
+run_source_image_preflight_active_image_tests
+
+run_source_image_stage_existing_image_tests() {
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/scripts/source_images.sh"
+  local tmpdir output
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/stage.out"
+
+  mkdir -p "$tmpdir/bin"
+  cat > "$tmpdir/bin/curl" <<'SH'
+#!/usr/bin/env bash
+output_file=""
+url=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output_file=$2
+      shift
+      ;;
+    http*://*)
+      url=$1
+      ;;
+  esac
+  shift
+done
+
+case "$url" in
+  */api/nutanix/v3/images/list)
+    body='{"entities":[{"spec":{"name":"active.qcow2"},"metadata":{"uuid":"active-image-uuid"}},{"spec":{"name":"inactive.qcow2"},"metadata":{"uuid":"inactive-image-uuid"}}]}'
+    ;;
+  */api/nutanix/v3/images/active-image-uuid)
+    body='{"metadata":{"uuid":"active-image-uuid"},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[{"kind":"cluster","uuid":"cluster-uuid"}]}}}'
+    ;;
+  */api/nutanix/v3/images/inactive-image-uuid)
+    body='{"metadata":{"uuid":"inactive-image-uuid"},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[]}}}'
+    ;;
+  *)
+    body='{"metadata":{"uuid":"new-image-uuid"},"status":{"execution_context":{"task_uuid":"task-uuid"}}}'
+    ;;
+esac
+
+if [[ -n "$output_file" ]]; then
+  printf '%s' "$body" > "$output_file"
+else
+  printf '%s' "$body"
+fi
+printf '200'
+SH
+  chmod +x "$tmpdir/bin/curl"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    [[ "$(source_image_stage_remote_uri "https://example.com/active.qcow2" "cluster-uuid" "active.qcow2")" == "active.qcow2" ]]
+  ) >"$output" 2>&1 || fail "source image staging did not reuse active existing image: $(cat "$output")"
+  grep -q "Reusing existing Prism image" "$output" || fail "source image staging did not report active image reuse"
+
+  if (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    source_image_stage_remote_uri "https://example.com/inactive.qcow2" "cluster-uuid" "inactive.qcow2" >"$output" 2>&1
+  ); then
+    fail "source image staging unexpectedly reused inactive existing image"
+  fi
+  grep -q "existing Prism image is inactive" "$output" || fail "source image staging inactive image error was not actionable"
+
+  pass "source image staging existing image guard"
+}
+
+run_source_image_stage_existing_image_tests
+
+run_prism_image_activation_helper_tests() {
+  local tmpdir output put_payload
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/activate.out"
+  put_payload="$tmpdir/put-payload.json"
+
+  "$ROOT_DIR/scripts/prism_image_activate.sh" --help >/dev/null || fail "Prism image activation helper help"
+
+  mkdir -p "$tmpdir/bin"
+  cat > "$tmpdir/bin/curl" <<'SH'
+#!/usr/bin/env bash
+output_file=""
+url=""
+method=""
+payload=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -X)
+      method=$2
+      shift
+      ;;
+    -o)
+      output_file=$2
+      shift
+      ;;
+    -d)
+      payload=$2
+      shift
+      ;;
+    http*://*)
+      url=$1
+      ;;
+  esac
+  shift
+done
+
+case "$url" in
+  */api/nutanix/v3/clusters/list)
+    body='{"entities":[{"spec":{"name":"target-cluster"},"metadata":{"uuid":"cluster-uuid"}}]}'
+    ;;
+  */api/nutanix/v3/images/inactive-image-uuid)
+    if [[ "$method" == "PUT" ]]; then
+      printf '%s' "$payload" > "${NDB_SELFTEST_PUT_PAYLOAD:?}"
+      body='{"status":{"execution_context":{"task_uuid":"activate-task"}}}'
+    else
+      body='{"metadata":{"kind":"image","uuid":"inactive-image-uuid","spec_version":2},"spec":{"name":"inactive.qcow2","resources":{"image_type":"DISK_IMAGE","architecture":"X86_64","initial_placement_ref_list":[{"kind":"cluster","uuid":"other-cluster"}]}},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[]}}}'
+    fi
+    ;;
+  */api/nutanix/v3/tasks/activate-task)
+    body='{"status":"SUCCEEDED","percentage_complete":100}'
+    ;;
+  *)
+    body='{}'
+    ;;
+esac
+
+if [[ -n "$output_file" ]]; then
+  printf '%s' "$body" > "$output_file"
+else
+  printf '%s' "$body"
+fi
+printf '200'
+SH
+  chmod +x "$tmpdir/bin/curl"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    export NDB_SELFTEST_PUT_PAYLOAD="$put_payload"
+    "$ROOT_DIR/scripts/prism_image_activate.sh" \
+      --image-uuid inactive-image-uuid \
+      --cluster-name target-cluster >"$output" 2>&1
+  ) || fail "Prism image activation dry-run failed: $(cat "$output")"
+  grep -q "Dry run: no Prism changes made" "$output" || fail "Prism image activation helper did not default to dry-run"
+  grep -q "inactive.qcow2" "$output" || fail "Prism image activation helper did not identify image"
+  [[ ! -e "$put_payload" ]] || fail "Prism image activation helper mutated Prism during dry-run"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    export NDB_SELFTEST_PUT_PAYLOAD="$put_payload"
+    "$ROOT_DIR/scripts/prism_image_activate.sh" \
+      --image-uuid inactive-image-uuid \
+      --cluster-name target-cluster \
+      --apply >"$output" 2>&1
+  ) || fail "Prism image activation apply failed: $(cat "$output")"
+  grep -q "Activation task completed" "$output" || fail "Prism image activation helper did not wait for task completion"
+  jq -e '([.spec.resources.initial_placement_ref_list[].uuid] | sort) == ["cluster-uuid", "other-cluster"]' "$put_payload" >/dev/null || fail "Prism image activation payload did not preserve and add initial placement"
+  jq -e '.metadata.uuid == "inactive-image-uuid" and .metadata.spec_version == 2' "$put_payload" >/dev/null || fail "Prism image activation payload did not preserve metadata"
+
+  pass "Prism image activation helper"
+}
+
+run_prism_image_activation_helper_tests
+
 run_source_image_uuid_guard_tests() {
   grep -q -- "--source-image-uuid" "$ROOT_DIR/build.sh" || fail "build.sh does not expose source image UUID override"
   grep -q "PACKER_SOURCE_IMAGE_UUID" "$ROOT_DIR/build.sh" || fail "build.sh does not track source image UUID for Packer"
@@ -798,6 +1084,299 @@ run_source_image_uuid_guard_tests() {
 }
 
 run_source_image_uuid_guard_tests
+
+run_source_image_catalog_tests() {
+  local debian_12_image
+  debian_12_image=$(jq -r '."debian-12"' "$ROOT_DIR/images.json")
+
+  [[ "$debian_12_image" == *"debian-12-generic-amd64.qcow2" ]] || fail "Debian 12 source image should use the generic image for maximum device compatibility"
+  [[ "$debian_12_image" != *"genericcloud"* ]] || fail "Debian 12 source image should not use genericcloud on AHV"
+
+  pass "source image catalog"
+}
+
+run_source_image_catalog_tests
+
+run_source_image_ssh_probe_tests() {
+  local tmpdir result test_private_key test_public_key
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  result="$tmpdir/result.json"
+  test_private_key="$tmpdir/id_rsa"
+  test_public_key="$tmpdir/id_rsa.pub"
+
+  printf '%s\n' "selftest-private-key" > "$test_private_key"
+  printf '%s\n' "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCselftest packer@selftest" > "$test_public_key"
+  chmod 600 "$test_private_key"
+
+  "$ROOT_DIR/scripts/source_image_ssh_probe.sh" --help >/dev/null || fail "source image SSH probe help"
+  grep -q -- "--rhel-repository-check" "$ROOT_DIR/scripts/source_image_ssh_probe.sh" || fail "source image SSH probe missing RHEL repository check option"
+  grep -q -- "--rhel-repository-check" "$ROOT_DIR/README.md" || fail "README does not document source image RHEL repository probe"
+
+  mkdir -p "$tmpdir/bin"
+  cat > "$tmpdir/bin/curl" <<'SH'
+#!/usr/bin/env bash
+  output_file=""
+  url=""
+  method=""
+  payload=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -X)
+      method=$2
+      shift
+      ;;
+    -o)
+      output_file=$2
+      shift
+      ;;
+    -d)
+      payload=$2
+      shift
+      ;;
+    -w)
+      shift
+      ;;
+    http*://*)
+      url=$1
+      ;;
+  esac
+  shift
+done
+
+case "$url" in
+  */api/nutanix/v3/images/source-image-uuid)
+    body='{"metadata":{"uuid":"source-image-uuid"},"spec":{"name":"source-image"}}'
+    ;;
+  */api/nutanix/v3/clusters/list)
+    body='{"entities":[{"spec":{"name":"mock-cluster"},"metadata":{"uuid":"cluster-uuid"}}]}'
+    ;;
+  */api/nutanix/v3/subnets/list)
+    body='{"entities":[{"spec":{"name":"mock-subnet"},"metadata":{"uuid":"subnet-uuid"}}]}'
+    ;;
+  */api/nutanix/v3/vms)
+    if [[ -n "${NDB_SELFTEST_PAYLOAD_CAPTURE:-}" ]]; then
+      printf '%s' "$payload" > "$NDB_SELFTEST_PAYLOAD_CAPTURE"
+    fi
+    body='{"metadata":{"uuid":"vm-uuid"},"status":{"execution_context":{"task_uuid":"create-task"}}}'
+    ;;
+  */api/nutanix/v3/tasks/create-task|*/api/nutanix/v3/tasks/power-task|*/api/nutanix/v3/tasks/delete-task)
+    body='{"status":"SUCCEEDED","percentage_complete":100}'
+    ;;
+  */api/nutanix/v3/vms/vm-uuid)
+    if [[ "$method" == "DELETE" ]]; then
+      touch "${NDB_SELFTEST_DELETE_MARKER:?}"
+      body='{"status":{"execution_context":{"task_uuid":"delete-task"}}}'
+    elif [[ "$method" == "PUT" ]]; then
+      body='{"status":{"execution_context":{"task_uuid":"power-task"}}}'
+    else
+      body='{"api_version":"3.1","metadata":{"uuid":"vm-uuid","kind":"vm"},"spec":{"name":"vm","resources":{"power_state":"OFF"}},"status":{"resources":{"nic_list":[{"ip_endpoint_list":[{"ip":"192.0.2.20"}]}]}}}'
+    fi
+    ;;
+  *)
+    body='{"status":"SUCCEEDED","percentage_complete":100}'
+    ;;
+esac
+
+if [[ -n "$output_file" ]]; then
+  printf '%s' "$body" > "$output_file"
+else
+  printf '%s' "$body"
+fi
+printf '200'
+SH
+
+  cat > "$tmpdir/bin/ssh" <<'SH'
+#!/usr/bin/env bash
+if [[ "$*" == *"dnf"* ]]; then
+  printf '%s\n' "$*" > "${NDB_SELFTEST_REPO_CHECK_MARKER:?}"
+fi
+exit 0
+SH
+  chmod +x "$tmpdir/bin/curl" "$tmpdir/bin/ssh"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    export PKR_VAR_cluster_name=mock-cluster
+    export PKR_VAR_subnet_name=mock-subnet
+    export NDB_SOURCE_PROBE_PRIVATE_KEY_PATH="$test_private_key"
+    export NDB_SOURCE_PROBE_PUBLIC_KEY_PATH="$test_public_key"
+    export NDB_SELFTEST_DELETE_MARKER="$tmpdir/delete-called"
+    export NDB_SELFTEST_PAYLOAD_CAPTURE="$tmpdir/create-payload.json"
+    "$ROOT_DIR/scripts/source_image_ssh_probe.sh" \
+      --source-image-uuid source-image-uuid \
+      --result-file "$result" >/dev/null 2>&1
+  ) || fail "source image SSH probe success path failed"
+
+  jq -e '.status == "passed" and .source_image_uuid == "source-image-uuid" and .vm_uuid == "vm-uuid" and .vm_ip == "192.0.2.20" and .cleanup.source_image_probe_vm == "deleted"' "$result" >/dev/null || fail "source image SSH probe result JSON"
+  jq -e '.spec.resources.boot_config.boot_type == "UEFI"' "$tmpdir/create-payload.json" >/dev/null || fail "source image SSH probe does not default to Packer UEFI boot type"
+  [[ -e "$tmpdir/delete-called" ]] || fail "source image SSH probe did not delete VM"
+
+  rm -f "$result" "$tmpdir/delete-called" "$tmpdir/repo-check-command.txt"
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    export PKR_VAR_cluster_name=mock-cluster
+    export PKR_VAR_subnet_name=mock-subnet
+    export NDB_SOURCE_PROBE_PRIVATE_KEY_PATH="$test_private_key"
+    export NDB_SOURCE_PROBE_PUBLIC_KEY_PATH="$test_public_key"
+    export NDB_SELFTEST_DELETE_MARKER="$tmpdir/delete-called"
+    export NDB_SELFTEST_PAYLOAD_CAPTURE="$tmpdir/create-payload.json"
+    export NDB_SELFTEST_REPO_CHECK_MARKER="$tmpdir/repo-check-command.txt"
+    "$ROOT_DIR/scripts/source_image_ssh_probe.sh" \
+      --source-image-uuid source-image-uuid \
+      --rhel-repository-check \
+      --rhel-repository-packages bison,gcc \
+      --result-file "$result" >/dev/null 2>&1
+  ) || fail "source image RHEL repository probe success path failed"
+  grep -q "sudo -n dnf -y install bison gcc" "$tmpdir/repo-check-command.txt" || fail "source image RHEL repository probe did not install requested packages"
+  jq -e '.status == "passed" and .checks.rhel_repositories == "passed"' "$result" >/dev/null || fail "source image RHEL repository probe result JSON"
+
+  pass "source image SSH probe"
+}
+
+run_source_image_ssh_probe_tests
+
+run_rhel_readiness_helper_tests() {
+  local tmpdir output status
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/rhel-readiness.out"
+
+  "$ROOT_DIR/scripts/rhel_readiness.sh" --help >/dev/null || fail "RHEL readiness helper help"
+
+  status=0
+  (
+    unset NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI RHEL_96_UUID RHEL_97_UUID
+    "$ROOT_DIR/scripts/rhel_readiness.sh" >"$output" 2>&1
+  ) || status=$?
+  [[ "$status" -eq 1 ]] || fail "RHEL readiness helper should fail when RHEL inputs are missing"
+  grep -q "RHEL source URI readiness: incomplete" "$output" || fail "RHEL readiness helper did not report missing URI readiness"
+  grep -q "NDB_RHEL_9_6_IMAGE_URI=missing" "$output" || fail "RHEL readiness helper did not report missing RHEL 9.6 URI"
+  grep -q "RHEL staged image UUID readiness: incomplete" "$output" || fail "RHEL readiness helper did not report missing staged UUID readiness"
+  grep -q "RHEL_97_UUID=missing" "$output" || fail "RHEL readiness helper did not report missing RHEL 9.7 UUID"
+
+  (
+    export NDB_RHEL_9_6_IMAGE_URI=/private/rhel-9.6.qcow2
+    export NDB_RHEL_9_7_IMAGE_URI=/private/rhel-9.7.qcow2
+    unset RHEL_96_UUID RHEL_97_UUID
+    "$ROOT_DIR/scripts/rhel_readiness.sh" >"$output" 2>&1
+  ) || fail "RHEL readiness helper should pass when licensed URI inputs are set"
+  grep -q "RHEL source URI readiness: complete" "$output" || fail "RHEL readiness helper did not report complete URI readiness"
+  ! grep -q "/private/rhel" "$output" || fail "RHEL readiness helper printed source image URI values"
+  grep -q -- './test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --preflight --max-parallel 1' "$output" || fail "RHEL readiness helper did not print URI preflight command"
+
+  (
+    unset NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI
+    export RHEL_96_UUID=00000000-0000-0000-0000-000000000000
+    export RHEL_97_UUID=11111111-1111-1111-1111-111111111111
+    "$ROOT_DIR/scripts/rhel_readiness.sh" >"$output" 2>&1
+  ) || fail "RHEL readiness helper should pass when staged UUID inputs are set"
+  grep -q "RHEL staged image UUID readiness: complete" "$output" || fail "RHEL readiness helper did not report complete UUID readiness"
+  grep -q 'rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}' "$output" || fail "RHEL readiness helper did not print staged UUID map command"
+  ! grep -q "00000000-0000-0000-0000-000000000000" "$output" || fail "RHEL readiness helper printed staged UUID values"
+
+  mkdir -p "$tmpdir/bin"
+  cat > "$tmpdir/bin/curl" <<'SH'
+#!/usr/bin/env bash
+output_file=""
+url=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output_file=$2
+      shift
+      ;;
+    http*://*)
+      url=$1
+      ;;
+  esac
+  shift
+done
+
+case "$url" in
+  */api/nutanix/v3/images/list)
+    body='{"entities":[{"spec":{"name":"rhel-9.7-source"},"metadata":{"uuid":"uuid-97"}},{"spec":{"name":"rhel-9.6-source"},"metadata":{"uuid":"uuid-96"}},{"spec":{"name":"ubuntu-24.04-source"},"metadata":{"uuid":"uuid-ubuntu"}}]}'
+    ;;
+  */api/nutanix/v3/images/uuid-97)
+    body='{"metadata":{"uuid":"uuid-97"},"spec":{"name":"rhel-9.7-source"},"status":{"state":"COMPLETE","resources":{"current_cluster_reference_list":[{"kind":"cluster","uuid":"cluster-uuid"}]}}}'
+    ;;
+  */api/nutanix/v3/images/uuid-96)
+    body='{"metadata":{"uuid":"uuid-96"},"spec":{"name":"rhel-9.6-source"},"status":{"state":"COMPLETE","resources":{"current_cluster_reference_list":[]}}}'
+    ;;
+  *)
+    body='{}'
+    ;;
+esac
+if [[ -n "$output_file" ]]; then
+  printf '%s' "$body" > "$output_file"
+else
+  printf '%s' "$body"
+fi
+printf '200'
+SH
+  chmod +x "$tmpdir/bin/curl"
+
+  status=0
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    unset NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI RHEL_96_UUID RHEL_97_UUID
+    "$ROOT_DIR/scripts/rhel_readiness.sh" --scan-prism --show-prism-matches >"$output" 2>&1
+  ) || status=$?
+  [[ "$status" -eq 1 ]] || fail "RHEL readiness helper should still fail when scan finds candidates but no chosen inputs are set"
+  grep -q "Staged RHEL-like Prism images: 2" "$output" || fail "RHEL readiness helper did not count Prism RHEL matches"
+  grep -q "Active RHEL-like Prism images: 1" "$output" || fail "RHEL readiness helper did not count active Prism RHEL matches"
+  grep -q "uuid-97" "$output" || fail "RHEL readiness helper did not print Prism match UUID when requested"
+  grep -q "rhel-9.7-source" "$output" || fail "RHEL readiness helper did not print Prism match name when requested"
+  grep -q "rhel-9.6-source" "$output" || fail "RHEL readiness helper did not print inactive Prism match name when requested"
+  grep -q "active" "$output" || fail "RHEL readiness helper did not flag active Prism match availability"
+  grep -q "inactive" "$output" || fail "RHEL readiness helper did not flag Prism match availability"
+
+  pass "RHEL readiness helper"
+}
+
+run_rhel_readiness_helper_tests
+
+run_packer_builder_timeout_tests() {
+  grep -q 'version[[:space:]]*=[[:space:]]*"~> 1.0.0"' "$ROOT_DIR/packer/database.pkr.hcl" || fail "Packer Nutanix plugin should use the live-proven 1.0.x line"
+  grep -q 'variable "ssh_timeout"' "$ROOT_DIR/packer/variables.pkr.hcl" || fail "Packer variables do not define ssh_timeout"
+  grep -q 'ssh_timeout[[:space:]]*=[[:space:]]*var.ssh_timeout' "$ROOT_DIR/packer/database.pkr.hcl" || fail "Packer builder does not set ssh_timeout"
+  grep -q 'default[[:space:]]*=[[:space:]]*"10m"' "$ROOT_DIR/packer/variables.pkr.hcl" || fail "Packer ssh_timeout should default to 10m"
+  grep -q 'variable "boot_type"' "$ROOT_DIR/packer/variables.pkr.hcl" || fail "Packer variables do not define boot_type"
+  grep -q 'boot_type[[:space:]]*=[[:space:]]*var.boot_type' "$ROOT_DIR/packer/database.pkr.hcl" || fail "Packer builder does not set boot_type from a variable"
+  grep -q 'default[[:space:]]*=[[:space:]]*"uefi"' "$ROOT_DIR/packer/variables.pkr.hcl" || fail "Packer boot_type should default to current uefi behavior"
+  grep -q 'variable "boot_priority"' "$ROOT_DIR/packer/variables.pkr.hcl" || fail "Packer variables do not define boot_priority"
+  grep -q 'boot_priority[[:space:]]*=[[:space:]]*var.boot_priority' "$ROOT_DIR/packer/database.pkr.hcl" || fail "Packer builder does not set boot_priority from a variable"
+  grep -q 'default[[:space:]]*=[[:space:]]*"disk"' "$ROOT_DIR/packer/variables.pkr.hcl" || fail "Packer boot_priority should default to disk for cloud images"
+  grep -q 'variable "serialport"' "$ROOT_DIR/packer/variables.pkr.hcl" || fail "Packer variables do not define serialport"
+  grep -q 'serialport[[:space:]]*=[[:space:]]*var.serialport' "$ROOT_DIR/packer/database.pkr.hcl" || fail "Packer builder does not set serialport from a variable"
+  grep -q 'default[[:space:]]*=[[:space:]]*true' "$ROOT_DIR/packer/variables.pkr.hcl" || fail "Packer serialport should default to true for Linux cloud images"
+
+  pass "Packer builder SSH timeout guard"
+}
+
+run_packer_builder_timeout_tests
+
+run_packer_cloud_init_tests() {
+  grep -q "name: packer" "$ROOT_DIR/packer/http/user-data" || fail "Packer cloud-init user data does not create packer user"
+  grep -q "NOPASSWD:ALL" "$ROOT_DIR/packer/http/user-data" || fail "Packer cloud-init user data does not grant passwordless sudo"
+  grep -q "openssh-server" "$ROOT_DIR/packer/http/user-data" || fail "Packer cloud-init user data does not install openssh-server"
+  ! grep -q "groups:.*admin" "$ROOT_DIR/packer/http/user-data" || fail "Packer cloud-init user data uses non-portable admin group"
+
+  pass "Packer cloud-init user data guard"
+}
+
+run_packer_cloud_init_tests
 
 run_manifest_tests() {
   local tmpdir manifest
@@ -817,7 +1396,7 @@ run_manifest_tests() {
     --matrix-row-json '{"ndb_version":"2.10","provisioning_role":"postgresql"}'
 
   jq -e '.image_name == "ndb-test" and .status == "running" and .selection.provisioning_role == "postgresql" and .matrix_row.ndb_version == "2.10"' "$manifest" >/dev/null || fail "manifest init JSON"
-  jq -e '.validation.in_guest == "not-requested" and .validation.artifact == "not-requested" and (.cleanup | type) == "object"' "$manifest" >/dev/null || fail "manifest default status JSON"
+  jq -e '.validation.in_guest == "not-requested" and .validation.artifact == "not-requested" and .validation.artifact_vm_ip == null and (.cleanup | type) == "object"' "$manifest" >/dev/null || fail "manifest default status JSON"
 
   "$ROOT_DIR/scripts/manifest.sh" set \
     --file "$manifest" \
@@ -858,13 +1437,21 @@ run_manifest_tests() {
 
   jq -e '.customization.enabled == true and .customization.profile == "enterprise-example" and (.customization.phases.validate | index("validate_custom_enterprise"))' "$manifest" >/dev/null || fail "manifest customization JSON"
 
+  printf '%s\n' '{"status":"passed","artifact_vm_name":"validate-test","artifact_vm_uuid":"vm-uuid-1","artifact_vm_ip":"192.0.2.10","cleanup":{"artifact_validation_vm":"deleted"}}' > "$tmpdir/artifact-result.json"
+  "$ROOT_DIR/scripts/manifest.sh" record-artifact-validation \
+    --file "$manifest" \
+    --result-file "$tmpdir/artifact-result.json" \
+    --exit-status 0
+
+  jq -e '.validation.artifact == "passed" and .validation.artifact_vm_name == "validate-test" and .validation.artifact_vm_uuid == "vm-uuid-1" and .validation.artifact_vm_ip == "192.0.2.10" and .cleanup.artifact_validation_vm == "deleted"' "$manifest" >/dev/null || fail "manifest artifact validation result JSON"
+
   printf '' > "$tmpdir/empty-artifact-result.json"
   "$ROOT_DIR/scripts/manifest.sh" record-artifact-validation \
     --file "$manifest" \
     --result-file "$tmpdir/empty-artifact-result.json" \
     --exit-status 7
 
-  jq -e '.validation.artifact == "failed" and .cleanup.artifact_validation_vm == "result-unavailable"' "$manifest" >/dev/null || fail "manifest empty artifact result fallback"
+  jq -e '.validation.artifact == "failed" and .validation.artifact_vm_ip == "" and .cleanup.artifact_validation_vm == "result-unavailable"' "$manifest" >/dev/null || fail "manifest empty artifact result fallback"
 
   if "$ROOT_DIR/scripts/manifest.sh" record-artifact-validation \
     --file "$manifest" \
@@ -884,6 +1471,150 @@ run_manifest_tests() {
 }
 
 run_manifest_tests
+
+run_live_coverage_audit_tests() {
+  local tmpdir manifest_dir output matrix_file
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  manifest_dir="$tmpdir/manifests"
+  matrix_file="$tmpdir/matrix.json"
+  output="$tmpdir/coverage.out"
+  mkdir -p "$manifest_dir"
+
+  cat > "$matrix_file" <<'JSON'
+[
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.9",
+    "db_version": "16",
+    "provisioning_role": "postgresql"
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Debian",
+    "os_version": "12",
+    "db_version": "18",
+    "provisioning_role": "postgresql"
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Ubuntu Linux",
+    "os_version": "22.04",
+    "db_version": "8.0",
+    "provisioning_role": "mongodb"
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "Metadata Only",
+    "db_type": "oracle",
+    "os_type": "Rocky Linux",
+    "os_version": "9.9",
+    "db_version": "23ai",
+    "provisioning_role": "metadata"
+  }
+]
+JSON
+
+  cat > "$manifest_dir/rocky.json" <<'JSON'
+{
+  "status": "success",
+  "selection": {
+    "ndb_version": "9.99",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.9",
+    "db_version": "16"
+  },
+  "validation": {
+    "in_guest": "passed",
+    "artifact": "passed"
+  },
+  "cleanup": {
+    "artifact_validation_vm": "deleted"
+  }
+}
+JSON
+
+  cat > "$manifest_dir/mongodb.json" <<'JSON'
+{
+  "status": "success",
+  "selection": {
+    "ndb_version": "9.99",
+    "db_type": "mongodb",
+    "os_type": "Ubuntu Linux",
+    "os_version": "22.04",
+    "db_version": "8.0"
+  },
+  "validation": {
+    "in_guest": "passed",
+    "artifact": "passed"
+  },
+  "cleanup": {
+    "artifact_validation_vm": "deleted"
+  }
+}
+JSON
+
+  if "$ROOT_DIR/scripts/live_coverage_audit.sh" --manifest-dir "$manifest_dir" "$matrix_file" >"$output" 2>&1; then
+    fail "live coverage audit unexpectedly passed with missing Debian row"
+  fi
+
+  grep -q "Buildable rows: 3" "$output" || fail "coverage audit did not count buildable rows"
+  grep -q "Successful live rows: 2" "$output" || fail "coverage audit did not count successful rows"
+  grep -q "Missing live rows: 1" "$output" || fail "coverage audit did not count missing rows"
+  grep -q $'9.99\tpgsql\tDebian\t12\t18' "$output" || fail "coverage audit did not list missing Debian row"
+  ! grep -q "oracle" "$output" || fail "coverage audit included metadata-only row"
+
+  if "$ROOT_DIR/scripts/live_coverage_audit.sh" --suggest-runs --manifest-dir "$manifest_dir" "$matrix_file" >"$output" 2>&1; then
+    fail "live coverage audit suggestions unexpectedly passed with missing Debian row"
+  fi
+  grep -q "Suggested commands for missing rows:" "$output" || fail "coverage audit suggestions missing heading"
+  grep -q -- "./build.sh --ci --validate --validate-artifact --manifest --ndb-version 9.99 --db-type pgsql --os Debian --os-version 12 --db-version 18" "$output" || fail "coverage audit suggestions missing Debian build command"
+
+  if "$ROOT_DIR/scripts/live_coverage_audit.sh" --suggest-runs --source-image-uuid-map "debian-12=debian-uuid" --manifest-dir "$manifest_dir" "$matrix_file" >"$output" 2>&1; then
+    fail "live coverage audit UUID suggestions unexpectedly passed with missing Debian row"
+  fi
+  grep -q -- "./build.sh --ci --validate --validate-artifact --manifest --ndb-version 9.99 --db-type pgsql --os Debian --os-version 12 --db-version 18 --source-image-uuid debian-uuid" "$output" || fail "coverage audit suggestions missing source image UUID"
+
+  if "$ROOT_DIR/scripts/live_coverage_audit.sh" --suggest-runs --customization-profile customizations/local/rhel-repositories.yml --source-image-uuid-map "debian-12=debian-uuid" --manifest-dir "$manifest_dir" "$matrix_file" >"$output" 2>&1; then
+    fail "live coverage audit customization suggestions unexpectedly passed with missing Debian row"
+  fi
+  grep -q -- "./build.sh --ci --validate --validate-artifact --manifest --ndb-version 9.99 --db-type pgsql --os Debian --os-version 12 --db-version 18 --customization-profile customizations/local/rhel-repositories.yml --source-image-uuid debian-uuid" "$output" || fail "coverage audit suggestions missing customization profile"
+
+  cat > "$manifest_dir/debian.json" <<'JSON'
+{
+  "status": "success",
+  "selection": {
+    "ndb_version": "9.99",
+    "db_type": "pgsql",
+    "os_type": "Debian",
+    "os_version": "12",
+    "db_version": "18"
+  },
+  "validation": {
+    "in_guest": "passed",
+    "artifact": "passed"
+  },
+  "cleanup": {
+    "artifact_validation_vm": "deleted"
+  }
+}
+JSON
+
+  "$ROOT_DIR/scripts/live_coverage_audit.sh" --manifest-dir "$manifest_dir" "$matrix_file" >"$output" 2>&1 || fail "coverage audit failed after all rows were covered: $(cat "$output")"
+  grep -q "Missing live rows: 0" "$output" || fail "coverage audit did not report full coverage"
+
+  pass "live coverage audit"
+}
+
+run_live_coverage_audit_tests
 
 run_artifact_validate_tests() {
   local tmpdir failure_result success_result cleanup_result test_private_key test_public_key
@@ -916,6 +1647,7 @@ run_artifact_validate_tests() {
 output_file=""
 url=""
 method=""
+payload=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -925,6 +1657,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -o)
       output_file=$2
+      shift
+      ;;
+    -d)
+      payload=$2
       shift
       ;;
     -w)
@@ -948,6 +1684,9 @@ case "$url" in
     body='{"entities":[{"spec":{"name":"mock-subnet"},"metadata":{"uuid":"subnet-uuid"}}]}'
     ;;
   */api/nutanix/v3/vms)
+    if [[ -n "${NDB_SELFTEST_PAYLOAD_CAPTURE:-}" ]]; then
+      printf '%s' "$payload" > "$NDB_SELFTEST_PAYLOAD_CAPTURE"
+    fi
     body='{"metadata":{"uuid":"vm-uuid"},"status":{"execution_context":{"task_uuid":"create-task"}}}'
     ;;
   */api/nutanix/v3/tasks/create-task|*/api/nutanix/v3/tasks/power-task)
@@ -1042,6 +1781,7 @@ SH
     export NDB_SELFTEST_DELETE_MARKER="$tmpdir/delete-called"
     export NDB_SELFTEST_ANSIBLE_RC=0
     export NDB_SELFTEST_PLAYBOOK_CAPTURE="$tmpdir/postgres-validate.yml"
+    export NDB_SELFTEST_PAYLOAD_CAPTURE="$tmpdir/artifact-create-payload.json"
     if "$ROOT_DIR/scripts/artifact_validate.sh" \
       --image-name test-image \
       --ndb-version 2.10 \
@@ -1057,7 +1797,8 @@ SH
   )
 
   grep -q "validate_postgres" "$tmpdir/postgres-validate.yml" || fail "PostgreSQL artifact validation did not dispatch validate_postgres"
-  jq -e '.status == "passed" and .cleanup_status == "deleted" and .artifact_vm_name != "" and .artifact_vm_uuid == "vm-uuid" and .cleanup.artifact_validation_vm == "deleted"' "$success_result" >/dev/null || fail "artifact validation success result JSON"
+  jq -e '.spec.resources.boot_config.boot_type == "UEFI" and .spec.resources.boot_config.boot_device_order_list == ["DISK","CDROM","NETWORK"] and .spec.resources.serial_port_list == [{"index":0,"is_connected":true}]' "$tmpdir/artifact-create-payload.json" >/dev/null || fail "artifact validation VM payload does not set UEFI disk-first serial console shape"
+  jq -e '.status == "passed" and .cleanup_status == "deleted" and .artifact_vm_name != "" and .artifact_vm_uuid == "vm-uuid" and .artifact_vm_ip == "192.0.2.10" and .vm_ip == "192.0.2.10" and .cleanup.artifact_validation_vm == "deleted"' "$success_result" >/dev/null || fail "artifact validation success result JSON"
   [[ -e "$tmpdir/delete-called" ]] || fail "artifact validation success did not request VM delete"
   rm -f "$tmpdir/delete-called"
 
@@ -1452,6 +2193,8 @@ run_test_harness_tests() {
   mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
   cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
+  cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
 [
@@ -1520,6 +2263,8 @@ run_test_harness_extensions_only_tests() {
   mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
   cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
+  cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
 [
@@ -1590,6 +2335,8 @@ run_test_harness_build_stdin_isolation_tests() {
   mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
   cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
+  cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
 [
@@ -1654,6 +2401,8 @@ run_test_harness_continue_on_error_tests() {
   mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
   cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
+  cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
 [
@@ -1712,6 +2461,213 @@ SH
 }
 
 run_test_harness_continue_on_error_tests
+
+run_test_harness_source_image_uuid_map_tests() {
+  local tmpdir build_log
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  build_log="$tmpdir/builds.log"
+
+  mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
+  cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
+  cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
+  cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
+
+  cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
+[
+  {
+    "ndb_version": "9.99",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Rocky Linux",
+    "os_version": "9.7",
+    "db_version": "1",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
+    "deployment": ["single-instance"]
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "MongoDB",
+    "db_type": "mongodb",
+    "os_type": "Ubuntu Linux",
+    "os_version": "22.04",
+    "db_version": "2",
+    "provisioning_role": "mongodb",
+    "mongodb_edition": "community",
+    "deployment": ["single-instance"]
+  }
+]
+JSON
+
+  cat > "$tmpdir/build.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+db_version=""
+source_image_uuid=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --db-version)
+      db_version=$2
+      shift
+      ;;
+    --source-image-uuid)
+      source_image_uuid=$2
+      shift
+      ;;
+  esac
+  shift
+done
+printf '%s|%s\n' "$db_version" "$source_image_uuid" >> "${NDB_SELFTEST_BUILD_LOG:?}"
+SH
+  chmod +x "$tmpdir/test.sh" "$tmpdir/build.sh"
+
+  (
+    cd "$tmpdir"
+    SKIP_MATRIX_VALIDATION=true NDB_SELFTEST_BUILD_LOG="$build_log" ./test.sh --include-ndb 9.99 --include-db-type mongodb --source-image-uuid-map rocky-linux-9.7=rocky-uuid,ubuntu-linux-22.04=ubuntu-uuid --max-parallel 1 >/dev/null 2>&1
+  ) || fail "test harness source image UUID map run failed"
+
+  [[ "$(cat "$build_log")" == $'1|rocky-uuid\n2|ubuntu-uuid' ]] || fail "test harness did not pass per-source image UUIDs"
+  pass "test harness source image UUID map"
+}
+
+run_test_harness_source_image_uuid_map_tests
+
+run_test_harness_preflight_tests() {
+  local tmpdir build_log
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  build_log="$tmpdir/builds.log"
+
+  mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
+  cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
+  cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
+  cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
+
+  cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
+[
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Rocky Linux",
+    "os_version": "9.7",
+    "db_version": "1",
+    "provisioning_role": "postgresql"
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Ubuntu Linux",
+    "os_version": "22.04",
+    "db_version": "2",
+    "provisioning_role": "postgresql"
+  }
+]
+JSON
+
+  cat > "$tmpdir/build.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+db_version=""
+preflight=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --db-version)
+      db_version=$2
+      shift
+      ;;
+    --preflight)
+      preflight=true
+      ;;
+  esac
+  shift
+done
+printf '%s|%s\n' "$db_version" "$preflight" >> "${NDB_SELFTEST_BUILD_LOG:?}"
+SH
+  chmod +x "$tmpdir/test.sh" "$tmpdir/build.sh"
+
+  (
+    cd "$tmpdir"
+    SKIP_MATRIX_VALIDATION=true NDB_SELFTEST_BUILD_LOG="$build_log" ./test.sh --include-ndb 9.99 --preflight --max-parallel 1 >/dev/null 2>&1
+  ) || fail "test harness preflight run failed"
+
+  [[ "$(cat "$build_log")" == $'1|true\n2|true' ]] || fail "test harness did not pass --preflight to selected rows"
+  pass "test harness preflight mode"
+}
+
+run_test_harness_preflight_tests
+
+run_test_harness_customization_profile_tests() {
+  local tmpdir build_log
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  build_log="$tmpdir/builds.log"
+
+  mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
+  cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
+  cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
+  cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
+
+  cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
+[
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.7",
+    "db_version": "1",
+    "provisioning_role": "postgresql"
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.7",
+    "db_version": "2",
+    "provisioning_role": "postgresql"
+  }
+]
+JSON
+
+  cat > "$tmpdir/build.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+db_version=""
+customization_profile=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --db-version)
+      db_version=$2
+      shift
+      ;;
+    --customization-profile)
+      customization_profile=$2
+      shift
+      ;;
+  esac
+  shift
+done
+printf '%s|%s\n' "$db_version" "$customization_profile" >> "${NDB_SELFTEST_BUILD_LOG:?}"
+SH
+  chmod +x "$tmpdir/test.sh" "$tmpdir/build.sh"
+
+  (
+    cd "$tmpdir"
+    SKIP_MATRIX_VALIDATION=true NDB_SELFTEST_BUILD_LOG="$build_log" ./test.sh --include-ndb 9.99 --allow-rhel --customization-profile customizations/local/rhel-repositories.yml --max-parallel 1 >/dev/null 2>&1
+  ) || fail "test harness customization profile run failed"
+
+  [[ "$(cat "$build_log")" == $'1|customizations/local/rhel-repositories.yml\n2|customizations/local/rhel-repositories.yml' ]] || fail "test harness did not pass customization profile to selected rows"
+  pass "test harness customization profile"
+}
+
+run_test_harness_customization_profile_tests
 
 run_mongodb_dispatch_guard_tests() {
   grep -q 'postgresql|mongodb' "$ROOT_DIR/build.sh" || fail "build.sh does not allow MongoDB provisioning role"
@@ -1823,6 +2779,11 @@ run_image_prepare_tests
 run_build_cleanup_guard_tests() {
   grep -q "cleanup_failed_builder_vm" "$ROOT_DIR/build.sh" || fail "build script does not define failed builder VM cleanup"
   grep -q "prism_delete_vm" "$ROOT_DIR/build.sh" || fail "build script does not delete failed builder VMs"
+  grep -q ".cleanup.packer_builder_vm" "$ROOT_DIR/build.sh" || fail "build script does not record failed builder cleanup in manifests"
+  grep -q ".cleanup.packer_builder_vm_uuid" "$ROOT_DIR/build.sh" || fail "build script does not record failed builder VM UUIDs in manifests"
+  grep -q -- "--retain-failed-builder" "$ROOT_DIR/build.sh" || fail "build script does not expose non-interactive failed builder retention"
+  grep -q "RETAIN_FAILED_BUILDER" "$ROOT_DIR/build.sh" || fail "build script does not track failed builder retention separately from debug mode"
+  grep -q "kept-on-failure" "$ROOT_DIR/build.sh" || fail "build script does not record retained failed builder manifests"
   pass "failed builder VM cleanup guard"
 }
 
@@ -1831,6 +2792,20 @@ run_build_cleanup_guard_tests
 run_readme_mongodb_tests() {
   grep -q "MongoDB" "$ROOT_DIR/README.md" || fail "README does not mention MongoDB"
   grep -q -- "--include-db-type mongodb" "$ROOT_DIR/README.md" || fail "README missing MongoDB test command"
+  grep -q -- "--include-db-type pgsql --preflight" "$ROOT_DIR/README.md" || fail "README missing matrix preflight command"
+  grep -q "RHEL live validation runbook" "$ROOT_DIR/README.md" || fail "README missing RHEL live validation runbook"
+  grep -q 'NDB_RHEL_9_6_IMAGE_URI=missing' "$ROOT_DIR/README.md" || fail "README missing non-secret RHEL env readiness example"
+  grep -q -- '--allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --customization-profile customizations/local/rhel-repositories.yml --preflight' "$ROOT_DIR/README.md" || fail "README missing RHEL preflight runbook customization command"
+  grep -q 'rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}' "$ROOT_DIR/README.md" || fail "README missing staged RHEL UUID map example"
+  grep -q -- '--allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --customization-profile customizations/local/rhel-repositories.yml --validate --validate-artifact --manifest --continue-on-error --source-image-uuid-map' "$ROOT_DIR/README.md" || fail "README missing RHEL live validation runbook customization command"
+  grep -q "debian-12=\${DEBIAN_12_UUID}" "$ROOT_DIR/README.md" || fail "README matrix preflight command does not include Debian 12 UUID mapping"
+  grep -q "preflight cannot prove cloud-init SSH compatibility" "$ROOT_DIR/README.md" || fail "README missing source-image SSH compatibility preflight warning"
+  grep -q "Builder VM gets an IP but SSH never becomes available" "$ROOT_DIR/README.md" || fail "README missing builder SSH troubleshooting guidance"
+  grep -q "scripts/source_image_ssh_probe.sh" "$ROOT_DIR/README.md" || fail "README missing source image SSH probe command"
+  grep -q "probe passes but Packer still times out" "$ROOT_DIR/README.md" || fail "README missing source probe versus Packer SSH guidance"
+  grep -q "scripts/live_coverage_audit.sh" "$ROOT_DIR/README.md" || fail "README missing live coverage audit command"
+  grep -q "live_coverage_audit.sh --suggest-runs --source-image-uuid-map" "$ROOT_DIR/README.md" || fail "README missing coverage audit UUID suggestion command"
+  grep -q "live_coverage_audit.sh --suggest-runs --customization-profile" "$ROOT_DIR/README.md" || fail "README missing coverage audit customization suggestion command"
   grep -q "sharded topology" "$ROOT_DIR/README.md" || fail "README missing local sharded topology explanation"
   grep -q "mongodb_edition" "$ROOT_DIR/README.md" || fail "README missing MongoDB edition matrix guidance"
   pass "README MongoDB guidance"
@@ -1843,11 +2818,12 @@ run_readme_wizard_tests() {
   grep -q "safest first path" "$ROOT_DIR/README.md" || fail "README missing first build assistant positioning"
   grep -q "create \`packer/id_rsa\`" "$ROOT_DIR/README.md" || fail "README missing wizard SSH key setup guidance"
   grep -q "run \`packer init packer/\`" "$ROOT_DIR/README.md" || fail "README missing wizard Packer init guidance"
-  grep -q "op run --env-file .env -- scripts/build_wizard.sh" "$ROOT_DIR/README.md" || fail "README missing 1Password wizard guidance"
+  grep -q "secret manager provides your environment" "$ROOT_DIR/README.md" || fail "README missing secret-managed environment guidance"
   grep -q "PostgreSQL extensions are optional" "$ROOT_DIR/README.md" || fail "README missing optional PostgreSQL extension guidance"
   grep -q -- "--extensions pgvector,postgis" "$ROOT_DIR/README.md" || fail "README missing direct PostgreSQL extension CLI example"
   grep -q "ext-pgvector-postgis" "$ROOT_DIR/README.md" || fail "README missing extension image naming example"
   grep -q "not release-note-qualified for this matrix row" "$ROOT_DIR/README.md" || fail "README missing advisory qualification warning wording"
+  grep -q "validation.artifact_vm_ip" "$ROOT_DIR/README.md" || fail "README missing artifact validation VM IP manifest guidance"
   ! grep -q "Maintainer rule:" "$ROOT_DIR/README.md" || fail "README should not contain agent maintainer rules"
   pass "README build wizard guidance"
 }
@@ -1871,6 +2847,37 @@ run_ansible_fact_normalization_guard_tests() {
 }
 
 run_ansible_fact_normalization_guard_tests
+
+run_debian_libaio_package_guard_tests() {
+  local version vars_file tasks_file
+
+  for version in 2.9 2.10; do
+    vars_file="$ROOT_DIR/ansible/$version/roles/common/vars/main.yml"
+    tasks_file="$ROOT_DIR/ansible/$version/roles/common/tasks/main.yml"
+
+    grep -q "debian_libaio_package" "$vars_file" "$tasks_file" || fail "NDB $version common role does not derive Debian libaio package by OS release"
+    grep -q "libaio1t64" "$vars_file" "$tasks_file" || fail "NDB $version common role does not handle Ubuntu 24.04 libaio1t64"
+    grep -q "version('24.04', '>=')" "$vars_file" "$tasks_file" || fail "NDB $version common role does not gate libaio1t64 on Ubuntu 24.04 or newer"
+    ! grep -qE '^[[:space:]]*-[[:space:]]+libaio1$' "$vars_file" || fail "NDB $version common role still installs libaio1 unconditionally"
+  done
+
+  pass "Debian libaio package guard"
+}
+
+run_debian_libaio_package_guard_tests
+
+run_debian_common_package_guard_tests() {
+  local version vars_file
+
+  for version in 2.9 2.10; do
+    vars_file="$ROOT_DIR/ansible/$version/roles/common/vars/main.yml"
+    grep -qE '^[[:space:]]*-[[:space:]]+cron$' "$vars_file" || fail "NDB $version common role does not install cron before managing cron.service on Debian"
+  done
+
+  pass "Debian common package guard"
+}
+
+run_debian_common_package_guard_tests
 
 run_readme_customization_tests() {
   grep -q "Customize The Image" "$ROOT_DIR/README.md" || fail "README missing Customize The Image"

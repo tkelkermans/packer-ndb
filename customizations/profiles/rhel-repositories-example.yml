@@ -1,0 +1,20 @@
+name: rhel-repositories-example
+description: Enable RHEL package repositories before common setup.
+
+vars_files:
+  - customizations/profiles/rhel-repositories-example.vars.yml
+
+extra_role_paths:
+  - customizations/examples/rhel-repositories/roles
+
+phases:
+  pre_common:
+    roles:
+      - custom_rhel_repositories
+  post_common:
+    roles: []
+  post_database:
+    roles: []
+  validate:
+    roles:
+      - validate_rhel_repositories

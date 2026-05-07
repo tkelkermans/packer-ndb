@@ -1,0 +1,36 @@
+# Copy this profile and vars file under customizations/local/ before adding
+# private repository URLs, credentials, certificates, or customer-specific repo IDs.
+
+rhel_repositories_enabled: false
+
+# Use this list for enterprise mirrors or repo files managed by yum_repository.
+# Each item accepts common yum_repository parameters such as name, description,
+# baseurl, enabled, gpgcheck, gpgkey, username, password, sslverify, and state.
+rhel_repositories_yum_repositories: []
+
+# Use this list when the source image is already registered and should enable
+# named subscription-manager repositories before the common role runs.
+rhel_repositories_subscription_manager_repos: []
+
+rhel_repositories_refresh_metadata: true
+rhel_repositories_hide_values: true
+
+# Optional validation: list repo IDs that must appear in dnf repolist --enabled.
+rhel_repositories_expected_enabled_repo_ids: []
+
+# These are representative packages from the common RHEL install step. The
+# validation role checks they are installed after common setup succeeds.
+rhel_repositories_required_packages:
+  - bison
+  - firewalld
+  - flex
+  - gcc
+  - lsof
+  - lvm2
+  - net-tools
+  - perl
+  - python3-pip
+  - sshpass
+  - unzip
+  - wget
+  - zip

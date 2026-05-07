@@ -33,6 +33,11 @@
   when: ndb_os_family == "Debian"
   become: yes
 
+- name: Select Debian libaio runtime package
+  ansible.builtin.set_fact:
+    debian_libaio_package: "{{ 'libaio1t64' if (ndb_distribution == 'Ubuntu' and ndb_distribution_version is version('24.04', '>=')) else 'libaio1' }}"
+  when: ndb_os_family == "Debian"
+
 - name: Ensure OpenSSL stack is up to date (RedHat family)
   ansible.builtin.dnf:
     name:

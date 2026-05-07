@@ -175,7 +175,8 @@ cmd_init() {
         in_guest: "not-requested",
         artifact: "not-requested",
         artifact_vm_name: null,
-        artifact_vm_uuid: null
+        artifact_vm_uuid: null,
+        artifact_vm_ip: null
       },
       customization: {
         enabled: false,
@@ -318,7 +319,7 @@ cmd_finalize() {
 
 cmd_record_artifact_validation() {
   local file="" result_file="" exit_status=""
-  local artifact_status artifact_vm_name artifact_vm_uuid cleanup_status
+  local artifact_status artifact_vm_name artifact_vm_uuid artifact_vm_ip cleanup_status
   local result_is_valid=false
 
   while [[ $# -gt 0 ]]; do
@@ -361,6 +362,7 @@ cmd_record_artifact_validation() {
     artifact_status=$(jq -r '.status // empty' "$result_file")
     artifact_vm_name=$(jq -r '.artifact_vm_name // .vm_name // ""' "$result_file")
     artifact_vm_uuid=$(jq -r '.artifact_vm_uuid // .vm_uuid // ""' "$result_file")
+    artifact_vm_ip=$(jq -r '.artifact_vm_ip // .vm_ip // ""' "$result_file")
     cleanup_status=$(jq -r '.cleanup.artifact_validation_vm // .cleanup_status // ""' "$result_file")
     if [[ -z "$artifact_status" ]]; then
       if [[ "$exit_status" -eq 0 ]]; then
@@ -373,6 +375,7 @@ cmd_record_artifact_validation() {
     artifact_status="failed"
     artifact_vm_name=""
     artifact_vm_uuid=""
+    artifact_vm_ip=""
     cleanup_status="result-unavailable"
   fi
 
@@ -380,10 +383,12 @@ cmd_record_artifact_validation() {
     --arg artifact_status "$artifact_status" \
     --arg artifact_vm_name "$artifact_vm_name" \
     --arg artifact_vm_uuid "$artifact_vm_uuid" \
+    --arg artifact_vm_ip "$artifact_vm_ip" \
     --arg cleanup_status "$cleanup_status" \
     '.validation.artifact = $artifact_status
       | .validation.artifact_vm_name = $artifact_vm_name
       | .validation.artifact_vm_uuid = $artifact_vm_uuid
+      | .validation.artifact_vm_ip = $artifact_vm_ip
       | .cleanup.artifact_validation_vm = $cleanup_status' \
     "$file" | write_json_atomically "$file"
 

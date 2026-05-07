@@ -1,0 +1,41 @@
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+
+- name: validate_rhel_repositories role marker
+  ansible.builtin.debug:
+    msg: "validate_rhel_repositories"
+
+- name: Validate RHEL repository readiness
+  when:
+    - rhel_repositories_enabled | default(false) | bool
+    - ndb_os_family == "RedHat"
+  block:
+    - name: List enabled dnf repositories
+      become: yes
+      ansible.builtin.command:
+        argv:
+          - dnf
+          - repolist
+          - --enabled
+      register: rhel_repositories_enabled_repolist
+      changed_when: false
+
+    - name: Assert expected RHEL repository IDs are enabled
+      ansible.builtin.assert:
+        that:
+          - rhel_repositories_enabled_repolist.stdout is search(item)
+        fail_msg: "Expected RHEL repository is not enabled: {{ item }}"
+      loop: "{{ rhel_repositories_expected_enabled_repo_ids | default([]) }}"
+
+    - name: Gather installed package facts
+      become: yes
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Assert representative common RHEL packages are installed
+      ansible.builtin.assert:
+        that:
+          - item in ansible_facts.packages
+        fail_msg: "Expected common RHEL package is not installed: {{ item }}"
+      loop: "{{ rhel_repositories_required_packages | default([]) }}"

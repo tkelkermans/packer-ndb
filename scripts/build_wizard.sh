@@ -148,8 +148,6 @@ print_readiness_summary() {
   for command_name in "${REQUIRED_LIVE_COMMANDS[@]}"; do
     printf '  %s: %s\n' "$command_name" "$(command_status "$command_name")"
   done
-  printf '  op: %s (optional, only needed for 1Password-managed .env files)\n' "$(command_status op)"
-
   printf '\nSSH key:\n'
   if [[ -f "$ROOT_DIR/packer/id_rsa.pub" ]]; then
     printf '  packer/id_rsa.pub: present\n'
@@ -171,7 +169,7 @@ print_readiness_summary() {
   for key in "${LIVE_ENV_KEYS[@]}"; do
     printf '  %s: %s\n' "$key" "$(env_status "$key")"
   done
-  printf '  Tip: if 1Password manages .env, run: op run --env-file .env -- scripts/build_wizard.sh\n'
+  printf '  Tip: source .env, or run this wizard from a shell where your secret manager has exported the Prism variables.\n'
 }
 
 copy_env_example() {
@@ -181,7 +179,7 @@ copy_env_example() {
     return 0
   fi
   cp "$ROOT_DIR/.env.example" "$ROOT_DIR/.env"
-  printf 'Created .env from .env.example. Edit it or run the wizard through op before live builds.\n'
+  printf 'Created .env from .env.example. Edit it and source it before live builds.\n'
 }
 
 create_ssh_keypair() {
@@ -274,7 +272,7 @@ assert_run_now_prerequisites() {
         printf '  - %s\n' "$key" >&2
       fi
     done
-    printf 'Edit .env and source it, or run: op run --env-file .env -- scripts/build_wizard.sh\n' >&2
+    printf 'Edit .env and source it, or run this wizard from a shell where your secret manager has exported the Prism variables.\n' >&2
     missing=true
   fi
 

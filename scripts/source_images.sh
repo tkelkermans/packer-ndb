@@ -82,8 +82,51 @@ source_image_value_is_real() {
   [[ -n "$value" && "$value" != "<not used>" && "$value" != "<temporary local file created at runtime>" && "$value" != "<unresolved"* ]]
 }
 
+source_image_json_active_on_cluster() {
+  local image_json=$1
+  local cluster_uuid=${2:-}
+
+  jq -e --arg cluster_uuid "$cluster_uuid" '
+    [
+      (.status.resources.cluster_reference_list // [])[]?,
+      (.status.resources.current_cluster_reference_list // [])[]?,
+      (.status.resources.initial_placement_ref_list // [])[]?,
+      (.spec.resources.initial_placement_ref_list // [])[]?,
+      (.status.cluster_reference_list // [])[]?
+    ] as $clusters
+    | if $cluster_uuid != "" then
+        any($clusters[]?; .uuid == $cluster_uuid)
+      else
+        (($clusters | length) > 0)
+      end
+  ' <<<"$image_json" >/dev/null
+}
+
+source_image_preflight_existing_image_uuid() {
+  local image_uuid=$1
+  local cluster_uuid=${2:-}
+  local cluster_name=${3:-}
+  local label=${4:-source image UUID}
+  local image_json
+
+  if ! image_json=$(prism_image_json "$image_uuid" 2>/dev/null); then
+    printf 'Error: %s does not exist in Prism: %s\n' "$label" "$image_uuid" >&2
+    return 1
+  fi
+
+  if ! source_image_json_active_on_cluster "$image_json" "$cluster_uuid"; then
+    if [[ -n "$cluster_name" ]]; then
+      printf 'Error: %s is inactive or unavailable on the selected Prism cluster: %s\n' "$label" "$image_uuid" >&2
+    else
+      printf 'Error: %s is inactive or unavailable on any Prism cluster: %s\n' "$label" "$image_uuid" >&2
+    fi
+    return 1
+  fi
+}
+
 source_image_preflight() {
   local source_image_name="" source_image_uuid="" source_image_uri="" source_image_path="" cluster_name="" subnet_name=""
+  local cluster_uuid="" subnet_uuid="" resolved_image_uuid=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -121,24 +164,33 @@ source_image_preflight() {
 
   prism_require_env || return 1
 
-  if [[ -n "$cluster_name" && -z "$(prism_cluster_uuid_by_name "$cluster_name")" ]]; then
-    printf 'Error: Prism cluster not found: %s\n' "$cluster_name" >&2
-    return 1
+  if [[ -n "$cluster_name" ]]; then
+    cluster_uuid=$(prism_cluster_uuid_by_name "$cluster_name")
+    if [[ -z "$cluster_uuid" ]]; then
+      printf 'Error: Prism cluster not found: %s\n' "$cluster_name" >&2
+      return 1
+    fi
   fi
 
-  if [[ -n "$subnet_name" && -z "$(prism_subnet_uuid_by_name "$subnet_name")" ]]; then
-    printf 'Error: Prism subnet not found: %s\n' "$subnet_name" >&2
-    return 1
+  if [[ -n "$subnet_name" ]]; then
+    subnet_uuid=$(prism_subnet_uuid_by_name "$subnet_name")
+    if [[ -z "$subnet_uuid" ]]; then
+      printf 'Error: Prism subnet not found: %s\n' "$subnet_name" >&2
+      return 1
+    fi
   fi
 
-  if source_image_value_is_real "$source_image_name" && [[ -z "$(prism_image_uuid_by_name "$source_image_name")" ]]; then
-    printf 'Error: source image does not exist in Prism: %s\n' "$source_image_name" >&2
-    return 1
+  if source_image_value_is_real "$source_image_name"; then
+    resolved_image_uuid=$(prism_image_uuid_by_name "$source_image_name")
+    if [[ -z "$resolved_image_uuid" ]]; then
+      printf 'Error: source image does not exist in Prism: %s\n' "$source_image_name" >&2
+      return 1
+    fi
+    source_image_preflight_existing_image_uuid "$resolved_image_uuid" "$cluster_uuid" "$cluster_name" "source image" || return 1
   fi
 
-  if source_image_value_is_real "$source_image_uuid" && ! prism_image_uuid_exists "$source_image_uuid"; then
-    printf 'Error: source image UUID does not exist in Prism: %s\n' "$source_image_uuid" >&2
-    return 1
+  if source_image_value_is_real "$source_image_uuid"; then
+    source_image_preflight_existing_image_uuid "$source_image_uuid" "$cluster_uuid" "$cluster_name" "source image UUID" || return 1
   fi
 
   if source_image_value_is_real "$source_image_path" && [[ ! -f "$source_image_path" ]]; then
@@ -164,6 +216,11 @@ source_image_stage_remote_uri() {
 
   existing_uuid=$(prism_image_uuid_by_name "$image_name")
   if [[ -n "$existing_uuid" ]]; then
+    if ! source_image_preflight_existing_image_uuid "$existing_uuid" "$cluster_uuid" "" "existing Prism image"; then
+      printf 'Error: existing Prism image is inactive on the selected cluster: %s\n' "$image_name" >&2
+      printf 'Use a different image name, delete the inactive placeholder, or provide an active source image UUID.\n' >&2
+      return 1
+    fi
     printf 'Reusing existing Prism image: %s\n' "$image_name" >&2
     printf '%s\n' "$image_name"
     return 0

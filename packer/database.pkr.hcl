@@ -19,11 +19,13 @@ source "nutanix" "ndb" {
   cluster_name     = var.cluster_name
   os_type          = "Linux"
 
-  vm_name   = var.vm_name
-  cpu       = var.vm_cpu
-  memory_mb = var.vm_memory_mb
-  boot_type = "uefi"
-  boot_wait = "5m"
+  vm_name       = var.vm_name
+  cpu           = var.vm_cpu
+  memory_mb     = var.vm_memory_mb
+  boot_type     = var.boot_type
+  boot_priority = var.boot_priority
+  boot_wait     = "5m"
+  serialport    = var.serialport
 
   vm_disks {
     image_type        = "DISK_IMAGE"
@@ -42,6 +44,7 @@ source "nutanix" "ndb" {
   image_description    = "NDB ${var.ndb_version} ${var.db_type} ${var.db_version} on ${var.os_type} ${var.os_version}"
   ssh_username         = "packer"
   ssh_private_key_file = "packer/id_rsa"
+  ssh_timeout          = var.ssh_timeout
   user_data            = base64encode(templatefile("http/user-data", { ssh_public_key = var.ssh_public_key }))
 }
 
