@@ -619,7 +619,7 @@ For the full RHEL matrix, pass the same local profile through `test.sh`:
 Preflight every RHEL row before starting live builds. Use the UUID map when reusing staged images:
 
 ```bash
-./test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --preflight --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" --max-parallel 1
+./test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --customization-profile customizations/local/rhel-repositories.yml --preflight --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" --max-parallel 1
 ```
 
 If you are using `NDB_RHEL_9_6_IMAGE_URI` and `NDB_RHEL_9_7_IMAGE_URI` instead of staged UUIDs, omit `--source-image-uuid-map`.
@@ -627,7 +627,7 @@ If you are using `NDB_RHEL_9_6_IMAGE_URI` and `NDB_RHEL_9_7_IMAGE_URI` instead o
 Run the remaining RHEL live matrix with both validation stages and manifests:
 
 ```bash
-./test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --validate --validate-artifact --manifest --continue-on-error --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" --max-parallel 1
+./test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --customization-profile customizations/local/rhel-repositories.yml --validate --validate-artifact --manifest --continue-on-error --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" --max-parallel 1
 ```
 
 When the run finishes, audit the manifests against the full buildable matrix:
