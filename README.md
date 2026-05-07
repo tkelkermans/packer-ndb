@@ -15,6 +15,8 @@ The normal workflow is:
 
 Today, the build-ready rows are PostgreSQL Community Edition rows with `provisioning_role=postgresql` and MongoDB rows with `provisioning_role=mongodb`. Other database engines can still appear as `provisioning_role=metadata` rows so the support list is documented, but `build.sh` rejects metadata-only rows until matching Packer/Ansible roles exist.
 
+See `VALIDATION.md` for the current public validation status, including the remaining RHEL live-validation gap.
+
 ## Quick Start
 
 ### 1. Install The Local Tools
