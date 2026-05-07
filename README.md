@@ -75,11 +75,7 @@ When something local is missing, the wizard can offer safe setup help:
 - run `packer init packer/`
 - copy `.env.example` to `.env`
 
-The wizard never creates Prism credentials and never prints secret values. If `.env` is managed by 1Password, run the wizard through `op` so the variables resolve inside the wizard:
-
-```bash
-op run --env-file .env -- scripts/build_wizard.sh
-```
+The wizard never creates Prism credentials and never prints secret values. If a secret manager provides your environment, run the wizard from a shell where the Prism variables are already exported.
 
 PostgreSQL extensions are optional. The wizard defaults to no extensions, shows which extensions are release-note-qualified for the selected row, and warns if you select an installable extension that is not release-note-qualified for this matrix row.
 
@@ -127,6 +123,20 @@ Check Prism readiness and source-image readiness without starting Packer:
 ./build.sh --preflight --ci --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
+Preflight a selected matrix suite before launching expensive live builds:
+
+```bash
+ROCKY_96_UUID="replace-with-rocky-9.6-image-uuid"
+ROCKY_97_UUID="replace-with-rocky-9.7-image-uuid"
+UBUNTU_2204_UUID="replace-with-ubuntu-22.04-image-uuid"
+UBUNTU_2404_UUID="replace-with-ubuntu-24.04-image-uuid"
+DEBIAN_12_UUID="replace-with-debian-12-image-uuid"
+
+./test.sh --include-db-type pgsql --preflight --source-image-uuid-map "rocky-linux-9.6=${ROCKY_96_UUID},rocky-linux-9.7=${ROCKY_97_UUID},ubuntu-linux-22.04=${UBUNTU_2204_UUID},ubuntu-linux-24.04=${UBUNTU_2404_UUID},debian-12=${DEBIAN_12_UUID}" --max-parallel 1
+```
+
+Preflight verifies the selected matrix rows, required local tools, Prism credentials, cluster/subnet lookup, and source-image object lookup. It does not boot the guest operating system, so preflight cannot prove cloud-init SSH compatibility for that image on AHV. Use the source-image SSH probe below when you need to prove that a staged image accepts the injected `packer` user and SSH key before running Packer.
+
 Stage a remote source image into Prism before the long build starts:
 
 ```bash
@@ -151,10 +161,34 @@ Run the MongoDB live suite with both validation stages and manifests. Keep `--ma
 ./test.sh --include-db-type mongodb --validate --validate-artifact --manifest --max-parallel 1
 ```
 
-If you use 1Password to provide `.env`, wrap the same MongoDB suite command with `op run`:
+If Prism has duplicate source-image names, pass a per-OS UUID map to the suite. The keys match the source-image keys in `images.json`, such as `rocky-linux-9.6`, `rocky-linux-9.7`, and `ubuntu-linux-22.04`.
 
 ```bash
-op run --env-file .env -- ./test.sh --include-db-type mongodb --validate --validate-artifact --manifest --max-parallel 1
+ROCKY_96_UUID="replace-with-rocky-9.6-image-uuid"
+ROCKY_97_UUID="replace-with-rocky-9.7-image-uuid"
+UBUNTU_2204_UUID="replace-with-ubuntu-22.04-image-uuid"
+
+./test.sh --include-db-type mongodb --source-image-uuid-map "rocky-linux-9.6=${ROCKY_96_UUID},rocky-linux-9.7=${ROCKY_97_UUID},ubuntu-linux-22.04=${UBUNTU_2204_UUID}" --validate --validate-artifact --manifest --max-parallel 1
+```
+
+After live matrix runs, audit manifest coverage against every buildable matrix row:
+
+```bash
+scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json
+```
+
+The audit exits non-zero and lists missing rows until each buildable row has a manifest with `status=success`, in-guest validation `passed`, artifact validation `passed`, and validation VM cleanup `deleted`.
+
+Add `--suggest-runs` when you want one copy-pasteable validated build command per missing row:
+
+```bash
+scripts/live_coverage_audit.sh --suggest-runs ndb/2.9/matrix.json ndb/2.10/matrix.json
+```
+
+If the missing rows should reuse staged Prism source images, pass the same source-image UUID map you use with `test.sh`. Matching rows will include `--source-image-uuid` in the suggested `build.sh` command:
+
+```bash
+scripts/live_coverage_audit.sh --suggest-runs --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" ndb/2.9/matrix.json ndb/2.10/matrix.json
 ```
 
 `test.sh` skips RHEL rows unless you add `--allow-rhel`. Only add it after the licensed RHEL source image environment variables are set.
@@ -165,13 +199,7 @@ Run every buildable PostgreSQL row that has installable release-note-qualified e
 ./test.sh --extensions-only --continue-on-error --allow-rhel --validate --validate-artifact --manifest --max-parallel 1
 ```
 
-If you use 1Password to provide `.env`, wrap the same command with `op run`:
-
-```bash
-op run --env-file .env -- ./test.sh --extensions-only --continue-on-error --allow-rhel --validate --validate-artifact --manifest --max-parallel 1
-```
-
-Failed Packer builder VMs are deleted automatically. Add `--debug` to `build.sh` only when you intentionally want to keep a failed builder VM for troubleshooting.
+Failed Packer builder VMs are deleted automatically. Add `--retain-failed-builder` when you intentionally want to keep a failed builder VM for troubleshooting without enabling Packer debug logging. Use `--debug` only when you also need interactive Packer debug mode and `PACKER_LOG`.
 
 Ubuntu images can start background package work just after boot. The Ansible roles wait for apt/dpkg locks on Debian-family package tasks, so transient first-boot apt activity should slow a build down instead of failing it immediately.
 
@@ -258,10 +286,10 @@ export NDB_RHEL_9_7_IMAGE_URI="/path/to/rhel-9.7.qcow2"
 export NDB_RHEL_9_6_IMAGE_URI="/path/to/rhel-9.6.qcow2"
 ```
 
-If you use 1Password to provide `.env`, check that required values resolve as non-empty before launching a long RHEL run:
+Check that required RHEL values resolve as non-empty before launching a long RHEL run:
 
 ```bash
-op run --env-file .env -- bash -lc 'if [ -n "${NDB_RHEL_9_6_IMAGE_URI:-}" ]; then echo "RHEL 9.6 image is configured"; else echo "RHEL 9.6 image is missing"; fi'
+if [ -n "${NDB_RHEL_9_6_IMAGE_URI:-}" ]; then echo "RHEL 9.6 image is configured"; else echo "RHEL 9.6 image is missing"; fi
 ```
 
 Leave matrix validation enabled unless you are deliberately debugging the validator:
@@ -293,8 +321,20 @@ If a remote import is slow over VPN, staging or reusing an existing Prism image 
 If Prism has duplicate images with the same source-image name or URI, use the exact Prism image UUID:
 
 ```bash
-./build.sh --ci --source-image-uuid "7a6d6c2f-90b4-4acb-bf14-6f2be1bf006e" --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+./build.sh --ci --source-image-uuid "replace-with-prism-image-uuid" --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
+
+For multi-row suites, use `test.sh --source-image-uuid-map key=UUID,...` instead of a single `build.sh --source-image-uuid`. The suite applies the matching UUID to each selected row.
+
+Preflight checks that the referenced Prism image exists, but it cannot prove that the guest OS will accept AHV cloud-init data and become reachable over SSH. A source image can pass preflight and still be unsuitable for builds if the builder VM powers on, receives an IP, and never accepts SSH.
+
+Probe a staged source image directly before spending time on a Packer build:
+
+```bash
+scripts/source_image_ssh_probe.sh --source-image-uuid "replace-with-prism-image-uuid"
+```
+
+The probe boots a disposable VM from the source image, injects the same `packer` cloud-init user data used by builds, waits for SSH as the `packer` user, then deletes the VM. Use `--source-image-name` instead of `--source-image-uuid` only when the image name is unambiguous in Prism. If the probe passes but Packer still times out, treat the problem as specific to the Packer builder/user-data delivery path or VM hardware settings rather than basic source-image cloud-init compatibility.
 
 ## Customize The Image
 
@@ -397,8 +437,10 @@ Useful fields:
 - `artifact.image_name`, `artifact.image_uuid`: the saved Prism image.
 - `validation.in_guest`: in-guest validation status, such as `not-requested`, `running`, `passed`, or `failed`.
 - `validation.artifact`: final artifact validation status.
+- `validation.artifact_vm_ip`: disposable validation VM IP address, useful when diagnosing SSH, routing, or first-boot network readiness failures.
 - `customization`: selected customization profile, phase role names, and custom in-guest validation status.
 - `cleanup.artifact_validation_vm`: whether the disposable validation VM was deleted, retained, or cleanup failed.
+- `cleanup.packer_builder_vm`: cleanup status for a failed Packer builder VM. `deleted` means the failed builder VM was removed; `kept-on-failure` means `--retain-failed-builder` intentionally retained it; `kept-debug` means `--debug` intentionally retained it.
 
 If artifact validation succeeds but the validation VM cannot be deleted, the build fails instead of hiding a leaked VM.
 
@@ -453,11 +495,23 @@ The validation helper forces the repo key and disables the local SSH agent. Conf
 ./build.sh --debug --ci --validate-artifact --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
+### Builder VM gets an IP but SSH never becomes available
+
+If Packer reports a builder VM IP but times out waiting for SSH, the source image may not be accepting AHV cloud-init user data or may not start SSH in the expected way. Retry with a source image known to support AHV/cloud-init SSH, or pass a known-good Prism image UUID with `--source-image-uuid`.
+
+You can test that hypothesis without running Packer:
+
+```bash
+scripts/source_image_ssh_probe.sh --source-image-uuid "replace-with-prism-image-uuid" --ssh-timeout 900
+```
+
+When this happens before Packer saves an image, artifact validation never starts, so `validation.artifact_vm_ip` will be empty or absent. Check `cleanup.packer_builder_vm` in the manifest when `--manifest` was enabled. If you need to inspect the failed VM, rerun with `--retain-failed-builder`, collect the VM JSON or console evidence, then delete the VM from Prism. If the probe fails too, treat the row as source-image blocked until a guest image can boot, receive the injected `packer` user/key, and accept SSH. If the probe passes but Packer still times out, investigate the Packer Nutanix builder path, boot type, disk adapter, or user-data delivery instead of retrying the same image import.
+
 ### A validation VM was left behind
 
 The failed command prints the VM name and UUID. Delete it from Prism after inspection.
 
-If a manifest was written, also check `cleanup.artifact_validation_vm`:
+If a manifest was written, also check `validation.artifact_vm_ip` and `cleanup.artifact_validation_vm`:
 
 - `kept-on-failure`: expected when `--debug` keeps the VM after failure.
 - `delete-request-failed`: Prism rejected the delete request.
@@ -484,6 +538,45 @@ RHEL downloads are licensed and often short-lived. Set the matching environment 
 export NDB_RHEL_9_7_IMAGE_URI="/path/to/rhel-9.7.qcow2"
 export NDB_RHEL_9_6_IMAGE_URI="/path/to/rhel-9.6.qcow2"
 ```
+
+### RHEL live validation runbook
+
+Before running RHEL rows, confirm the licensed source image values resolve without printing them:
+
+```bash
+for name in NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI; do if [ -n "${!name:-}" ]; then echo "$name=set"; else echo "$name=missing"; fi; done
+```
+
+If the output includes `NDB_RHEL_9_6_IMAGE_URI=missing` or `NDB_RHEL_9_7_IMAGE_URI=missing`, stop there and fix the secret or source-image distribution path first.
+
+If the RHEL images are already staged in Prism, prefer stable UUIDs instead of licensed download URLs:
+
+```bash
+export RHEL_96_UUID="00000000-0000-0000-0000-000000000000"
+export RHEL_97_UUID="11111111-1111-1111-1111-111111111111"
+```
+
+Preflight every RHEL row before starting live builds. Use the UUID map when reusing staged images:
+
+```bash
+./test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --preflight --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" --max-parallel 1
+```
+
+If you are using `NDB_RHEL_9_6_IMAGE_URI` and `NDB_RHEL_9_7_IMAGE_URI` instead of staged UUIDs, omit `--source-image-uuid-map`.
+
+Run the remaining RHEL live matrix with both validation stages and manifests:
+
+```bash
+./test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --validate --validate-artifact --manifest --continue-on-error --max-parallel 1
+```
+
+When the run finishes, audit the manifests against the full buildable matrix:
+
+```bash
+scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json
+```
+
+The goal state is `Missing live rows: 0`. If rows still show as missing, rerun only those rows after resolving the recorded manifest error or Prism-side failure.
 
 ## Reference
 

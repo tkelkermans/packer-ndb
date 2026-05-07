@@ -2,7 +2,6 @@
 users:
   - name: packer
     sudo: ['ALL=(ALL) NOPASSWD:ALL']
-    groups: users, admin
     home: /home/packer
     shell: /bin/bash
     ssh_authorized_keys:

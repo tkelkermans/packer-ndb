@@ -1,6 +1,6 @@
 # Nutanix Database Service 2.10 - PostgreSQL Compatibility Notes
 
-This file is a curated working extract from `/Users/tristan/Developer/NDB/source/Nutanix Database Service 2.10 - Nutanix Database Service Release Notes.md` that we use while maintaining `ndb/2.10/matrix.json`. The release notes remain the source of truth.
+This file is a curated working extract from `source/Nutanix Database Service 2.10 - Nutanix Database Service Release Notes.md` that we use while maintaining `ndb/2.10/matrix.json`. The release notes remain the source of truth.
 
 ## Community Edition highlights
 

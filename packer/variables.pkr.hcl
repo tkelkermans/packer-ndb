@@ -65,6 +65,21 @@ variable "vm_disk_size_gb" {
   default = 40
 }
 
+variable "boot_type" {
+  type    = string
+  default = "uefi"
+}
+
+variable "boot_priority" {
+  type    = string
+  default = "disk"
+}
+
+variable "serialport" {
+  type    = bool
+  default = true
+}
+
 variable "ndb_version" {
   type = string
 }
@@ -96,6 +111,11 @@ variable "etcd_version" {
 variable "ssh_public_key" {
   type    = string
   default = ""
+}
+
+variable "ssh_timeout" {
+  type    = string
+  default = "10m"
 }
 
 variable "nutanix_insecure" {

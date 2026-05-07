@@ -43,9 +43,10 @@ redhat_packages:
   - python3-libselinux
   - iptables-nft-services
 debian_packages:
+  - cron
   - dbus
   - gnupg
-  - libaio1
+  - "{{ debian_libaio_package }}"
   - libbz2-dev
   - libgdbm-dev
   - libncurses5-dev

@@ -39,28 +39,55 @@ function cleanup() {
   fi
 }
 
+function manifest_set_if_present() {
+  local key=$1
+  local value=$2
+
+  if [[ -n "${MANIFEST_FILE:-}" && -f "${MANIFEST_FILE:-}" ]]; then
+    "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key "$key" --value "$value" >/dev/null 2>&1 || true
+  fi
+}
+
 function cleanup_failed_builder_vm() {
   local vm_uuid response task_uuid
 
-  if [[ "${DEBUG:-false}" == "true" ]]; then
-    echo "Debug mode enabled; retaining failed Packer builder VM: ${VM_NAME}" >&2
+  vm_uuid=$(prism_vm_uuid_by_name "$VM_NAME" 2>/dev/null || true)
+  if [[ -z "$vm_uuid" ]]; then
+    manifest_set_if_present ".cleanup.packer_builder_vm" "not-found"
     return 0
   fi
 
-  vm_uuid=$(prism_vm_uuid_by_name "$VM_NAME" 2>/dev/null || true)
-  if [[ -z "$vm_uuid" ]]; then
+  manifest_set_if_present ".cleanup.packer_builder_vm_uuid" "$vm_uuid"
+
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    echo "Debug mode enabled; retaining failed Packer builder VM: ${VM_NAME} (${vm_uuid})" >&2
+    manifest_set_if_present ".cleanup.packer_builder_vm" "kept-debug"
+    return 0
+  fi
+
+  if [[ "${RETAIN_FAILED_BUILDER:-false}" == "true" ]]; then
+    echo "Retaining failed Packer builder VM for troubleshooting: ${VM_NAME} (${vm_uuid})" >&2
+    manifest_set_if_present ".cleanup.packer_builder_vm" "kept-on-failure"
     return 0
   fi
 
   echo "Cleaning up failed Packer builder VM: ${VM_NAME}" >&2
   if ! response=$(prism_delete_vm "$vm_uuid" 2>/dev/null); then
     echo "Warning: failed to delete Packer builder VM ${VM_NAME}" >&2
+    manifest_set_if_present ".cleanup.packer_builder_vm" "delete-request-failed"
     return 0
   fi
 
   task_uuid=$(jq -r '(.status.execution_context.task_uuid // .status.execution_context.task_uuid_list // empty) | if type == "array" then .[0] else . end // ""' <<<"$response" 2>/dev/null || true)
   if [[ -n "$task_uuid" && "$task_uuid" != "null" ]]; then
-    prism_wait_task "$task_uuid" 600 5 >/dev/null || echo "Warning: timed out deleting Packer builder VM ${VM_NAME}" >&2
+    if prism_wait_task "$task_uuid" 600 5 >/dev/null; then
+      manifest_set_if_present ".cleanup.packer_builder_vm" "deleted"
+    else
+      echo "Warning: timed out deleting Packer builder VM ${VM_NAME}" >&2
+      manifest_set_if_present ".cleanup.packer_builder_vm" "delete-timeout"
+    fi
+  else
+    manifest_set_if_present ".cleanup.packer_builder_vm" "delete-requested"
   fi
 }
 
@@ -108,6 +135,7 @@ Options:
   --validate-artifact       Boot the saved image in a disposable VM and validate it after Packer succeeds
   --manifest                Write a build manifest under manifests/ for live builds
   --debug                   Enable PACKER_LOG and interactive Packer debug mode
+  --retain-failed-builder   Keep a failed Packer builder VM for troubleshooting without enabling PACKER_LOG
   --ndb-version VERSION     NDB version to build
   --db-type TYPE            Database type to build
   --os NAME                 Operating system name from matrix.json
@@ -657,6 +685,7 @@ function select_from_list() {
 
 MODE="interactive"
 DEBUG=false
+RETAIN_FAILED_BUILDER=false
 DRY_RUN=false
 PREFLIGHT_ONLY=false
 STAGE_SOURCE=false
@@ -710,6 +739,9 @@ while [[ $# -gt 0 ]]; do
     --debug)
       export PACKER_LOG=1
       DEBUG=true
+      ;;
+    --retain-failed-builder)
+      RETAIN_FAILED_BUILDER=true
       ;;
     --ci)
       MODE="ci"

@@ -21,10 +21,11 @@ RESULT_FILE=""
 KEEP_ON_FAILURE=false
 VM_NAME=""
 VM_UUID=""
+VM_IP=""
 IMAGE_UUID=""
 CLEANUP_STATUS="not-started"
 FINAL_STATUS="failed"
-TMPDIR=""
+ARTIFACT_VALIDATE_WORKDIR=""
 
 usage() {
   cat <<'EOF'
@@ -143,6 +144,7 @@ write_result() {
     --arg image_uuid "$IMAGE_UUID" \
     --arg vm_name "$VM_NAME" \
     --arg vm_uuid "$VM_UUID" \
+    --arg vm_ip "$VM_IP" \
     --arg status "$status" \
     --arg cleanup_status "$CLEANUP_STATUS" \
     '{
@@ -150,8 +152,10 @@ write_result() {
       image_uuid: $image_uuid,
       vm_name: $vm_name,
       vm_uuid: $vm_uuid,
+      vm_ip: $vm_ip,
       artifact_vm_name: $vm_name,
       artifact_vm_uuid: $vm_uuid,
+      artifact_vm_ip: $vm_ip,
       status: $status,
       cleanup_status: $cleanup_status,
       cleanup: {
@@ -199,8 +203,8 @@ on_exit() {
     status="$cleanup_status"
   fi
   write_result "$FINAL_STATUS" || true
-  if [[ -n "$TMPDIR" ]]; then
-    rm -rf "$TMPDIR"
+  if [[ -n "$ARTIFACT_VALIDATE_WORKDIR" ]]; then
+    rm -rf "$ARTIFACT_VALIDATE_WORKDIR"
   fi
   exit "$status"
 }
@@ -361,7 +365,7 @@ fi
 
 TIMESTAMP=$(date +%Y%m%d%H%M%S)
 VM_NAME="validate-${IMAGE_NAME:0:45}-${TIMESTAMP}"
-TMPDIR=$(mktemp -d)
+ARTIFACT_VALIDATE_WORKDIR=$(mktemp -d)
 
 SSH_PUBLIC_KEY=$(tr -d '\n' < "$PUBLIC_KEY_PATH")
 USER_DATA_B64=$(sed "s|\${ssh_public_key}|${SSH_PUBLIC_KEY}|g" "$USER_DATA_TEMPLATE" | base64_no_wrap)
@@ -384,6 +388,10 @@ CREATE_PAYLOAD=$(jq -n \
         num_vcpus_per_socket: 1,
         memory_size_mib: 4096,
         power_state: "OFF",
+        boot_config: {
+          boot_type: "UEFI",
+          boot_device_order_list: ["DISK", "CDROM", "NETWORK"]
+        },
         disk_list: [
           {
             data_source_reference: {
@@ -405,6 +413,12 @@ CREATE_PAYLOAD=$(jq -n \
               kind: "subnet",
               uuid: $subnet_uuid
             },
+            is_connected: true
+          }
+        ],
+        serial_port_list: [
+          {
+            index: 0,
             is_connected: true
           }
         ],
@@ -465,12 +479,12 @@ for _ in {1..90}; do
 done
 ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" true >/dev/null
 
-cat > "$TMPDIR/inventory" <<EOF
+cat > "$ARTIFACT_VALIDATE_WORKDIR/inventory" <<EOF
 [validation]
 ${VM_IP} ansible_user=packer ansible_ssh_private_key_file=${PRIVATE_KEY_PATH} ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -o IdentityAgent=none'
 EOF
 
-cat > "$TMPDIR/validate.yml" <<EOF
+cat > "$ARTIFACT_VALIDATE_WORKDIR/validate.yml" <<EOF
 ---
 - name: Validate saved NDB image artifact
   hosts: validation
@@ -506,20 +520,20 @@ jq -n \
     customization_profile_name: $customization_profile_name,
     customization_profile_file: $customization_profile_file,
     customization_repo_root: $customization_repo_root
-  }' > "$TMPDIR/vars.json"
+  }' > "$ARTIFACT_VALIDATE_WORKDIR/vars.json"
 
 printf 'Running artifact validation playbook against %s...\n' "$VM_IP"
 ANSIBLE_PLAYBOOK_CMD=(
   ansible-playbook
   -e "ansible_ssh_private_key_file=${PRIVATE_KEY_PATH}"
-  -i "$TMPDIR/inventory"
-  "$TMPDIR/validate.yml"
+  -i "$ARTIFACT_VALIDATE_WORKDIR/inventory"
+  "$ARTIFACT_VALIDATE_WORKDIR/validate.yml"
 )
 if [[ "$LOAD_POSTGRES_DEFAULTS" == "true" ]]; then
   ANSIBLE_PLAYBOOK_CMD+=(-e "@${POSTGRES_DEFAULTS}")
 fi
 ANSIBLE_PLAYBOOK_CMD+=(
-  -e "@${TMPDIR}/vars.json"
+  -e "@${ARTIFACT_VALIDATE_WORKDIR}/vars.json"
 )
 if [[ -n "$CUSTOMIZATION_ROLES_PATH_ENV" ]]; then
   ANSIBLE_CONFIG="$ANSIBLE_CFG_PATH" ANSIBLE_ROLES_PATH="$CUSTOMIZATION_ROLES_PATH_ENV" "${ANSIBLE_PLAYBOOK_CMD[@]}"
