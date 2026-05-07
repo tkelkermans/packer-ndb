@@ -50,6 +50,9 @@ failed before boot because Prism rejected VM creation for an inactive image.
 Current preflight checks now reject these inactive image candidates before
 Packer starts.
 
+The public tracking issue for this blocker is:
+https://github.com/tkelkermans/packer-ndb/issues/2
+
 ## Commands To Finish RHEL Coverage
 
 When RHEL source images are available, check the values without printing the
