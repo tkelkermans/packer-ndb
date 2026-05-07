@@ -18,6 +18,9 @@ VM_UUID=""
 VM_IP=""
 CLEANUP_STATUS="not-started"
 FINAL_STATUS="failed"
+RHEL_REPOSITORY_CHECK=false
+RHEL_REPOSITORY_CHECK_STATUS="not-requested"
+RHEL_REPOSITORY_PACKAGES=(bison firewalld flex gcc lsof lvm2 net-tools perl python3-pip sshpass unzip wget zip)
 
 usage() {
   cat <<'EOF'
@@ -34,6 +37,9 @@ Options:
   --boot-type TYPE           VM boot type: uefi, legacy, or default (default: uefi)
   --ip-timeout SECONDS      Seconds to wait for a VM IP (default: 900)
   --ssh-timeout SECONDS     Seconds to wait for SSH (default: 900)
+  --rhel-repository-check   After SSH succeeds, install representative RHEL packages with dnf
+  --rhel-repository-packages CSV
+                            Comma-separated package list for --rhel-repository-check
   --result-file FILE        Write probe result JSON to FILE
   --keep-on-failure         Keep the disposable VM if SSH probing fails
   -h, --help                Show this help and exit
@@ -76,6 +82,31 @@ require_file() {
   fi
 }
 
+parse_package_csv() {
+  local spec=$1
+  local old_ifs=$IFS
+  local package
+  local parsed=()
+
+  IFS=,
+  read -r -a parsed <<< "$spec"
+  IFS=$old_ifs
+
+  if (( ${#parsed[@]} == 0 )); then
+    printf 'Error: --rhel-repository-packages requires at least one package.\n' >&2
+    exit 1
+  fi
+
+  for package in "${parsed[@]}"; do
+    if [[ -z "$package" || ! "$package" =~ ^[A-Za-z0-9_.:+-]+$ ]]; then
+      printf 'Error: invalid package name in --rhel-repository-packages: %s\n' "$package" >&2
+      exit 1
+    fi
+  done
+
+  RHEL_REPOSITORY_PACKAGES=("${parsed[@]}")
+}
+
 base64_no_wrap() {
   base64 | tr -d '\n'
 }
@@ -111,6 +142,7 @@ write_result() {
     --arg vm_ip "$VM_IP" \
     --arg status "$status" \
     --arg cleanup_status "$CLEANUP_STATUS" \
+    --arg rhel_repository_check "$RHEL_REPOSITORY_CHECK_STATUS" \
     '{
       source_image_name: $source_image_name,
       source_image_uuid: $source_image_uuid,
@@ -119,6 +151,9 @@ write_result() {
       vm_ip: $vm_ip,
       status: $status,
       cleanup_status: $cleanup_status,
+      checks: {
+        rhel_repositories: $rhel_repository_check
+      },
       cleanup: {
         source_image_probe_vm: $cleanup_status
       }
@@ -193,6 +228,14 @@ while [[ $# -gt 0 ]]; do
     --ssh-timeout)
       require_option_value "$1" "$#"
       SSH_TIMEOUT_SECONDS=$2
+      shift
+      ;;
+    --rhel-repository-check)
+      RHEL_REPOSITORY_CHECK=true
+      ;;
+    --rhel-repository-packages)
+      require_option_value "$1" "$#"
+      parse_package_csv "$2"
       shift
       ;;
     --result-file)
@@ -393,9 +436,29 @@ SSH_COMMON_ARGS=(
   -o ConnectTimeout=10
 )
 
+run_rhel_repository_check() {
+  local packages
+
+  packages="${RHEL_REPOSITORY_PACKAGES[*]}"
+  printf 'Checking RHEL package repositories on %s with dnf...\n' "$VM_IP"
+
+  if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "set -e; command -v dnf >/dev/null; sudo -n dnf -y makecache; sudo -n dnf -y install ${packages}"; then
+    RHEL_REPOSITORY_CHECK_STATUS="passed"
+    printf 'RHEL package repository check passed on %s.\n' "$VM_IP"
+    return 0
+  fi
+
+  RHEL_REPOSITORY_CHECK_STATUS="failed"
+  printf 'Error: RHEL package repository check failed on %s.\n' "$VM_IP" >&2
+  return 1
+}
+
 elapsed=0
 while (( elapsed <= SSH_TIMEOUT_SECONDS )); do
   if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" true >/dev/null 2>&1; then
+    if [[ "$RHEL_REPOSITORY_CHECK" == "true" ]]; then
+      run_rhel_repository_check
+    fi
     FINAL_STATUS="passed"
     printf 'Source image accepted cloud-init SSH for packer@%s.\n' "$VM_IP"
     exit 0

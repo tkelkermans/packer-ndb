@@ -1109,6 +1109,8 @@ run_source_image_ssh_probe_tests() {
   chmod 600 "$test_private_key"
 
   "$ROOT_DIR/scripts/source_image_ssh_probe.sh" --help >/dev/null || fail "source image SSH probe help"
+  grep -q -- "--rhel-repository-check" "$ROOT_DIR/scripts/source_image_ssh_probe.sh" || fail "source image SSH probe missing RHEL repository check option"
+  grep -q -- "--rhel-repository-check" "$ROOT_DIR/README.md" || fail "README does not document source image RHEL repository probe"
 
   mkdir -p "$tmpdir/bin"
   cat > "$tmpdir/bin/curl" <<'SH'
@@ -1186,6 +1188,9 @@ SH
 
   cat > "$tmpdir/bin/ssh" <<'SH'
 #!/usr/bin/env bash
+if [[ "$*" == *"dnf"* ]]; then
+  printf '%s\n' "$*" > "${NDB_SELFTEST_REPO_CHECK_MARKER:?}"
+fi
 exit 0
 SH
   chmod +x "$tmpdir/bin/curl" "$tmpdir/bin/ssh"
@@ -1209,6 +1214,28 @@ SH
   jq -e '.status == "passed" and .source_image_uuid == "source-image-uuid" and .vm_uuid == "vm-uuid" and .vm_ip == "192.0.2.20" and .cleanup.source_image_probe_vm == "deleted"' "$result" >/dev/null || fail "source image SSH probe result JSON"
   jq -e '.spec.resources.boot_config.boot_type == "UEFI"' "$tmpdir/create-payload.json" >/dev/null || fail "source image SSH probe does not default to Packer UEFI boot type"
   [[ -e "$tmpdir/delete-called" ]] || fail "source image SSH probe did not delete VM"
+
+  rm -f "$result" "$tmpdir/delete-called" "$tmpdir/repo-check-command.txt"
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    export PKR_VAR_cluster_name=mock-cluster
+    export PKR_VAR_subnet_name=mock-subnet
+    export NDB_SOURCE_PROBE_PRIVATE_KEY_PATH="$test_private_key"
+    export NDB_SOURCE_PROBE_PUBLIC_KEY_PATH="$test_public_key"
+    export NDB_SELFTEST_DELETE_MARKER="$tmpdir/delete-called"
+    export NDB_SELFTEST_PAYLOAD_CAPTURE="$tmpdir/create-payload.json"
+    export NDB_SELFTEST_REPO_CHECK_MARKER="$tmpdir/repo-check-command.txt"
+    "$ROOT_DIR/scripts/source_image_ssh_probe.sh" \
+      --source-image-uuid source-image-uuid \
+      --rhel-repository-check \
+      --rhel-repository-packages bison,gcc \
+      --result-file "$result" >/dev/null 2>&1
+  ) || fail "source image RHEL repository probe success path failed"
+  grep -q "sudo -n dnf -y install bison gcc" "$tmpdir/repo-check-command.txt" || fail "source image RHEL repository probe did not install requested packages"
+  jq -e '.status == "passed" and .checks.rhel_repositories == "passed"' "$result" >/dev/null || fail "source image RHEL repository probe result JSON"
 
   pass "source image SSH probe"
 }

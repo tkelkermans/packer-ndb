@@ -45,7 +45,9 @@ repository. To finish coverage, provide either:
 
 The latest Prism catalog check found RHEL 9.6 and RHEL 9.7 image candidates,
 and direct source-image SSH probes reached both images successfully. A
-representative RHEL 9.7 PostgreSQL 18 live build reached Ansible, then failed
+RHEL 9.7 repository probe on a disposable source-image VM failed because the
+guest had no enabled dnf repositories, and the disposable VM cleanup succeeded.
+A representative RHEL 9.7 PostgreSQL 18 live build reached Ansible, then failed
 during common package installation because the guest did not have usable RHEL
 package repositories enabled for standard packages such as `bison`, `gcc`,
 `lvm2`, and `sshpass`.
@@ -93,6 +95,13 @@ Before starting a long RHEL matrix run, confirm the source images can install
 packages from the required RHEL and enterprise mirrors. The repository checks
 above prove Prism placement and SSH reachability; they do not prove subscription
 or package repository readiness inside the guest.
+
+If repositories are already enabled in the staged image, prove package
+readiness on a disposable VM first:
+
+```bash
+scripts/source_image_ssh_probe.sh --source-image-uuid "${RHEL_97_UUID}" --rhel-repository-check --ssh-timeout 900
+```
 
 If repository setup must happen during the build, run a local copy of the RHEL
 repository customization profile with the RHEL rows:

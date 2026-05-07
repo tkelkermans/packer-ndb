@@ -338,6 +338,12 @@ scripts/source_image_ssh_probe.sh --source-image-uuid "replace-with-prism-image-
 
 The probe boots a disposable VM from the source image, injects the same `packer` cloud-init user data used by builds, waits for SSH as the `packer` user, then deletes the VM. Use `--source-image-name` instead of `--source-image-uuid` only when the image name is unambiguous in Prism. If the probe passes but Packer still times out, treat the problem as specific to the Packer builder/user-data delivery path or VM hardware settings rather than basic source-image cloud-init compatibility.
 
+For RHEL source images, add the repository check before launching the full matrix. It installs representative common packages on the disposable probe VM, then deletes that VM:
+
+```bash
+scripts/source_image_ssh_probe.sh --source-image-uuid "${RHEL_97_UUID}" --rhel-repository-check --ssh-timeout 900
+```
+
 ## Customize The Image
 
 Customization profiles are optional overlays for enterprise-specific tools, certificates, hardening, or validation checks. The committed `enterprise-example` profile is a safe starter that shows where profile settings live without requiring private repositories, tenant URLs, or secrets.
@@ -578,6 +584,13 @@ RHEL guest must also have usable package repositories or enterprise mirrors
 enabled before Ansible reaches the common package-install step. If your base
 image is intentionally unregistered, use a `pre_common` customization profile to
 enable the required repositories before the common role runs.
+
+If repositories are already enabled in the staged image, prove that before the
+long build by running the source-image probe with the RHEL repository check:
+
+```bash
+scripts/source_image_ssh_probe.sh --source-image-uuid "${RHEL_97_UUID}" --rhel-repository-check --ssh-timeout 900
+```
 
 The committed `rhel-repositories-example` profile is a disabled, secret-free
 starter for that path. Copy it into `customizations/local/`, point the copied
