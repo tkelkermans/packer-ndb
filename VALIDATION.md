@@ -57,6 +57,11 @@ already have the required enterprise package repositories enabled, or with a
 common role installs packages. Current preflight checks reject inactive image
 candidates before Packer starts.
 
+The committed `rhel-repositories-example` customization profile is a secret-free
+starter for the `pre_common` path. Copy it into `customizations/local/`, point
+the copied profile at the copied vars file, and add private mirror URLs or
+entitled repository IDs only in the local copies.
+
 The public tracking issue for this blocker is:
 https://github.com/tkelkermans/packer-ndb/issues/2
 
@@ -88,6 +93,13 @@ Before starting a long RHEL matrix run, confirm the source images can install
 packages from the required RHEL and enterprise mirrors. The repository checks
 above prove Prism placement and SSH reachability; they do not prove subscription
 or package repository readiness inside the guest.
+
+If repository setup must happen during the build, run a local copy of the RHEL
+repository customization profile with the RHEL rows:
+
+```bash
+./build.sh --ci --customization-profile customizations/local/rhel-repositories.yml --validate --validate-artifact --manifest --source-image-uuid "${RHEL_97_UUID}" --ndb-version 2.10 --db-type pgsql --os "Red Hat Enterprise Linux (RHEL)" --os-version 9.7 --db-version 18
+```
 
 Preflight every RHEL row:
 

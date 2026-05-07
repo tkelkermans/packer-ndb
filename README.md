@@ -365,6 +365,7 @@ The committed examples use Ansible `become` for system paths and services, use O
 Common enterprise recipes:
 
 - Install an internal CA certificate: copy `customizations/examples/internal-ca/roles/custom_internal_ca` into a private role, replace the generated sample certificate with your enterprise CA distribution method, and keep private CA material outside git.
+- Enable RHEL package repositories before common setup: copy `customizations/profiles/rhel-repositories-example.yml`, `customizations/profiles/rhel-repositories-example.vars.yml`, and the `customizations/examples/rhel-repositories/` role pattern into `customizations/local/`, then add your enterprise mirror URLs or entitled repository IDs only in the local copies.
 - Install OpenTelemetry Collector monitoring: copy the monitoring-agent example, replace the marker service with your real OpenTelemetry Collector package, config, and service setup, and inject collector endpoints or tenant tokens from your secret manager at build time.
 - Apply OS hardening: copy the hardening example, add one small validated setting at a time, and keep a matching validation task so the build proves the hardening actually landed.
 - Validate custom work: keep a role like `validate_custom_enterprise` in the profile's `validate` phase so both `--validate` and `--validate-artifact` can prove the customization is present.
@@ -577,6 +578,16 @@ RHEL guest must also have usable package repositories or enterprise mirrors
 enabled before Ansible reaches the common package-install step. If your base
 image is intentionally unregistered, use a `pre_common` customization profile to
 enable the required repositories before the common role runs.
+
+The committed `rhel-repositories-example` profile is a disabled, secret-free
+starter for that path. Copy it into `customizations/local/`, point the copied
+profile at the copied vars file, set `rhel_repositories_enabled: true`, and add
+your enterprise mirror URLs or entitled repository IDs only in the local vars
+file. Then run the RHEL build with the local profile:
+
+```bash
+./build.sh --ci --customization-profile customizations/local/rhel-repositories.yml --validate --validate-artifact --manifest --source-image-uuid "${RHEL_97_UUID}" --ndb-version 2.10 --db-type pgsql --os "Red Hat Enterprise Linux (RHEL)" --os-version 9.7 --db-version 18
+```
 
 Preflight every RHEL row before starting live builds. Use the UUID map when reusing staged images:
 

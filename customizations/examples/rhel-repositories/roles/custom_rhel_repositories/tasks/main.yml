@@ -1,0 +1,59 @@
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+
+- name: custom_rhel_repositories role marker
+  ansible.builtin.debug:
+    msg: "custom_rhel_repositories"
+
+- name: Configure RHEL repositories
+  when:
+    - rhel_repositories_enabled | default(false) | bool
+    - ndb_os_family == "RedHat"
+  block:
+    - name: Assert at least one RHEL repository source is configured
+      ansible.builtin.assert:
+        that:
+          - (rhel_repositories_yum_repositories | default([]) | length > 0) or
+            (rhel_repositories_subscription_manager_repos | default([]) | length > 0)
+        fail_msg: "Enable at least one yum repository or subscription-manager repository for RHEL builds"
+
+    - name: Configure explicit RHEL yum repositories
+      become: yes
+      no_log: "{{ rhel_repositories_hide_values | default(true) | bool }}"
+      ansible.builtin.yum_repository:
+        name: "{{ item.name }}"
+        description: "{{ item.description | default(item.name) }}"
+        baseurl: "{{ item.baseurl | default(omit) }}"
+        metalink: "{{ item.metalink | default(omit) }}"
+        mirrorlist: "{{ item.mirrorlist | default(omit) }}"
+        enabled: "{{ item.enabled | default(true) }}"
+        gpgcheck: "{{ item.gpgcheck | default(true) }}"
+        gpgkey: "{{ item.gpgkey | default(omit) }}"
+        repo_gpgcheck: "{{ item.repo_gpgcheck | default(omit) }}"
+        sslverify: "{{ item.sslverify | default(true) }}"
+        username: "{{ item.username | default(omit) }}"
+        password: "{{ item.password | default(omit) }}"
+        state: "{{ item.state | default('present') }}"
+      loop: "{{ rhel_repositories_yum_repositories | default([]) }}"
+
+    - name: Enable subscription-manager repositories
+      become: yes
+      no_log: "{{ rhel_repositories_hide_values | default(true) | bool }}"
+      ansible.builtin.command:
+        argv:
+          - subscription-manager
+          - repos
+          - "--enable={{ item }}"
+      loop: "{{ rhel_repositories_subscription_manager_repos | default([]) }}"
+      changed_when: false
+
+    - name: Refresh dnf metadata after RHEL repository changes
+      become: yes
+      ansible.builtin.command:
+        argv:
+          - dnf
+          - -y
+          - makecache
+      changed_when: false
+      when: rhel_repositories_refresh_metadata | default(true) | bool
