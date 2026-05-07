@@ -217,6 +217,11 @@ source_image_stage_remote_uri() {
 
   existing_uuid=$(prism_image_uuid_by_name "$image_name")
   if [[ -n "$existing_uuid" ]]; then
+    if ! source_image_preflight_existing_image_uuid "$existing_uuid" "$cluster_uuid" "" "existing Prism image"; then
+      printf 'Error: existing Prism image is inactive on the selected cluster: %s\n' "$image_name" >&2
+      printf 'Use a different image name, delete the inactive placeholder, or provide an active source image UUID.\n' >&2
+      return 1
+    fi
     printf 'Reusing existing Prism image: %s\n' "$image_name" >&2
     printf '%s\n' "$image_name"
     return 0

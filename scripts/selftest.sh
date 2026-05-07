@@ -880,6 +880,82 @@ SH
 
 run_source_image_preflight_active_image_tests
 
+run_source_image_stage_existing_image_tests() {
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/scripts/source_images.sh"
+  local tmpdir output
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/stage.out"
+
+  mkdir -p "$tmpdir/bin"
+  cat > "$tmpdir/bin/curl" <<'SH'
+#!/usr/bin/env bash
+output_file=""
+url=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output_file=$2
+      shift
+      ;;
+    http*://*)
+      url=$1
+      ;;
+  esac
+  shift
+done
+
+case "$url" in
+  */api/nutanix/v3/images/list)
+    body='{"entities":[{"spec":{"name":"active.qcow2"},"metadata":{"uuid":"active-image-uuid"}},{"spec":{"name":"inactive.qcow2"},"metadata":{"uuid":"inactive-image-uuid"}}]}'
+    ;;
+  */api/nutanix/v3/images/active-image-uuid)
+    body='{"metadata":{"uuid":"active-image-uuid"},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[{"kind":"cluster","uuid":"cluster-uuid"}]}}}'
+    ;;
+  */api/nutanix/v3/images/inactive-image-uuid)
+    body='{"metadata":{"uuid":"inactive-image-uuid"},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[]}}}'
+    ;;
+  *)
+    body='{"metadata":{"uuid":"new-image-uuid"},"status":{"execution_context":{"task_uuid":"task-uuid"}}}'
+    ;;
+esac
+
+if [[ -n "$output_file" ]]; then
+  printf '%s' "$body" > "$output_file"
+else
+  printf '%s' "$body"
+fi
+printf '200'
+SH
+  chmod +x "$tmpdir/bin/curl"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    [[ "$(source_image_stage_remote_uri "https://example.com/active.qcow2" "cluster-uuid" "active.qcow2")" == "active.qcow2" ]]
+  ) >"$output" 2>&1 || fail "source image staging did not reuse active existing image: $(cat "$output")"
+  grep -q "Reusing existing Prism image" "$output" || fail "source image staging did not report active image reuse"
+
+  if (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    source_image_stage_remote_uri "https://example.com/inactive.qcow2" "cluster-uuid" "inactive.qcow2" >"$output" 2>&1
+  ); then
+    fail "source image staging unexpectedly reused inactive existing image"
+  fi
+  grep -q "existing Prism image is inactive" "$output" || fail "source image staging inactive image error was not actionable"
+
+  pass "source image staging existing image guard"
+}
+
+run_source_image_stage_existing_image_tests
+
 run_source_image_uuid_guard_tests() {
   grep -q -- "--source-image-uuid" "$ROOT_DIR/build.sh" || fail "build.sh does not expose source image UUID override"
   grep -q "PACKER_SOURCE_IMAGE_UUID" "$ROOT_DIR/build.sh" || fail "build.sh does not track source image UUID for Packer"
