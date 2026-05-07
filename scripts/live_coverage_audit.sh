@@ -6,12 +6,13 @@ MANIFEST_DIR="$ROOT_DIR/manifests"
 MATRIX_FILES=()
 SUGGEST_RUNS=false
 SOURCE_IMAGE_UUID_MAP_RAW=""
+CUSTOMIZATION_PROFILE=""
 SOURCE_IMAGE_UUID_KEYS=()
 SOURCE_IMAGE_UUID_VALUES=()
 
 usage() {
   cat <<'EOF'
-Usage: scripts/live_coverage_audit.sh [--suggest-runs] [--source-image-uuid-map MAP] [--manifest-dir DIR] [matrix.json ...]
+Usage: scripts/live_coverage_audit.sh [--suggest-runs] [--customization-profile PROFILE] [--source-image-uuid-map MAP] [--manifest-dir DIR] [matrix.json ...]
 
 Audits buildable matrix rows against successful live build manifests.
 
@@ -25,6 +26,8 @@ If no matrix files are provided, ndb/*/matrix.json is used.
 
 Options:
   --suggest-runs                 Print one validated build.sh command for each missing row.
+  --customization-profile PROFILE
+                                  Add --customization-profile to suggested commands.
   --source-image-uuid-map MAP    Add --source-image-uuid to suggested commands for matching image keys.
 EOF
 }
@@ -103,6 +106,9 @@ print_build_command() {
   printf ' --os %q' "$os_type"
   printf ' --os-version %q' "$os_version"
   printf ' --db-version %q' "$db_version"
+  if [[ -n "$CUSTOMIZATION_PROFILE" ]]; then
+    printf ' --customization-profile %q' "$CUSTOMIZATION_PROFILE"
+  fi
   if [[ -n "$uuid" ]]; then
     printf ' --source-image-uuid %q' "$uuid"
   fi
@@ -116,6 +122,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --source-image-uuid-map)
       SOURCE_IMAGE_UUID_MAP_RAW=$2
+      shift
+      ;;
+    --customization-profile)
+      CUSTOMIZATION_PROFILE=$2
       shift
       ;;
     --manifest-dir)

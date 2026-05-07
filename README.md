@@ -193,6 +193,12 @@ If the missing rows should reuse staged Prism source images, pass the same sourc
 scripts/live_coverage_audit.sh --suggest-runs --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" ndb/2.9/matrix.json ndb/2.10/matrix.json
 ```
 
+If the missing rows also need an enterprise customization profile, add the same profile to the suggestion command:
+
+```bash
+scripts/live_coverage_audit.sh --suggest-runs --customization-profile customizations/local/rhel-repositories.yml --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" ndb/2.9/matrix.json ndb/2.10/matrix.json
+```
+
 `test.sh` skips RHEL rows unless you add `--allow-rhel`. Only add it after the licensed RHEL source image environment variables are set.
 
 Run every buildable PostgreSQL row that has installable release-note-qualified extensions and select those extensions automatically. This is the extension coverage command for the matrix. It includes RHEL rows, validates the temporary build VM, validates the saved artifact, writes manifests, and keeps going after failures so you get a complete report. Each background build runs with stdin isolated from the matrix reader so every selected row is tested.

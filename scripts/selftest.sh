@@ -1583,6 +1583,11 @@ JSON
   fi
   grep -q -- "./build.sh --ci --validate --validate-artifact --manifest --ndb-version 9.99 --db-type pgsql --os Debian --os-version 12 --db-version 18 --source-image-uuid debian-uuid" "$output" || fail "coverage audit suggestions missing source image UUID"
 
+  if "$ROOT_DIR/scripts/live_coverage_audit.sh" --suggest-runs --customization-profile customizations/local/rhel-repositories.yml --source-image-uuid-map "debian-12=debian-uuid" --manifest-dir "$manifest_dir" "$matrix_file" >"$output" 2>&1; then
+    fail "live coverage audit customization suggestions unexpectedly passed with missing Debian row"
+  fi
+  grep -q -- "./build.sh --ci --validate --validate-artifact --manifest --ndb-version 9.99 --db-type pgsql --os Debian --os-version 12 --db-version 18 --customization-profile customizations/local/rhel-repositories.yml --source-image-uuid debian-uuid" "$output" || fail "coverage audit suggestions missing customization profile"
+
   cat > "$manifest_dir/debian.json" <<'JSON'
 {
   "status": "success",
@@ -2800,6 +2805,7 @@ run_readme_mongodb_tests() {
   grep -q "probe passes but Packer still times out" "$ROOT_DIR/README.md" || fail "README missing source probe versus Packer SSH guidance"
   grep -q "scripts/live_coverage_audit.sh" "$ROOT_DIR/README.md" || fail "README missing live coverage audit command"
   grep -q "live_coverage_audit.sh --suggest-runs --source-image-uuid-map" "$ROOT_DIR/README.md" || fail "README missing coverage audit UUID suggestion command"
+  grep -q "live_coverage_audit.sh --suggest-runs --customization-profile" "$ROOT_DIR/README.md" || fail "README missing coverage audit customization suggestion command"
   grep -q "sharded topology" "$ROOT_DIR/README.md" || fail "README missing local sharded topology explanation"
   grep -q "mongodb_edition" "$ROOT_DIR/README.md" || fail "README missing MongoDB edition matrix guidance"
   pass "README MongoDB guidance"

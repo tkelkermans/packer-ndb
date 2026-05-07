@@ -136,6 +136,13 @@ Audit full coverage:
 scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json
 ```
 
+To generate individual recovery commands that include both staged RHEL image
+UUIDs and a local repository customization profile:
+
+```bash
+scripts/live_coverage_audit.sh --suggest-runs --customization-profile customizations/local/rhel-repositories.yml --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" ndb/2.9/matrix.json ndb/2.10/matrix.json
+```
+
 Completion requires:
 
 ```text
