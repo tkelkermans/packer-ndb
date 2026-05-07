@@ -81,6 +81,7 @@ scan_prism_images() {
   local response
   local matches_file
   local count
+  local active_count
 
   require_command jq curl
   prism_require_env >/dev/null
@@ -93,7 +94,9 @@ scan_prism_images() {
       .entities[]?
       | {
           name: (.spec.name // .status.name // ""),
-          uuid: (.metadata.uuid // "")
+          uuid: (.metadata.uuid // ""),
+          state: (.status.state // ""),
+          cluster_count: ((.status.resources.cluster_reference_list // .status.cluster_reference_list // []) | length)
         }
       | select(.name | test("rhel|red hat|redhat|enterprise linux"; "i"))
       | select(.uuid != "" and .name != "")
@@ -101,7 +104,9 @@ scan_prism_images() {
   ' <<<"$response" > "$matches_file"
 
   count=$(jq 'length' "$matches_file")
+  active_count=$(jq '[.[] | select(.cluster_count > 0)] | length' "$matches_file")
   printf '\nStaged RHEL-like Prism images: %s\n' "$count"
+  printf 'Active RHEL-like Prism images: %s\n' "$active_count"
 
   if [[ "$count" == "0" ]]; then
     printf 'No staged Prism images matched RHEL naming.\n'
@@ -109,7 +114,7 @@ scan_prism_images() {
   fi
 
   if [[ "$SHOW_PRISM_MATCHES" == "true" ]]; then
-    jq -r '.[] | "- \(.uuid)\t\(.name)"' "$matches_file"
+    jq -r '.[] | "- \(.uuid)\t\(.name)\tstate=\(.state)\tclusters=\(.cluster_count)\tavailability=\(if .cluster_count > 0 then "active" else "inactive" end)"' "$matches_file"
   else
     printf 'Use --show-prism-matches to print matching image UUIDs and names.\n'
   fi

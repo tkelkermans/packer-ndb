@@ -1005,8 +1005,10 @@ SH
   ) || status=$?
   [[ "$status" -eq 1 ]] || fail "RHEL readiness helper should still fail when scan finds candidates but no chosen inputs are set"
   grep -q "Staged RHEL-like Prism images: 1" "$output" || fail "RHEL readiness helper did not count Prism RHEL matches"
+  grep -q "Active RHEL-like Prism images: 0" "$output" || fail "RHEL readiness helper did not count active Prism RHEL matches"
   grep -q "uuid-97" "$output" || fail "RHEL readiness helper did not print Prism match UUID when requested"
   grep -q "rhel-9.7-source" "$output" || fail "RHEL readiness helper did not print Prism match name when requested"
+  grep -q "inactive" "$output" || fail "RHEL readiness helper did not flag Prism match availability"
 
   pass "RHEL readiness helper"
 }

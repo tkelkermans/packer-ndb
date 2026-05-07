@@ -43,8 +43,10 @@ repository. To finish coverage, provide either:
 - `NDB_RHEL_9_6_IMAGE_URI` and `NDB_RHEL_9_7_IMAGE_URI`, or
 - staged Prism image UUIDs for RHEL 9.6 and RHEL 9.7.
 
-No staged Prism images matching RHEL naming were found during the latest
-catalog check, and the RHEL source image environment values were missing.
+The latest Prism catalog check found RHEL 9.6 and RHEL 9.7 image candidates,
+but both are inactive in Prism (`clusters=0`). The RHEL source image
+environment values were also missing. A direct probe of the RHEL 9.7 candidate
+failed before boot because Prism rejected VM creation for an inactive image.
 
 ## Commands To Finish RHEL Coverage
 
