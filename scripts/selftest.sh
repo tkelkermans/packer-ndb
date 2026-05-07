@@ -930,6 +930,89 @@ SH
 
 run_source_image_ssh_probe_tests
 
+run_rhel_readiness_helper_tests() {
+  local tmpdir output status
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/rhel-readiness.out"
+
+  "$ROOT_DIR/scripts/rhel_readiness.sh" --help >/dev/null || fail "RHEL readiness helper help"
+
+  status=0
+  (
+    unset NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI RHEL_96_UUID RHEL_97_UUID
+    "$ROOT_DIR/scripts/rhel_readiness.sh" >"$output" 2>&1
+  ) || status=$?
+  [[ "$status" -eq 1 ]] || fail "RHEL readiness helper should fail when RHEL inputs are missing"
+  grep -q "RHEL source URI readiness: incomplete" "$output" || fail "RHEL readiness helper did not report missing URI readiness"
+  grep -q "NDB_RHEL_9_6_IMAGE_URI=missing" "$output" || fail "RHEL readiness helper did not report missing RHEL 9.6 URI"
+  grep -q "RHEL staged image UUID readiness: incomplete" "$output" || fail "RHEL readiness helper did not report missing staged UUID readiness"
+  grep -q "RHEL_97_UUID=missing" "$output" || fail "RHEL readiness helper did not report missing RHEL 9.7 UUID"
+
+  (
+    export NDB_RHEL_9_6_IMAGE_URI=/private/rhel-9.6.qcow2
+    export NDB_RHEL_9_7_IMAGE_URI=/private/rhel-9.7.qcow2
+    unset RHEL_96_UUID RHEL_97_UUID
+    "$ROOT_DIR/scripts/rhel_readiness.sh" >"$output" 2>&1
+  ) || fail "RHEL readiness helper should pass when licensed URI inputs are set"
+  grep -q "RHEL source URI readiness: complete" "$output" || fail "RHEL readiness helper did not report complete URI readiness"
+  ! grep -q "/private/rhel" "$output" || fail "RHEL readiness helper printed source image URI values"
+  grep -q -- './test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --preflight --max-parallel 1' "$output" || fail "RHEL readiness helper did not print URI preflight command"
+
+  (
+    unset NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI
+    export RHEL_96_UUID=00000000-0000-0000-0000-000000000000
+    export RHEL_97_UUID=11111111-1111-1111-1111-111111111111
+    "$ROOT_DIR/scripts/rhel_readiness.sh" >"$output" 2>&1
+  ) || fail "RHEL readiness helper should pass when staged UUID inputs are set"
+  grep -q "RHEL staged image UUID readiness: complete" "$output" || fail "RHEL readiness helper did not report complete UUID readiness"
+  grep -q 'rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}' "$output" || fail "RHEL readiness helper did not print staged UUID map command"
+  ! grep -q "00000000-0000-0000-0000-000000000000" "$output" || fail "RHEL readiness helper printed staged UUID values"
+
+  mkdir -p "$tmpdir/bin"
+  cat > "$tmpdir/bin/curl" <<'SH'
+#!/usr/bin/env bash
+output_file=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output_file=$2
+      shift
+      ;;
+  esac
+  shift
+done
+
+body='{"entities":[{"spec":{"name":"rhel-9.7-source"},"metadata":{"uuid":"uuid-97"}},{"spec":{"name":"ubuntu-24.04-source"},"metadata":{"uuid":"uuid-ubuntu"}}]}'
+if [[ -n "$output_file" ]]; then
+  printf '%s' "$body" > "$output_file"
+else
+  printf '%s' "$body"
+fi
+printf '200'
+SH
+  chmod +x "$tmpdir/bin/curl"
+
+  status=0
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    unset NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI RHEL_96_UUID RHEL_97_UUID
+    "$ROOT_DIR/scripts/rhel_readiness.sh" --scan-prism --show-prism-matches >"$output" 2>&1
+  ) || status=$?
+  [[ "$status" -eq 1 ]] || fail "RHEL readiness helper should still fail when scan finds candidates but no chosen inputs are set"
+  grep -q "Staged RHEL-like Prism images: 1" "$output" || fail "RHEL readiness helper did not count Prism RHEL matches"
+  grep -q "uuid-97" "$output" || fail "RHEL readiness helper did not print Prism match UUID when requested"
+  grep -q "rhel-9.7-source" "$output" || fail "RHEL readiness helper did not print Prism match name when requested"
+
+  pass "RHEL readiness helper"
+}
+
+run_rhel_readiness_helper_tests
+
 run_packer_builder_timeout_tests() {
   grep -q 'version[[:space:]]*=[[:space:]]*"~> 1.0.0"' "$ROOT_DIR/packer/database.pkr.hcl" || fail "Packer Nutanix plugin should use the live-proven 1.0.x line"
   grep -q 'variable "ssh_timeout"' "$ROOT_DIR/packer/variables.pkr.hcl" || fail "Packer variables do not define ssh_timeout"

@@ -52,13 +52,7 @@ When RHEL source images are available, check the values without printing the
 actual URIs:
 
 ```bash
-for name in NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI; do
-  if [ -n "${!name:-}" ]; then
-    echo "$name=set"
-  else
-    echo "$name=missing"
-  fi
-done
+scripts/rhel_readiness.sh
 ```
 
 If using staged Prism images, set stable local shell variables:

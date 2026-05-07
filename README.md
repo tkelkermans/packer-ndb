@@ -546,10 +546,16 @@ export NDB_RHEL_9_6_IMAGE_URI="/path/to/rhel-9.6.qcow2"
 Before running RHEL rows, confirm the licensed source image values resolve without printing them:
 
 ```bash
-for name in NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI; do if [ -n "${!name:-}" ]; then echo "$name=set"; else echo "$name=missing"; fi; done
+scripts/rhel_readiness.sh
 ```
 
 If the output includes `NDB_RHEL_9_6_IMAGE_URI=missing` or `NDB_RHEL_9_7_IMAGE_URI=missing`, stop there and fix the secret or source-image distribution path first.
+
+If you expect RHEL images to already exist in Prism, scan for likely staged images:
+
+```bash
+scripts/rhel_readiness.sh --scan-prism --show-prism-matches
+```
 
 If the RHEL images are already staged in Prism, prefer stable UUIDs instead of licensed download URLs:
 
