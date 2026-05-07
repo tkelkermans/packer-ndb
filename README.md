@@ -564,6 +564,20 @@ export RHEL_96_UUID="00000000-0000-0000-0000-000000000000"
 export RHEL_97_UUID="11111111-1111-1111-1111-111111111111"
 ```
 
+If `scripts/rhel_readiness.sh --scan-prism --show-prism-matches` shows a staged image with `availability=inactive`, inspect the activation plan before changing Prism:
+
+```bash
+scripts/prism_image_activate.sh --image-uuid "${RHEL_97_UUID}" --cluster-name "${PKR_VAR_cluster_name}"
+```
+
+Only add `--apply` after confirming the image UUID and cluster are correct.
+
+Prism placement and SSH reachability are not enough for a full RHEL build. The
+RHEL guest must also have usable package repositories or enterprise mirrors
+enabled before Ansible reaches the common package-install step. If your base
+image is intentionally unregistered, use a `pre_common` customization profile to
+enable the required repositories before the common role runs.
+
 Preflight every RHEL row before starting live builds. Use the UUID map when reusing staged images:
 
 ```bash

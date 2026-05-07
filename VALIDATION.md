@@ -44,11 +44,18 @@ repository. To finish coverage, provide either:
 - staged Prism image UUIDs for RHEL 9.6 and RHEL 9.7.
 
 The latest Prism catalog check found RHEL 9.6 and RHEL 9.7 image candidates,
-but both are inactive in Prism (`clusters=0`). The RHEL source image
-environment values were also missing. A direct probe of the RHEL 9.7 candidate
-failed before boot because Prism rejected VM creation for an inactive image.
-Current preflight checks now reject these inactive image candidates before
-Packer starts.
+and direct source-image SSH probes reached both images successfully. A
+representative RHEL 9.7 PostgreSQL 18 live build reached Ansible, then failed
+during common package installation because the guest did not have usable RHEL
+package repositories enabled for standard packages such as `bison`, `gcc`,
+`lvm2`, and `sshpass`.
+
+The remaining RHEL blocker is repository readiness inside the RHEL guest, not
+Prism image placement or SSH bootability. Finish coverage with RHEL images that
+already have the required enterprise package repositories enabled, or with a
+`pre_common` customization profile that enables those repositories before the
+common role installs packages. Current preflight checks reject inactive image
+candidates before Packer starts.
 
 The public tracking issue for this blocker is:
 https://github.com/tkelkermans/packer-ndb/issues/2
@@ -68,6 +75,19 @@ If using staged Prism images, set stable local shell variables:
 export RHEL_96_UUID="replace-with-rhel-9.6-image-uuid"
 export RHEL_97_UUID="replace-with-rhel-9.7-image-uuid"
 ```
+
+If a staged image is present but inactive, inspect the activation plan first:
+
+```bash
+scripts/prism_image_activate.sh --image-uuid "${RHEL_97_UUID}" --cluster-name "${PKR_VAR_cluster_name}"
+```
+
+Only add `--apply` after confirming the image UUID and cluster are correct.
+
+Before starting a long RHEL matrix run, confirm the source images can install
+packages from the required RHEL and enterprise mirrors. The repository checks
+above prove Prism placement and SSH reachability; they do not prove subscription
+or package repository readiness inside the guest.
 
 Preflight every RHEL row:
 

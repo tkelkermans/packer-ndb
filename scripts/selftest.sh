@@ -831,7 +831,7 @@ case "$url" in
     body='{"entities":[{"spec":{"name":"test-subnet"},"metadata":{"uuid":"subnet-uuid"}}]}'
     ;;
   */api/nutanix/v3/images/active-image-uuid)
-    body='{"metadata":{"uuid":"active-image-uuid"},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[{"kind":"cluster","uuid":"cluster-uuid"}]}}}'
+    body='{"metadata":{"uuid":"active-image-uuid"},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[],"current_cluster_reference_list":[{"kind":"cluster","uuid":"cluster-uuid"}]}}}'
     ;;
   */api/nutanix/v3/images/inactive-image-uuid)
     body='{"metadata":{"uuid":"inactive-image-uuid"},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[]}}}'
@@ -955,6 +955,107 @@ SH
 }
 
 run_source_image_stage_existing_image_tests
+
+run_prism_image_activation_helper_tests() {
+  local tmpdir output put_payload
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/activate.out"
+  put_payload="$tmpdir/put-payload.json"
+
+  "$ROOT_DIR/scripts/prism_image_activate.sh" --help >/dev/null || fail "Prism image activation helper help"
+
+  mkdir -p "$tmpdir/bin"
+  cat > "$tmpdir/bin/curl" <<'SH'
+#!/usr/bin/env bash
+output_file=""
+url=""
+method=""
+payload=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -X)
+      method=$2
+      shift
+      ;;
+    -o)
+      output_file=$2
+      shift
+      ;;
+    -d)
+      payload=$2
+      shift
+      ;;
+    http*://*)
+      url=$1
+      ;;
+  esac
+  shift
+done
+
+case "$url" in
+  */api/nutanix/v3/clusters/list)
+    body='{"entities":[{"spec":{"name":"target-cluster"},"metadata":{"uuid":"cluster-uuid"}}]}'
+    ;;
+  */api/nutanix/v3/images/inactive-image-uuid)
+    if [[ "$method" == "PUT" ]]; then
+      printf '%s' "$payload" > "${NDB_SELFTEST_PUT_PAYLOAD:?}"
+      body='{"status":{"execution_context":{"task_uuid":"activate-task"}}}'
+    else
+      body='{"metadata":{"kind":"image","uuid":"inactive-image-uuid","spec_version":2},"spec":{"name":"inactive.qcow2","resources":{"image_type":"DISK_IMAGE","architecture":"X86_64","initial_placement_ref_list":[{"kind":"cluster","uuid":"other-cluster"}]}},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[]}}}'
+    fi
+    ;;
+  */api/nutanix/v3/tasks/activate-task)
+    body='{"status":"SUCCEEDED","percentage_complete":100}'
+    ;;
+  *)
+    body='{}'
+    ;;
+esac
+
+if [[ -n "$output_file" ]]; then
+  printf '%s' "$body" > "$output_file"
+else
+  printf '%s' "$body"
+fi
+printf '200'
+SH
+  chmod +x "$tmpdir/bin/curl"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    export NDB_SELFTEST_PUT_PAYLOAD="$put_payload"
+    "$ROOT_DIR/scripts/prism_image_activate.sh" \
+      --image-uuid inactive-image-uuid \
+      --cluster-name target-cluster >"$output" 2>&1
+  ) || fail "Prism image activation dry-run failed: $(cat "$output")"
+  grep -q "Dry run: no Prism changes made" "$output" || fail "Prism image activation helper did not default to dry-run"
+  grep -q "inactive.qcow2" "$output" || fail "Prism image activation helper did not identify image"
+  [[ ! -e "$put_payload" ]] || fail "Prism image activation helper mutated Prism during dry-run"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    export NDB_SELFTEST_PUT_PAYLOAD="$put_payload"
+    "$ROOT_DIR/scripts/prism_image_activate.sh" \
+      --image-uuid inactive-image-uuid \
+      --cluster-name target-cluster \
+      --apply >"$output" 2>&1
+  ) || fail "Prism image activation apply failed: $(cat "$output")"
+  grep -q "Activation task completed" "$output" || fail "Prism image activation helper did not wait for task completion"
+  jq -e '([.spec.resources.initial_placement_ref_list[].uuid] | sort) == ["cluster-uuid", "other-cluster"]' "$put_payload" >/dev/null || fail "Prism image activation payload did not preserve and add initial placement"
+  jq -e '.metadata.uuid == "inactive-image-uuid" and .metadata.spec_version == 2' "$put_payload" >/dev/null || fail "Prism image activation payload did not preserve metadata"
+
+  pass "Prism image activation helper"
+}
+
+run_prism_image_activation_helper_tests
 
 run_source_image_uuid_guard_tests() {
   grep -q -- "--source-image-uuid" "$ROOT_DIR/build.sh" || fail "build.sh does not expose source image UUID override"
@@ -1144,6 +1245,7 @@ run_rhel_readiness_helper_tests() {
   cat > "$tmpdir/bin/curl" <<'SH'
 #!/usr/bin/env bash
 output_file=""
+url=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -1151,11 +1253,27 @@ while [[ $# -gt 0 ]]; do
       output_file=$2
       shift
       ;;
+    http*://*)
+      url=$1
+      ;;
   esac
   shift
 done
 
-body='{"entities":[{"spec":{"name":"rhel-9.7-source"},"metadata":{"uuid":"uuid-97"}},{"spec":{"name":"ubuntu-24.04-source"},"metadata":{"uuid":"uuid-ubuntu"}}]}'
+case "$url" in
+  */api/nutanix/v3/images/list)
+    body='{"entities":[{"spec":{"name":"rhel-9.7-source"},"metadata":{"uuid":"uuid-97"}},{"spec":{"name":"rhel-9.6-source"},"metadata":{"uuid":"uuid-96"}},{"spec":{"name":"ubuntu-24.04-source"},"metadata":{"uuid":"uuid-ubuntu"}}]}'
+    ;;
+  */api/nutanix/v3/images/uuid-97)
+    body='{"metadata":{"uuid":"uuid-97"},"spec":{"name":"rhel-9.7-source"},"status":{"state":"COMPLETE","resources":{"current_cluster_reference_list":[{"kind":"cluster","uuid":"cluster-uuid"}]}}}'
+    ;;
+  */api/nutanix/v3/images/uuid-96)
+    body='{"metadata":{"uuid":"uuid-96"},"spec":{"name":"rhel-9.6-source"},"status":{"state":"COMPLETE","resources":{"current_cluster_reference_list":[]}}}'
+    ;;
+  *)
+    body='{}'
+    ;;
+esac
 if [[ -n "$output_file" ]]; then
   printf '%s' "$body" > "$output_file"
 else
@@ -1175,10 +1293,12 @@ SH
     "$ROOT_DIR/scripts/rhel_readiness.sh" --scan-prism --show-prism-matches >"$output" 2>&1
   ) || status=$?
   [[ "$status" -eq 1 ]] || fail "RHEL readiness helper should still fail when scan finds candidates but no chosen inputs are set"
-  grep -q "Staged RHEL-like Prism images: 1" "$output" || fail "RHEL readiness helper did not count Prism RHEL matches"
-  grep -q "Active RHEL-like Prism images: 0" "$output" || fail "RHEL readiness helper did not count active Prism RHEL matches"
+  grep -q "Staged RHEL-like Prism images: 2" "$output" || fail "RHEL readiness helper did not count Prism RHEL matches"
+  grep -q "Active RHEL-like Prism images: 1" "$output" || fail "RHEL readiness helper did not count active Prism RHEL matches"
   grep -q "uuid-97" "$output" || fail "RHEL readiness helper did not print Prism match UUID when requested"
   grep -q "rhel-9.7-source" "$output" || fail "RHEL readiness helper did not print Prism match name when requested"
+  grep -q "rhel-9.6-source" "$output" || fail "RHEL readiness helper did not print inactive Prism match name when requested"
+  grep -q "active" "$output" || fail "RHEL readiness helper did not flag active Prism match availability"
   grep -q "inactive" "$output" || fail "RHEL readiness helper did not flag Prism match availability"
 
   pass "RHEL readiness helper"

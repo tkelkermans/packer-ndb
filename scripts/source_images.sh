@@ -87,14 +87,13 @@ source_image_json_active_on_cluster() {
   local cluster_uuid=${2:-}
 
   jq -e --arg cluster_uuid "$cluster_uuid" '
-    (
-      .status.resources.cluster_reference_list
-      // .status.resources.current_cluster_reference_list
-      // .status.resources.initial_placement_ref_list
-      // .spec.resources.initial_placement_ref_list
-      // .status.cluster_reference_list
-      // []
-    ) as $clusters
+    [
+      (.status.resources.cluster_reference_list // [])[]?,
+      (.status.resources.current_cluster_reference_list // [])[]?,
+      (.status.resources.initial_placement_ref_list // [])[]?,
+      (.spec.resources.initial_placement_ref_list // [])[]?,
+      (.status.cluster_reference_list // [])[]?
+    ] as $clusters
     | if $cluster_uuid != "" then
         any($clusters[]?; .uuid == $cluster_uuid)
       else
