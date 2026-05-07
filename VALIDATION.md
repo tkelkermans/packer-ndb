@@ -47,6 +47,8 @@ The latest Prism catalog check found RHEL 9.6 and RHEL 9.7 image candidates,
 but both are inactive in Prism (`clusters=0`). The RHEL source image
 environment values were also missing. A direct probe of the RHEL 9.7 candidate
 failed before boot because Prism rejected VM creation for an inactive image.
+Current preflight checks now reject these inactive image candidates before
+Packer starts.
 
 ## Commands To Finish RHEL Coverage
 

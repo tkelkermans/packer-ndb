@@ -531,11 +531,15 @@ SH
 #!/usr/bin/env bash
 printf 'curl %s\n' "$*" >> "$NDB_SELFTEST_CURL_LOG"
 output_file=""
+url=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -o)
       output_file=$2
       shift
+      ;;
+    http*://*)
+      url=$1
       ;;
     -w)
       shift
@@ -543,7 +547,14 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
-body='{"entities":[{"spec":{"name":"test-cluster"},"metadata":{"uuid":"cluster-uuid"}},{"spec":{"name":"test-subnet"},"metadata":{"uuid":"subnet-uuid"}},{"spec":{"name":"test-image"},"metadata":{"uuid":"image-uuid"}}]}'
+case "$url" in
+  */api/nutanix/v3/images/image-uuid)
+    body='{"metadata":{"uuid":"image-uuid"},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[{"kind":"cluster","uuid":"cluster-uuid"}]}}}'
+    ;;
+  *)
+    body='{"entities":[{"spec":{"name":"test-cluster"},"metadata":{"uuid":"cluster-uuid"}},{"spec":{"name":"test-subnet"},"metadata":{"uuid":"subnet-uuid"}},{"spec":{"name":"test-image"},"metadata":{"uuid":"image-uuid"}}]}'
+    ;;
+esac
 if [[ -n "$output_file" ]]; then
   printf '%s' "$body" > "$output_file"
 else
@@ -784,6 +795,90 @@ JSON
 }
 
 run_source_image_tests
+
+run_source_image_preflight_active_image_tests() {
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/scripts/source_images.sh"
+  local tmpdir output
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/preflight.out"
+
+  mkdir -p "$tmpdir/bin"
+  cat > "$tmpdir/bin/curl" <<'SH'
+#!/usr/bin/env bash
+output_file=""
+url=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o)
+      output_file=$2
+      shift
+      ;;
+    http*://*)
+      url=$1
+      ;;
+  esac
+  shift
+done
+
+case "$url" in
+  */api/nutanix/v3/clusters/list)
+    body='{"entities":[{"spec":{"name":"test-cluster"},"metadata":{"uuid":"cluster-uuid"}}]}'
+    ;;
+  */api/nutanix/v3/subnets/list)
+    body='{"entities":[{"spec":{"name":"test-subnet"},"metadata":{"uuid":"subnet-uuid"}}]}'
+    ;;
+  */api/nutanix/v3/images/active-image-uuid)
+    body='{"metadata":{"uuid":"active-image-uuid"},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[{"kind":"cluster","uuid":"cluster-uuid"}]}}}'
+    ;;
+  */api/nutanix/v3/images/inactive-image-uuid)
+    body='{"metadata":{"uuid":"inactive-image-uuid"},"status":{"state":"COMPLETE","resources":{"cluster_reference_list":[]}}}'
+    ;;
+  *)
+    body='{"metadata":{"uuid":"unknown"},"status":{"resources":{}}}'
+    ;;
+esac
+
+if [[ -n "$output_file" ]]; then
+  printf '%s' "$body" > "$output_file"
+else
+  printf '%s' "$body"
+fi
+printf '200'
+SH
+  chmod +x "$tmpdir/bin/curl"
+
+  (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    source_image_preflight \
+      --source-image-uuid active-image-uuid \
+      --cluster-name test-cluster \
+      --subnet-name test-subnet >"$output" 2>&1
+  ) || fail "source image preflight rejected active image UUID: $(cat "$output")"
+
+  if (
+    export PATH="$tmpdir/bin:$PATH"
+    export PKR_VAR_pc_username=user
+    export PKR_VAR_pc_password=password
+    export PKR_VAR_pc_ip=pc.example.com
+    source_image_preflight \
+      --source-image-uuid inactive-image-uuid \
+      --cluster-name test-cluster \
+      --subnet-name test-subnet >"$output" 2>&1
+  ); then
+    fail "source image preflight unexpectedly accepted inactive image UUID"
+  fi
+  grep -q "inactive or unavailable on the selected Prism cluster" "$output" || fail "source image preflight inactive image error was not actionable"
+
+  pass "source image preflight active image guard"
+}
+
+run_source_image_preflight_active_image_tests
 
 run_source_image_uuid_guard_tests() {
   grep -q -- "--source-image-uuid" "$ROOT_DIR/build.sh" || fail "build.sh does not expose source image UUID override"

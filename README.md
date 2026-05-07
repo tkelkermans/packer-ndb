@@ -328,7 +328,7 @@ If Prism has duplicate images with the same source-image name or URI, use the ex
 
 For multi-row suites, use `test.sh --source-image-uuid-map key=UUID,...` instead of a single `build.sh --source-image-uuid`. The suite applies the matching UUID to each selected row.
 
-Preflight checks that the referenced Prism image exists, but it cannot prove that the guest OS will accept AHV cloud-init data and become reachable over SSH. A source image can pass preflight and still be unsuitable for builds if the builder VM powers on, receives an IP, and never accepts SSH.
+Preflight checks that the referenced Prism image exists and is active on the selected Prism cluster, but it cannot prove that the guest OS will accept AHV cloud-init data and become reachable over SSH. A source image can pass preflight and still be unsuitable for builds if the builder VM powers on, receives an IP, and never accepts SSH.
 
 Probe a staged source image directly before spending time on a Packer build:
 
