@@ -20,6 +20,7 @@ WRITE_MANIFEST=false
 EXTENSIONS_ONLY=false
 CONTINUE_ON_ERROR=false
 PREFLIGHT_ONLY=false
+CUSTOMIZATION_PROFILE=""
 POSTGRES_INSTALLABLE_EXTENSIONS_JSON=$(postgres_installable_extensions_json)
 SOURCE_IMAGE_UUID_MAP_KEYS=()
 SOURCE_IMAGE_UUID_MAP_VALUES=()
@@ -42,6 +43,8 @@ Options:
   --preflight           Check live Prism/source-image readiness for each selected row without invoking Packer
   --extensions-only     Only run PostgreSQL rows with installable qualified extensions and select --extensions all-qualified
   --continue-on-error   Run all selected rows even if one build fails
+  --customization-profile PROFILE
+                       Pass a build.sh customization profile to every selected row
   --source-image-uuid-map MAP
                        Comma-separated source image key to Prism UUID map, for example
                        rocky-linux-9.7=UUID,ubuntu-linux-22.04=UUID
@@ -171,6 +174,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --continue-on-error)
       CONTINUE_ON_ERROR=true
+      ;;
+    --customization-profile)
+      CUSTOMIZATION_PROFILE="$2"
+      shift
       ;;
     --source-image-uuid-map)
       parse_source_image_uuid_map "$2"
@@ -350,6 +357,9 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
       fi
       if [[ "$EXTENSIONS_ONLY" == "true" && "$provisioning_role" == "postgresql" ]]; then
         BUILD_ARGS+=(--extensions all-qualified)
+      fi
+      if [[ -n "$CUSTOMIZATION_PROFILE" ]]; then
+        BUILD_ARGS+=(--customization-profile "$CUSTOMIZATION_PROFILE")
       fi
       if [[ -n "$source_image_uuid" ]]; then
         BUILD_ARGS+=(--source-image-uuid "$source_image_uuid")

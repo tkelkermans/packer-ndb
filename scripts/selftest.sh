@@ -218,6 +218,7 @@ run_customization_profile_static_tests() {
   grep -q "customizations/examples/rhel-repositories/roles" "$ROOT_DIR/customizations/profiles/rhel-repositories-example.yml" || fail "RHEL repositories profile missing explicit role path"
   grep -q "OpenTelemetry Collector" "$ROOT_DIR/customizations/examples/monitoring-agent/README.md" || fail "monitoring example does not document OpenTelemetry Collector"
   grep -q "rhel-repositories-example" "$ROOT_DIR/README.md" || fail "README missing RHEL repositories profile command"
+  grep -q -- "--customization-profile customizations/local/rhel-repositories.yml" "$ROOT_DIR/VALIDATION.md" || fail "VALIDATION missing RHEL matrix customization profile command"
   grep -q "Customize The Image" "$ROOT_DIR/README.md" || fail "README missing customization section"
   grep -q -- "--customization-profile" "$ROOT_DIR/README.md" || fail "README missing customization profile command"
   pass "customization profile static skeleton"
@@ -2595,6 +2596,74 @@ SH
 
 run_test_harness_preflight_tests
 
+run_test_harness_customization_profile_tests() {
+  local tmpdir build_log
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  build_log="$tmpdir/builds.log"
+
+  mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts"
+  cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
+  cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
+  cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
+
+  cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
+[
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.7",
+    "db_version": "1",
+    "provisioning_role": "postgresql"
+  },
+  {
+    "ndb_version": "9.99",
+    "engine": "PostgreSQL Community Edition",
+    "db_type": "pgsql",
+    "os_type": "Red Hat Enterprise Linux (RHEL)",
+    "os_version": "9.7",
+    "db_version": "2",
+    "provisioning_role": "postgresql"
+  }
+]
+JSON
+
+  cat > "$tmpdir/build.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+db_version=""
+customization_profile=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --db-version)
+      db_version=$2
+      shift
+      ;;
+    --customization-profile)
+      customization_profile=$2
+      shift
+      ;;
+  esac
+  shift
+done
+printf '%s|%s\n' "$db_version" "$customization_profile" >> "${NDB_SELFTEST_BUILD_LOG:?}"
+SH
+  chmod +x "$tmpdir/test.sh" "$tmpdir/build.sh"
+
+  (
+    cd "$tmpdir"
+    SKIP_MATRIX_VALIDATION=true NDB_SELFTEST_BUILD_LOG="$build_log" ./test.sh --include-ndb 9.99 --allow-rhel --customization-profile customizations/local/rhel-repositories.yml --max-parallel 1 >/dev/null 2>&1
+  ) || fail "test harness customization profile run failed"
+
+  [[ "$(cat "$build_log")" == $'1|customizations/local/rhel-repositories.yml\n2|customizations/local/rhel-repositories.yml' ]] || fail "test harness did not pass customization profile to selected rows"
+  pass "test harness customization profile"
+}
+
+run_test_harness_customization_profile_tests
+
 run_mongodb_dispatch_guard_tests() {
   grep -q 'postgresql|mongodb' "$ROOT_DIR/build.sh" || fail "build.sh does not allow MongoDB provisioning role"
   grep -q 'mongodb_edition' "$ROOT_DIR/build.sh" || fail "build.sh does not pass MongoDB edition to Ansible"
@@ -2723,7 +2792,7 @@ run_readme_mongodb_tests() {
   grep -q 'NDB_RHEL_9_6_IMAGE_URI=missing' "$ROOT_DIR/README.md" || fail "README missing non-secret RHEL env readiness example"
   grep -q -- '--allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --preflight' "$ROOT_DIR/README.md" || fail "README missing RHEL preflight runbook command"
   grep -q 'rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}' "$ROOT_DIR/README.md" || fail "README missing staged RHEL UUID map example"
-  grep -q -- '--allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --validate --validate-artifact --manifest --continue-on-error --max-parallel 1' "$ROOT_DIR/README.md" || fail "README missing RHEL live validation runbook command"
+  grep -q -- '--allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --validate --validate-artifact --manifest --continue-on-error --source-image-uuid-map' "$ROOT_DIR/README.md" || fail "README missing RHEL live validation runbook command"
   grep -q "debian-12=\${DEBIAN_12_UUID}" "$ROOT_DIR/README.md" || fail "README matrix preflight command does not include Debian 12 UUID mapping"
   grep -q "preflight cannot prove cloud-init SSH compatibility" "$ROOT_DIR/README.md" || fail "README missing source-image SSH compatibility preflight warning"
   grep -q "Builder VM gets an IP but SSH never becomes available" "$ROOT_DIR/README.md" || fail "README missing builder SSH troubleshooting guidance"
