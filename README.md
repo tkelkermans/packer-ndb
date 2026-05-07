@@ -341,6 +341,7 @@ The probe boots a disposable VM from the source image, injects the same `packer`
 For RHEL source images, add the repository check before launching the full matrix. It installs representative common packages on the disposable probe VM, then deletes that VM:
 
 ```bash
+scripts/source_image_ssh_probe.sh --source-image-uuid "${RHEL_96_UUID}" --rhel-repository-check --ssh-timeout 900
 scripts/source_image_ssh_probe.sh --source-image-uuid "${RHEL_97_UUID}" --rhel-repository-check --ssh-timeout 900
 ```
 
@@ -589,6 +590,7 @@ If repositories are already enabled in the staged image, prove that before the
 long build by running the source-image probe with the RHEL repository check:
 
 ```bash
+scripts/source_image_ssh_probe.sh --source-image-uuid "${RHEL_96_UUID}" --rhel-repository-check --ssh-timeout 900
 scripts/source_image_ssh_probe.sh --source-image-uuid "${RHEL_97_UUID}" --rhel-repository-check --ssh-timeout 900
 ```
 
