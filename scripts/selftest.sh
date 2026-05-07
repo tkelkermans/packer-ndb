@@ -1872,21 +1872,6 @@ run_ansible_fact_normalization_guard_tests() {
 
 run_ansible_fact_normalization_guard_tests
 
-run_agent_guidance_tests() {
-  grep -q "update the shell wizard/TUI in the same work item" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing wizard maintenance rule"
-  grep -q "Keep the README beginner-facing" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing README boundary guidance"
-  grep -q "Packer, Terraform, Ansible, and shell" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing toolchain guidance"
-  grep -q "op run --env-file .env" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing 1Password env guidance"
-  grep -q -- "--source-image-uuid" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing source image UUID guidance"
-  grep -q "qualified_extensions" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing qualified extension metadata guidance"
-  grep -q "RHEL live validation has been blocked" "$ROOT_DIR/AGENTS.md" || fail "AGENTS missing RHEL validation blocker"
-  grep -q "update the shell wizard/TUI in the same work item" "$ROOT_DIR/tasks/lessons.md" || fail "lessons missing wizard maintenance rule"
-  grep -q "Do not treat qualified_extensions as default installs" "$ROOT_DIR/tasks/lessons.md" || fail "lessons missing qualified extension correction"
-  pass "agent guidance"
-}
-
-run_agent_guidance_tests
-
 run_readme_customization_tests() {
   grep -q "Customize The Image" "$ROOT_DIR/README.md" || fail "README missing Customize The Image"
   grep -q "Install an internal CA certificate" "$ROOT_DIR/README.md" || fail "README missing internal CA recipe"

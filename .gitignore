@@ -45,6 +45,9 @@ __pycache__/
 # macOS
 .DS_Store
 
+# Local editor settings
+.vscode/
+
 # Logs
 *.log
 packer.log
@@ -65,3 +68,6 @@ customizations/local/**
 !customizations/local/
 !customizations/local/.gitkeep
 !customizations/local/README.md
+
+# Local planning scratchpads
+/tasks/
