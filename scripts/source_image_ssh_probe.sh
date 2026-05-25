@@ -21,6 +21,7 @@ FINAL_STATUS="failed"
 RHEL_REPOSITORY_CHECK=false
 RHEL_REPOSITORY_CHECK_STATUS="not-requested"
 RHEL_REPOSITORY_PACKAGES=(bison firewalld flex gcc lsof lvm2 net-tools perl python3-pip sshpass unzip wget zip)
+RHEL_REPOSITORY_REGISTERED=false
 
 usage() {
   cat <<'EOF'
@@ -47,6 +48,8 @@ Options:
 Environment:
   NDB_SOURCE_PROBE_PRIVATE_KEY_PATH  Override packer/id_rsa for SSH
   NDB_SOURCE_PROBE_PUBLIC_KEY_PATH   Override packer/id_rsa.pub for cloud-init
+  NDB_RHEL_ORGID                     Optional Red Hat org ID for repository checks
+  NDB_RHEL_ACTIVATIONKEY             Optional Red Hat activation key for repository checks
 EOF
 }
 
@@ -438,11 +441,46 @@ SSH_COMMON_ARGS=(
 
 run_rhel_repository_check() {
   local packages
+  local org_id_quoted
+  local activation_key_quoted
 
   packages="${RHEL_REPOSITORY_PACKAGES[*]}"
   printf 'Checking RHEL package repositories on %s with dnf...\n' "$VM_IP"
 
-  if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "set -e; command -v dnf >/dev/null; sudo -n dnf -y makecache; sudo -n dnf -y install ${packages}"; then
+  if [[ -n "${NDB_RHEL_ORGID:-}" && -z "${NDB_RHEL_ACTIVATIONKEY:-}" ]] || [[ -z "${NDB_RHEL_ORGID:-}" && -n "${NDB_RHEL_ACTIVATIONKEY:-}" ]]; then
+    RHEL_REPOSITORY_CHECK_STATUS="failed"
+    printf 'Error: set both NDB_RHEL_ORGID and NDB_RHEL_ACTIVATIONKEY, or neither.\n' >&2
+    return 1
+  fi
+
+  printf -v org_id_quoted "%q" "${NDB_RHEL_ORGID:-}"
+  printf -v activation_key_quoted "%q" "${NDB_RHEL_ACTIVATIONKEY:-}"
+
+  if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "sudo -n bash -s" <<EOF
+set -euo pipefail
+
+rhel_org_id=${org_id_quoted}
+rhel_activation_key=${activation_key_quoted}
+
+cleanup_rhel_subscription() {
+  if [[ "\${RHEL_REPOSITORY_REGISTERED:-false}" == "true" ]]; then
+    subscription-manager unregister >/dev/null 2>&1 || true
+    subscription-manager clean >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup_rhel_subscription EXIT
+
+if [[ -n "\$rhel_org_id" && -n "\$rhel_activation_key" ]]; then
+  subscription-manager register --org="\$rhel_org_id" --activationkey="\$rhel_activation_key" >/dev/null
+  RHEL_REPOSITORY_REGISTERED=true
+  subscription-manager refresh >/dev/null
+fi
+
+command -v dnf >/dev/null
+dnf -y makecache
+dnf -y install ${packages}
+EOF
+  then
     RHEL_REPOSITORY_CHECK_STATUS="passed"
     printf 'RHEL package repository check passed on %s.\n' "$VM_IP"
     return 0

@@ -15,6 +15,39 @@
   when: ndb_os_family == "Debian"
   become: yes
 
+- name: Check subscription-manager availability
+  ansible.builtin.shell:
+    cmd: command -v subscription-manager
+  register: image_prepare_subscription_manager
+  changed_when: false
+  failed_when: false
+  when: ndb_os_family == "RedHat"
+
+- name: Unregister RHEL subscription before image capture
+  ansible.builtin.command:
+    cmd: subscription-manager unregister
+  register: image_prepare_rhel_unregister
+  changed_when: false
+  failed_when: false
+  no_log: true
+  become: yes
+  when:
+    - ndb_os_family == "RedHat"
+    - rhel_subscription_enabled | default(false) | bool
+    - image_prepare_subscription_manager.rc | default(1) == 0
+
+- name: Clean RHEL subscription state before image capture
+  ansible.builtin.command:
+    cmd: subscription-manager clean
+  changed_when: false
+  failed_when: false
+  no_log: true
+  become: yes
+  when:
+    - ndb_os_family == "RedHat"
+    - rhel_subscription_enabled | default(false) | bool
+    - image_prepare_subscription_manager.rc | default(1) == 0
+
 - name: Reset cloud-init state for cloned image first boot
   ansible.builtin.command:
     cmd: /usr/bin/cloud-init clean --logs --machine-id

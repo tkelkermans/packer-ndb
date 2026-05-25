@@ -226,6 +226,75 @@ run_customization_profile_static_tests() {
 
 run_customization_profile_static_tests
 
+run_rhel_activation_key_guard_tests() {
+  local version playbook_file role_file image_prepare_file subscription_line common_line tmpdir output
+
+  grep -q "NDB_RHEL_ORGID" "$ROOT_DIR/build.sh" || fail "build.sh does not pass NDB_RHEL_ORGID to Ansible"
+  grep -q "NDB_RHEL_ACTIVATIONKEY" "$ROOT_DIR/build.sh" || fail "build.sh does not pass NDB_RHEL_ACTIVATIONKEY to Ansible"
+  grep -q "RHEL subscription activation:" "$ROOT_DIR/build.sh" || fail "build.sh dry-run missing non-secret RHEL activation readiness"
+
+  for version in 2.9 2.10; do
+    playbook_file="$ROOT_DIR/ansible/$version/playbooks/site.yml"
+    role_file="$ROOT_DIR/ansible/$version/roles/rhel_subscription/tasks/main.yml"
+    image_prepare_file="$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml"
+
+    [[ -f "$role_file" ]] || fail "missing RHEL subscription role for NDB $version"
+    grep -q "rhel_subscription" "$playbook_file" || fail "site playbook $version does not run RHEL subscription role"
+    subscription_line=$(grep -n "rhel_subscription" "$playbook_file" | head -n1 | cut -d: -f1)
+    common_line=$(grep -n -- "- common" "$playbook_file" | head -n1 | cut -d: -f1)
+    [[ -n "$subscription_line" && -n "$common_line" && "$subscription_line" -lt "$common_line" ]] || fail "site playbook $version must register RHEL before common package installation"
+
+    grep -q "subscription-manager" "$role_file" || fail "RHEL subscription role $version does not use subscription-manager"
+    grep -q "register" "$role_file" || fail "RHEL subscription role $version does not register systems"
+    grep -q "rhel_subscription_org_id" "$role_file" || fail "RHEL subscription role $version missing org id variable"
+    grep -q "rhel_subscription_activation_key" "$role_file" || fail "RHEL subscription role $version missing activation key variable"
+    grep -q "no_log: true" "$role_file" || fail "RHEL subscription role $version does not hide activation key task output"
+    ! grep -q "subscription-manager attach" "$role_file" || fail "RHEL subscription role $version should not manually attach subscriptions"
+
+    grep -q "subscription-manager unregister" "$image_prepare_file" || fail "image_prepare $version does not unregister RHSM before image capture"
+    grep -q "subscription-manager clean" "$image_prepare_file" || fail "image_prepare $version does not clean RHSM before image capture"
+  done
+
+  grep -q "NDB_RHEL_ORGID" "$ROOT_DIR/scripts/source_image_ssh_probe.sh" || fail "source image probe does not use RHEL org id"
+  grep -q "NDB_RHEL_ACTIVATIONKEY" "$ROOT_DIR/scripts/source_image_ssh_probe.sh" || fail "source image probe does not use RHEL activation key"
+  grep -q "subscription-manager register" "$ROOT_DIR/scripts/source_image_ssh_probe.sh" || fail "source image probe does not register with activation key"
+  grep -q "subscription-manager unregister" "$ROOT_DIR/scripts/source_image_ssh_probe.sh" || fail "source image probe does not unregister after repository check"
+  grep -q "subscription-manager clean" "$ROOT_DIR/scripts/source_image_ssh_probe.sh" || fail "source image probe does not clean RHSM after repository check"
+
+  grep -q "NDB_RHEL_ORGID" "$ROOT_DIR/scripts/rhel_readiness.sh" || fail "RHEL readiness helper missing org id status"
+  grep -q "NDB_RHEL_ACTIVATIONKEY" "$ROOT_DIR/scripts/rhel_readiness.sh" || fail "RHEL readiness helper missing activation key status"
+  grep -q "NDB_RHEL_ORGID" "$ROOT_DIR/README.md" || fail "README missing RHEL org id guidance"
+  grep -q "NDB_RHEL_ACTIVATIONKEY" "$ROOT_DIR/README.md" || fail "README missing RHEL activation key guidance"
+  grep -q "NDB_RHEL_ACTIVATIONKEY" "$ROOT_DIR/VALIDATION.md" || fail "VALIDATION missing RHEL activation key guidance"
+  grep -q "activation key" "$ROOT_DIR/customizations/examples/rhel-repositories/README.md" || fail "RHEL repository example missing activation key guidance"
+
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  output="$tmpdir/rhel-dry-run.out"
+  (
+    export NDB_RHEL_ORGID=selftest-org
+    export NDB_RHEL_ACTIVATIONKEY=selftest-secret
+    "$ROOT_DIR/build.sh" \
+      --dry-run \
+      --ci \
+      --source-image-uuid selftest-rhel-image \
+      --ndb-version 2.10 \
+      --db-type pgsql \
+      --os "Red Hat Enterprise Linux (RHEL)" \
+      --os-version 9.7 \
+      --db-version 18 >"$output"
+  ) || fail "RHEL activation dry-run failed"
+  grep -q "Activation key pair: present" "$output" || fail "RHEL activation dry-run does not report present activation key pair"
+  grep -q '"rhel_subscription_enabled": true' "$output" || fail "RHEL activation dry-run does not enable subscription registration"
+  grep -q '"rhel_subscription_activation_key": "<redacted>"' "$output" || fail "RHEL activation dry-run does not redact activation key"
+  ! grep -q "selftest-secret" "$output" || fail "RHEL activation dry-run printed activation key value"
+  ! grep -q "selftest-org" "$output" || fail "RHEL activation dry-run printed org id value"
+
+  pass "RHEL activation key guard"
+}
+
+run_rhel_activation_key_guard_tests
+
 run_customization_profile_cli_tests() {
   grep -q -- "--customization-profile" "$ROOT_DIR/build.sh" || fail "build.sh missing customization profile flag"
   grep -q "NDB_CUSTOMIZATION_PROFILE" "$ROOT_DIR/build.sh" || fail "build.sh missing customization profile env default"
@@ -1189,8 +1258,11 @@ SH
 
   cat > "$tmpdir/bin/ssh" <<'SH'
 #!/usr/bin/env bash
-if [[ "$*" == *"dnf"* ]]; then
-  printf '%s\n' "$*" > "${NDB_SELFTEST_REPO_CHECK_MARKER:?}"
+stdin_payload=$(cat || true)
+combined_payload="$*
+$stdin_payload"
+if [[ "$combined_payload" == *"dnf"* ]]; then
+  printf '%s\n' "$combined_payload" > "${NDB_SELFTEST_REPO_CHECK_MARKER:?}"
 fi
 exit 0
 SH
@@ -1229,13 +1301,18 @@ SH
     export NDB_SELFTEST_DELETE_MARKER="$tmpdir/delete-called"
     export NDB_SELFTEST_PAYLOAD_CAPTURE="$tmpdir/create-payload.json"
     export NDB_SELFTEST_REPO_CHECK_MARKER="$tmpdir/repo-check-command.txt"
+    export NDB_RHEL_ORGID=selftest-org
+    export NDB_RHEL_ACTIVATIONKEY=selftest-activation-key
     "$ROOT_DIR/scripts/source_image_ssh_probe.sh" \
       --source-image-uuid source-image-uuid \
       --rhel-repository-check \
       --rhel-repository-packages bison,gcc \
       --result-file "$result" >/dev/null 2>&1
   ) || fail "source image RHEL repository probe success path failed"
-  grep -q "sudo -n dnf -y install bison gcc" "$tmpdir/repo-check-command.txt" || fail "source image RHEL repository probe did not install requested packages"
+  grep -q 'subscription-manager register --org="$rhel_org_id" --activationkey="$rhel_activation_key"' "$tmpdir/repo-check-command.txt" || fail "source image RHEL repository probe did not register with activation key"
+  grep -q "dnf -y install bison gcc" "$tmpdir/repo-check-command.txt" || fail "source image RHEL repository probe did not install requested packages"
+  grep -q "subscription-manager unregister" "$tmpdir/repo-check-command.txt" || fail "source image RHEL repository probe did not unregister after package check"
+  grep -q "subscription-manager clean" "$tmpdir/repo-check-command.txt" || fail "source image RHEL repository probe did not clean after package check"
   jq -e '.status == "passed" and .checks.rhel_repositories == "passed"' "$result" >/dev/null || fail "source image RHEL repository probe result JSON"
 
   pass "source image SSH probe"

@@ -1,0 +1,63 @@
+---
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+
+- name: Assert RHEL activation key inputs are complete
+  ansible.builtin.assert:
+    that:
+      - (rhel_subscription_org_id | default('') | length) > 0
+      - (rhel_subscription_activation_key | default('') | length) > 0
+    fail_msg: "Set both NDB_RHEL_ORGID and NDB_RHEL_ACTIVATIONKEY for activation-key registration"
+  no_log: true
+  when:
+    - ndb_os_family == "RedHat"
+    - rhel_subscription_enabled | default(false) | bool
+
+- name: Check current RHEL subscription identity
+  become: yes
+  ansible.builtin.command:
+    cmd: subscription-manager identity
+  register: rhel_subscription_identity
+  changed_when: false
+  failed_when: false
+  when:
+    - ndb_os_family == "RedHat"
+    - rhel_subscription_enabled | default(false) | bool
+
+- name: Register RHEL with activation key
+  become: yes
+  no_log: true
+  ansible.builtin.command:
+    argv:
+      - subscription-manager
+      - register
+      - "--org={{ rhel_subscription_org_id }}"
+      - "--activationkey={{ rhel_subscription_activation_key }}"
+  register: rhel_subscription_register
+  when:
+    - ndb_os_family == "RedHat"
+    - rhel_subscription_enabled | default(false) | bool
+    - rhel_subscription_identity.rc | default(1) != 0
+
+- name: Refresh RHEL subscription metadata
+  become: yes
+  ansible.builtin.command:
+    cmd: subscription-manager refresh
+  changed_when: false
+  when:
+    - ndb_os_family == "RedHat"
+    - rhel_subscription_enabled | default(false) | bool
+
+- name: Enable activation-key configured RHEL repositories
+  become: yes
+  ansible.builtin.command:
+    argv:
+      - subscription-manager
+      - repos
+      - "--enable={{ item }}"
+  loop: "{{ rhel_subscription_repositories | default([]) }}"
+  changed_when: false
+  when:
+    - ndb_os_family == "RedHat"
+    - rhel_subscription_enabled | default(false) | bool

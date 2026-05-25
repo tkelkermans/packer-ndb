@@ -20,6 +20,12 @@ patterns:
 - Add enterprise mirror definitions under `rhel_repositories_yum_repositories`.
 - Add already-entitled repository IDs under `rhel_repositories_subscription_manager_repos`.
 
+Activation-key registration is handled outside this profile by the
+`NDB_RHEL_ORGID` and `NDB_RHEL_ACTIVATIONKEY` environment variables. Keep those
+values in 1Password or an equivalent secret manager; do not put activation keys
+or org IDs in this YAML. Use this profile only for mirror definitions or for
+enabling specific repositories after the builder VM has registered.
+
 The role runs in the `pre_common` phase, so repositories are ready before the
 common package installation step. The validation role can confirm expected repo
 IDs and the representative common packages after build or artifact validation.

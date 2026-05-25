@@ -411,6 +411,15 @@ function generate_ansible_vars_json() {
   local customization_profile_file=${11}
   local customization_repo_root=${12}
   local qualified_extensions_json=${13:-[]}
+  local rhel_subscription_enabled=false
+  local rhel_subscription_org_id=""
+  local rhel_subscription_activation_key=""
+
+  if [[ ( "${OS_TYPE:-}" == "RHEL" || "${OS_TYPE:-}" == "Red Hat Enterprise Linux (RHEL)" ) && -n "${NDB_RHEL_ORGID:-}" && -n "${NDB_RHEL_ACTIVATIONKEY:-}" ]]; then
+    rhel_subscription_enabled=true
+    rhel_subscription_org_id="${NDB_RHEL_ORGID:-}"
+    rhel_subscription_activation_key="${NDB_RHEL_ACTIVATIONKEY:-}"
+  fi
 
   jq -nc \
     --arg db_version "$db_version" \
@@ -421,11 +430,14 @@ function generate_ansible_vars_json() {
     --arg customization_profile_name "$customization_profile_name" \
     --arg customization_profile_file "$customization_profile_file" \
     --arg customization_repo_root "$customization_repo_root" \
+    --arg rhel_subscription_org_id "$rhel_subscription_org_id" \
+    --arg rhel_subscription_activation_key "$rhel_subscription_activation_key" \
     --argjson validate_build "$validate_build" \
     --argjson postgres_extensions "${extensions_json:-[]}" \
     --argjson qualified_extensions "${qualified_extensions_json:-[]}" \
     --argjson mongodb_deployments "${mongodb_deployments_json:-[]}" \
     --argjson customization_enabled "$customization_enabled" \
+    --argjson rhel_subscription_enabled "$rhel_subscription_enabled" \
     '{
       db_version: $db_version,
       db_type: $db_type,
@@ -440,7 +452,10 @@ function generate_ansible_vars_json() {
       customization_enabled: $customization_enabled,
       customization_profile_name: $customization_profile_name,
       customization_profile_file: $customization_profile_file,
-      customization_repo_root: $customization_repo_root
+      customization_repo_root: $customization_repo_root,
+      rhel_subscription_enabled: $rhel_subscription_enabled,
+      rhel_subscription_org_id: $rhel_subscription_org_id,
+      rhel_subscription_activation_key: $rhel_subscription_activation_key
     }'
 }
 
@@ -503,6 +518,11 @@ function print_dry_run_summary() {
   local missing_items=()
   local config_pretty
   local ansible_vars_pretty
+  local rhel_activation_ready=false
+
+  if [[ -n "${NDB_RHEL_ORGID:-}" && -n "${NDB_RHEL_ACTIVATIONKEY:-}" ]]; then
+    rhel_activation_ready=true
+  fi
 
   for cmd in "${LIVE_REQUIRED_COMMANDS[@]}"; do
     if ! command_is_available "$cmd"; then
@@ -543,7 +563,18 @@ function print_dry_run_summary() {
   fi
 
   config_pretty=$(printf '%s\n' "$CONFIG" | jq '.')
-  ansible_vars_pretty=$(printf '%s\n' "$ANSIBLE_VARS_JSON" | jq '.')
+  ansible_vars_pretty=$(printf '%s\n' "$ANSIBLE_VARS_JSON" | jq '
+    if (.rhel_subscription_org_id // "") != "" then
+      .rhel_subscription_org_id = "<set>"
+    else
+      .
+    end
+    | if (.rhel_subscription_activation_key // "") != "" then
+      .rhel_subscription_activation_key = "<redacted>"
+    else
+      .
+    end
+  ')
 
   cat <<EOF
 === NDB Build Dry Run ===
@@ -589,6 +620,11 @@ Customization profile:
   Profile file: ${CUSTOMIZATION_PROFILE_FILE:-none}
   Default from NDB_CUSTOMIZATION_PROFILE: $( [[ -n "${NDB_CUSTOMIZATION_PROFILE:-}" ]] && echo "yes" || echo "no" )
   Explicitly disabled: ${CUSTOMIZATION_NO_CUSTOMIZATIONS}
+
+RHEL subscription activation:
+  Activation key pair: $( [[ "$rhel_activation_ready" == "true" ]] && echo "present" || echo "missing" )
+  NDB_RHEL_ORGID=$( [[ -n "${NDB_RHEL_ORGID:-}" ]] && echo "present" || echo "missing" )
+  NDB_RHEL_ACTIVATIONKEY=$( [[ -n "${NDB_RHEL_ACTIVATIONKEY:-}" ]] && echo "present" || echo "missing" )
 EOF
 
   if [[ -n "${SOURCE_IMAGE_REQUIRED_ENV_VAR:-}" ]]; then
@@ -640,6 +676,8 @@ EOF
   for var_name in "${REQUIRED_ENV_VARS[@]}"; do
     printf '  %s=%s\n' "$var_name" "$( [[ -n "${!var_name:-}" ]] && echo "present" || echo "missing" )"
   done
+  printf '  %s=%s\n' "NDB_RHEL_ORGID" "$( [[ -n "${NDB_RHEL_ORGID:-}" ]] && echo "present" || echo "missing" )"
+  printf '  %s=%s\n' "NDB_RHEL_ACTIVATIONKEY" "$( [[ -n "${NDB_RHEL_ACTIVATIONKEY:-}" ]] && echo "present" || echo "missing" )"
 
   printf '\nCommand prerequisite status:\n'
   for cmd in "${COMMON_REQUIRED_COMMANDS[@]}" "${LIVE_REQUIRED_COMMANDS[@]}"; do

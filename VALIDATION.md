@@ -43,6 +43,11 @@ repository. To finish coverage, provide either:
 - `NDB_RHEL_9_6_IMAGE_URI` and `NDB_RHEL_9_7_IMAGE_URI`, or
 - staged Prism image UUIDs for RHEL 9.6 and RHEL 9.7.
 
+Also provide `NDB_RHEL_ORGID` and `NDB_RHEL_ACTIVATIONKEY` from 1Password when
+the RHEL rows should use Red Hat CDN repositories. Builds use those values only
+to register the temporary builder VM, then unregister and clean RHSM state
+before image capture.
+
 The latest Prism catalog check found RHEL 9.6 and RHEL 9.7 image candidates,
 and direct source-image SSH probes reached both images successfully. A
 repository probe on disposable RHEL 9.6 and RHEL 9.7 source-image VMs failed
@@ -54,11 +59,12 @@ package repositories enabled for standard packages such as `bison`, `gcc`,
 `lvm2`, and `sshpass`.
 
 The remaining RHEL blocker is repository readiness inside the RHEL guest, not
-Prism image placement or SSH bootability. Finish coverage with RHEL images that
-already have the required enterprise package repositories enabled, or with a
-`pre_common` customization profile that enables those repositories before the
-common role installs packages. Current preflight checks reject inactive image
-candidates before Packer starts.
+Prism image placement or SSH bootability. Finish coverage with activation-key
+registration through `NDB_RHEL_ORGID` and `NDB_RHEL_ACTIVATIONKEY`, with RHEL
+images that already have the required enterprise package repositories enabled,
+or with a `pre_common` customization profile that enables enterprise mirrors
+before the common role installs packages. Current preflight checks reject
+inactive image candidates before Packer starts.
 
 The committed `rhel-repositories-example` customization profile is a secret-free
 starter for the `pre_common` path. Copy it into `customizations/local/`, point
@@ -71,7 +77,7 @@ https://github.com/tkelkermans/packer-ndb/issues/2
 ## Commands To Finish RHEL Coverage
 
 When RHEL source images are available, check the values without printing the
-actual URIs:
+actual URIs, org ID, or activation key:
 
 ```bash
 scripts/rhel_readiness.sh
@@ -93,12 +99,13 @@ scripts/prism_image_activate.sh --image-uuid "${RHEL_97_UUID}" --cluster-name "$
 Only add `--apply` after confirming the image UUID and cluster are correct.
 
 Before starting a long RHEL matrix run, confirm the source images can install
-packages from the required RHEL and enterprise mirrors. The repository checks
-above prove Prism placement and SSH reachability; they do not prove subscription
-or package repository readiness inside the guest.
+packages from the required RHEL repositories or enterprise mirrors. The
+repository checks above prove Prism placement and SSH reachability; they do not
+prove subscription or package repository readiness inside the guest.
 
-If repositories are already enabled in the staged image, prove package
-readiness on a disposable VM first:
+If `NDB_RHEL_ORGID` and `NDB_RHEL_ACTIVATIONKEY` are set, the disposable probe
+VM registers with the activation key, checks packages, unregisters, and cleans
+RHSM state before deletion. Prove package readiness first:
 
 ```bash
 scripts/source_image_ssh_probe.sh --source-image-uuid "${RHEL_96_UUID}" --rhel-repository-check --ssh-timeout 900

@@ -1,6 +1,9 @@
 - name: Configure Packer VM
   hosts: all
   pre_tasks:
+    - name: Register RHEL subscription before repository customization
+      ansible.builtin.include_role:
+        name: rhel_subscription
     - name: Run pre-common customization roles
       ansible.builtin.include_role:
         name: customization_profile

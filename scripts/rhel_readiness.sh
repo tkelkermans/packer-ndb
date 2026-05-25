@@ -14,7 +14,7 @@ Usage: scripts/rhel_readiness.sh [--scan-prism] [--show-prism-matches]
 
 Checks whether the licensed RHEL source-image inputs needed for live matrix
 validation are ready. The helper prints set/missing status only; it does not
-print source-image URI values or staged UUID values.
+print source-image URI values, staged UUID values, org IDs, or activation keys.
 
 Options:
   --scan-prism           Query Prism for image names that look like RHEL images
@@ -73,6 +73,8 @@ print_commands() {
     printf 'Set NDB_RHEL_9_6_IMAGE_URI and NDB_RHEL_9_7_IMAGE_URI, or set RHEL_96_UUID and RHEL_97_UUID for staged Prism images.\n'
   fi
 
+  printf 'Set NDB_RHEL_ORGID and NDB_RHEL_ACTIVATIONKEY before running --rhel-repository-check or live RHEL builds that need Red Hat CDN repositories.\n'
+  printf 'scripts/source_image_ssh_probe.sh --source-image-uuid "${RHEL_97_UUID}" --rhel-repository-check --ssh-timeout 900\n'
   printf './test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --validate --validate-artifact --manifest --continue-on-error --max-parallel 1\n'
   printf 'scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json\n'
 }
@@ -187,6 +189,7 @@ done
 
 uri_ready=false
 uuid_ready=false
+activation_ready=false
 
 printf 'RHEL source URI readiness: '
 if all_set NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI; then
@@ -207,6 +210,16 @@ else
 fi
 env_status RHEL_96_UUID || true
 env_status RHEL_97_UUID || true
+
+printf '\nRHEL activation key readiness: '
+if all_set NDB_RHEL_ORGID NDB_RHEL_ACTIVATIONKEY; then
+  activation_ready=true
+  printf 'complete\n'
+else
+  printf 'incomplete\n'
+fi
+env_status NDB_RHEL_ORGID || true
+env_status NDB_RHEL_ACTIVATIONKEY || true
 
 if [[ "$SCAN_PRISM" == "true" ]]; then
   scan_prism_images

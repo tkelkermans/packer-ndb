@@ -294,6 +294,20 @@ export NDB_RHEL_9_7_IMAGE_URI="/path/to/rhel-9.7.qcow2"
 export NDB_RHEL_9_6_IMAGE_URI="/path/to/rhel-9.6.qcow2"
 ```
 
+Optional RHEL subscription activation values for Red Hat CDN-backed package
+repositories:
+
+```bash
+export NDB_RHEL_ORGID="<from 1Password>"
+export NDB_RHEL_ACTIVATIONKEY="<from 1Password>"
+```
+
+Keep those values in 1Password or an equivalent secret manager. Do not commit
+them, put them in customization vars, bake them into a source image, or print
+them in logs. When both values are present, RHEL builder VMs register with
+`subscription-manager` before package installation and unregister/clean RHSM
+state before the image is captured.
+
 Check that required RHEL values resolve as non-empty before launching a long RHEL run:
 
 ```bash
@@ -344,7 +358,10 @@ scripts/source_image_ssh_probe.sh --source-image-uuid "replace-with-prism-image-
 
 The probe boots a disposable VM from the source image, injects the same `packer` cloud-init user data used by builds, waits for SSH as the `packer` user, then deletes the VM. Use `--source-image-name` instead of `--source-image-uuid` only when the image name is unambiguous in Prism. If the probe passes but Packer still times out, treat the problem as specific to the Packer builder/user-data delivery path or VM hardware settings rather than basic source-image cloud-init compatibility.
 
-For RHEL source images, add the repository check before launching the full matrix. It installs representative common packages on the disposable probe VM, then deletes that VM:
+For RHEL source images, add the repository check before launching the full
+matrix. If `NDB_RHEL_ORGID` and `NDB_RHEL_ACTIVATIONKEY` are present, the probe
+registers the disposable VM with the activation key, installs representative
+common packages, unregisters and cleans RHSM state, then deletes that VM:
 
 ```bash
 scripts/source_image_ssh_probe.sh --source-image-uuid "${RHEL_96_UUID}" --rhel-repository-check --ssh-timeout 900
@@ -563,7 +580,11 @@ Before running RHEL rows, confirm the licensed source image values resolve witho
 scripts/rhel_readiness.sh
 ```
 
-If the output includes `NDB_RHEL_9_6_IMAGE_URI=missing` or `NDB_RHEL_9_7_IMAGE_URI=missing`, stop there and fix the secret or source-image distribution path first.
+If the output includes `NDB_RHEL_9_6_IMAGE_URI=missing` or
+`NDB_RHEL_9_7_IMAGE_URI=missing`, stop there and fix the secret or source-image
+distribution path first. If the output includes `NDB_RHEL_ORGID=missing` or
+`NDB_RHEL_ACTIVATIONKEY=missing`, fix the 1Password-backed activation-key
+environment before using Red Hat CDN repositories.
 
 If you expect RHEL images to already exist in Prism, scan for likely staged images:
 
@@ -587,13 +608,16 @@ scripts/prism_image_activate.sh --image-uuid "${RHEL_97_UUID}" --cluster-name "$
 Only add `--apply` after confirming the image UUID and cluster are correct.
 
 Prism placement and SSH reachability are not enough for a full RHEL build. The
-RHEL guest must also have usable package repositories or enterprise mirrors
-enabled before Ansible reaches the common package-install step. If your base
-image is intentionally unregistered, use a `pre_common` customization profile to
-enable the required repositories before the common role runs.
+RHEL guest must also have usable package repositories before Ansible reaches the
+common package-install step. The default path is activation-key registration:
+set `NDB_RHEL_ORGID` and `NDB_RHEL_ACTIVATIONKEY`, let the build register the
+temporary builder VM before common setup, and let `image_prepare` unregister and
+clean RHSM state before image capture. If your environment uses enterprise
+mirrors instead of Red Hat CDN repositories, keep using a `pre_common`
+customization profile to enable those mirrors.
 
-If repositories are already enabled in the staged image, prove that before the
-long build by running the source-image probe with the RHEL repository check:
+Prove package readiness before the long build by running the source-image probe
+with the RHEL repository check:
 
 ```bash
 scripts/source_image_ssh_probe.sh --source-image-uuid "${RHEL_96_UUID}" --rhel-repository-check --ssh-timeout 900
@@ -601,10 +625,12 @@ scripts/source_image_ssh_probe.sh --source-image-uuid "${RHEL_97_UUID}" --rhel-r
 ```
 
 The committed `rhel-repositories-example` profile is a disabled, secret-free
-starter for that path. Copy it into `customizations/local/`, point the copied
-profile at the copied vars file, set `rhel_repositories_enabled: true`, and add
-your enterprise mirror URLs or entitled repository IDs only in the local vars
-file. Then run the RHEL build with the local profile:
+starter for enterprise mirrors or for enabling entitled repository IDs after
+activation-key registration. Copy it into `customizations/local/`, point the
+copied profile at the copied vars file, set `rhel_repositories_enabled: true`,
+and add your enterprise mirror URLs or entitled repository IDs only in the local
+vars file. Keep activation keys in `NDB_RHEL_ACTIVATIONKEY`, not in YAML. Then
+run the RHEL build with the local profile:
 
 ```bash
 ./build.sh --ci --customization-profile customizations/local/rhel-repositories.yml --validate --validate-artifact --manifest --source-image-uuid "${RHEL_97_UUID}" --ndb-version 2.10 --db-type pgsql --os "Red Hat Enterprise Linux (RHEL)" --os-version 9.7 --db-version 18

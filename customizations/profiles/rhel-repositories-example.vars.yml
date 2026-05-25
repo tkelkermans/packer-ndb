@@ -3,6 +3,10 @@
 
 rhel_repositories_enabled: false
 
+# RHEL activation-key registration is configured with NDB_RHEL_ORGID and
+# NDB_RHEL_ACTIVATIONKEY. Do not put Red Hat org IDs or activation keys in this
+# file; keep them in 1Password or an equivalent secret manager.
+
 # Use this list for enterprise mirrors or repo files managed by yum_repository.
 # Each item accepts common yum_repository parameters such as name, description,
 # baseurl, enabled, gpgcheck, gpgkey, username, password, sslverify, and state.
