@@ -20,7 +20,7 @@ CLEANUP_STATUS="not-started"
 FINAL_STATUS="failed"
 RHEL_REPOSITORY_CHECK=false
 RHEL_REPOSITORY_CHECK_STATUS="not-requested"
-RHEL_REPOSITORY_PACKAGES=(bison firewalld flex gcc lsof lvm2 net-tools perl python3-pip sshpass unzip wget zip)
+RHEL_REPOSITORY_PACKAGES=(bison firewalld flex gcc gdbm-devel lsof lvm2 net-tools perl python3-pip sshpass unzip wget zip)
 RHEL_REPOSITORY_REGISTERED=false
 
 usage() {
@@ -439,6 +439,38 @@ SSH_COMMON_ARGS=(
   -o ConnectTimeout=10
 )
 
+guest_boot_ready_probe() {
+  cat <<'EOF'
+test -S /run/dbus/system_bus_socket || exit 1
+state=$(systemctl is-system-running 2>/dev/null || true)
+case "$state" in
+  running|degraded) ;;
+  *) exit 1 ;;
+esac
+if command -v cloud-init >/dev/null 2>&1; then
+  cloud_state=$(cloud-init status 2>/dev/null || true)
+  case "$cloud_state" in
+    *"status: running"*) exit 1 ;;
+  esac
+fi
+EOF
+}
+
+wait_guest_boot_ready() {
+  local i
+
+  printf 'Waiting for systemd/D-Bus readiness on %s...\n' "$VM_IP"
+  for i in $(seq 1 90); do
+    if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "$(guest_boot_ready_probe)" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 10
+  done
+
+  ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "systemctl is-system-running || true; ls -l /run/dbus/system_bus_socket || true; cloud-init status || true" >&2 || true
+  ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "$(guest_boot_ready_probe)" >/dev/null
+}
+
 run_rhel_repository_check() {
   local packages
   local org_id_quoted
@@ -461,6 +493,21 @@ set -euo pipefail
 
 rhel_org_id=${org_id_quoted}
 rhel_activation_key=${activation_key_quoted}
+rhel_major_version=""
+if [[ -r /etc/os-release ]]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  rhel_major_version="\${VERSION_ID%%.*}"
+fi
+if [[ -z "\$rhel_major_version" ]]; then
+  rhel_major_version=\$(rpm -E '%{rhel}' 2>/dev/null || true)
+fi
+if [[ -z "\$rhel_major_version" || "\$rhel_major_version" == *%* ]]; then
+  echo "Unable to determine RHEL major version for CodeReady Builder repository" >&2
+  exit 1
+fi
+rhel_arch=\$(uname -m)
+codeready_repo_id="codeready-builder-for-rhel-\${rhel_major_version}-\${rhel_arch}-rpms"
 
 cleanup_rhel_subscription() {
   if [[ "\${RHEL_REPOSITORY_REGISTERED:-false}" == "true" ]]; then
@@ -474,6 +521,10 @@ if [[ -n "\$rhel_org_id" && -n "\$rhel_activation_key" ]]; then
   subscription-manager register --org="\$rhel_org_id" --activationkey="\$rhel_activation_key" >/dev/null
   RHEL_REPOSITORY_REGISTERED=true
   subscription-manager refresh >/dev/null
+fi
+
+if subscription-manager identity >/dev/null 2>&1; then
+  subscription-manager repos --enable="\$codeready_repo_id" >/dev/null
 fi
 
 command -v dnf >/dev/null
@@ -494,6 +545,7 @@ EOF
 elapsed=0
 while (( elapsed <= SSH_TIMEOUT_SECONDS )); do
   if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" true >/dev/null 2>&1; then
+    wait_guest_boot_ready
     if [[ "$RHEL_REPOSITORY_CHECK" == "true" ]]; then
       run_rhel_repository_check
     fi

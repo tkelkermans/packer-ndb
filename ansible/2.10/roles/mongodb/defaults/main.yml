@@ -7,24 +7,43 @@ mongodb_supported_versions:
   - "8.0"
 mongodb_service_name: mongod
 mongodb_config_file: /etc/mongod.conf
+mongodb_ndb_software_home: /opt/ndb/mongodb
+mongodb_ndb_software_bin_dir: "{{ mongodb_ndb_software_home }}/bin"
+mongodb_ndb_software_binaries:
+  - mongod
+  - mongos
+  - mongosh
+  - bsondump
+  - mongodump
+  - mongoexport
+  - mongofiles
+  - mongoimport
+  - mongorestore
+  - mongostat
+  - mongotop
 mongodb_keyring_dir: /etc/apt/keyrings
 mongodb_redhat_arch: x86_64
 mongodb_debian_arch: amd64
 mongodb_selinux_policy_repo: https://github.com/mongodb/mongodb-selinux.git
 mongodb_selinux_policy_version: "18181652362a46fd4511a56f20c4055712deb252"
 mongodb_selinux_policy_dest: /usr/local/src/mongodb-selinux
+mongodb_redhat_selinux_state: permissive
 mongodb_package_names:
   community:
     RedHat:
       - mongodb-org
       - mongodb-mongosh
+      - mongodb-database-tools
     Debian:
       - mongodb-org
       - mongodb-mongosh
+      - mongodb-database-tools
   enterprise:
     RedHat:
       - mongodb-enterprise
       - mongodb-mongosh
+      - mongodb-database-tools
     Debian:
       - mongodb-enterprise
       - mongodb-mongosh
+      - mongodb-database-tools

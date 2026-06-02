@@ -49,6 +49,10 @@
     owner: root
     group: root
     mode: "0644"
+  register: mongodb_gpg_key_download_result
+  retries: 6
+  delay: 10
+  until: mongodb_gpg_key_download_result is succeeded
   when: ndb_os_family == "Debian"
   become: yes
 
@@ -92,6 +96,10 @@
   ansible.builtin.package:
     name: "{{ mongodb_package_names[mongodb_edition].RedHat }}"
     state: present
+  register: mongodb_redhat_install_result
+  retries: 6
+  delay: 10
+  until: mongodb_redhat_install_result is succeeded
   when: ndb_os_family == "RedHat"
   become: yes
 
@@ -116,6 +124,10 @@
       - policycoreutils
       - selinux-policy-devel
     state: present
+  register: mongodb_selinux_deps_result
+  retries: 6
+  delay: 10
+  until: mongodb_selinux_deps_result is succeeded
   when: ndb_os_family == "RedHat"
   become: yes
 
@@ -125,6 +137,10 @@
     dest: "{{ mongodb_selinux_policy_dest }}"
     version: "{{ mongodb_selinux_policy_version }}"
     update: false
+  register: mongodb_selinux_policy_clone_result
+  retries: 6
+  delay: 10
+  until: mongodb_selinux_policy_clone_result is succeeded
   when: ndb_os_family == "RedHat"
   become: yes
 
@@ -147,14 +163,59 @@
   when: ndb_os_family == "RedHat"
   become: yes
 
+- name: Persist SELinux permissive mode for MongoDB NDB provisioning (RedHat family)
+  ansible.builtin.lineinfile:
+    path: /etc/selinux/config
+    regexp: '^SELINUX='
+    line: "SELINUX={{ mongodb_redhat_selinux_state }}"
+  when:
+    - ndb_os_family == "RedHat"
+    - mongodb_redhat_selinux_state == "permissive"
+  become: yes
+
+- name: Apply SELinux permissive mode immediately for MongoDB NDB provisioning (RedHat family)
+  ansible.builtin.command:
+    argv:
+      - setenforce
+      - "0"
+  register: mongodb_setenforce_result
+  changed_when: mongodb_setenforce_result.rc == 0
+  failed_when: mongodb_setenforce_result.rc not in [0, 1]
+  when:
+    - ndb_os_family == "RedHat"
+    - mongodb_redhat_selinux_state == "permissive"
+    - ansible_facts.get('selinux', {}).get('status', 'disabled') == "enabled"
+    - ansible_facts.get('selinux', {}).get('mode', 'permissive') == "enforcing"
+  become: yes
+
 - name: Ensure systemd has loaded MongoDB units
   ansible.builtin.systemd:
     daemon_reload: true
   become: yes
 
-- name: Ensure mongod service is enabled and running
+- name: Ensure MongoDB NDB software home exists
+  ansible.builtin.file:
+    path: "{{ mongodb_ndb_software_bin_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: yes
+
+- name: Link MongoDB binaries into NDB-safe software home
+  ansible.builtin.file:
+    src: "/usr/bin/{{ item }}"
+    dest: "{{ mongodb_ndb_software_bin_dir }}/{{ item }}"
+    state: link
+    owner: root
+    group: root
+    force: true
+  loop: "{{ mongodb_ndb_software_binaries }}"
+  become: yes
+
+- name: Stop and disable packaged mongod service before image capture
   ansible.builtin.service:
     name: "{{ mongodb_service_name }}"
-    state: started
-    enabled: true
+    state: stopped
+    enabled: false
   become: yes

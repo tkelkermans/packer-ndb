@@ -9,6 +9,10 @@
   ansible.builtin.package:
     name: dnf-plugins-core
     state: present
+  register: dnf_plugins_core_result
+  retries: 6
+  delay: 10
+  until: dnf_plugins_core_result is succeeded
   when: ndb_os_family == "RedHat"
   become: yes
 
@@ -19,6 +23,10 @@
       - config-manager
       - --set-enabled
       - crb
+  register: enable_crb_result
+  retries: 6
+  delay: 10
+  until: enable_crb_result.rc == 0
   when: ndb_distribution == 'Rocky'
   become: yes
 
@@ -37,29 +45,6 @@
   ansible.builtin.set_fact:
     debian_libaio_package: "{{ 'libaio1t64' if (ndb_distribution == 'Ubuntu' and ndb_distribution_version is version('24.04', '>=')) else 'libaio1' }}"
   when: ndb_os_family == "Debian"
-
-- name: Ensure OpenSSL stack is up to date (RedHat family)
-  ansible.builtin.dnf:
-    name:
-      - openssl
-      - openssl-libs
-    state: latest
-  when: ndb_os_family == "RedHat"
-  become: yes
-
-- name: Ensure OpenSSL stack is up to date (Debian family)
-  ansible.builtin.apt:
-    name:
-      - openssl
-      - libssl3
-    state: latest
-    lock_timeout: 600
-  register: apt_openssl_result
-  retries: 6
-  delay: 10
-  until: apt_openssl_result is succeeded
-  when: ndb_os_family == "Debian"
-  become: yes
 
 - name: Clean dnf metadata cache (RedHat family)
   ansible.builtin.command:
@@ -82,17 +67,48 @@
       - -y
       - makecache
   register: dnf_makecache_result
-  retries: 5
-  delay: 10
+  retries: 6
+  delay: 15
   until: dnf_makecache_result.rc == 0
   changed_when: false
   when: ndb_os_family == "RedHat"
+  become: yes
+
+- name: Ensure OpenSSL stack is up to date (RedHat family)
+  ansible.builtin.dnf:
+    name:
+      - openssl
+      - openssl-libs
+    state: latest
+  register: dnf_openssl_result
+  retries: 6
+  delay: 10
+  until: dnf_openssl_result is succeeded
+  when: ndb_os_family == "RedHat"
+  become: yes
+
+- name: Ensure OpenSSL stack is up to date (Debian family)
+  ansible.builtin.apt:
+    name:
+      - openssl
+      - libssl3
+    state: latest
+    lock_timeout: 600
+  register: apt_openssl_result
+  retries: 6
+  delay: 10
+  until: apt_openssl_result is succeeded
+  when: ndb_os_family == "Debian"
   become: yes
 
 - name: Install common packages (RedHat family)
   ansible.builtin.package:
     name: "{{ common_packages }}"
     state: present
+  register: redhat_common_packages_result
+  retries: 6
+  delay: 10
+  until: redhat_common_packages_result is succeeded
   when: ndb_os_family == "RedHat"
   become: yes
 
@@ -112,6 +128,10 @@
   ansible.builtin.package:
     name: "{{ redhat_packages }}"
     state: present
+  register: redhat_specific_packages_result
+  retries: 6
+  delay: 10
+  until: redhat_specific_packages_result is succeeded
   when: ndb_os_family == "RedHat"
   become: yes
 
@@ -136,6 +156,953 @@
   retries: 6
   delay: 10
   until: apt_remove_ufw_result is succeeded
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Disable LVM devices file for NDB compatibility
+  ansible.builtin.lineinfile:
+    path: /etc/lvm/lvm.conf
+    regexp: '^\s*#?\s*use_devicesfile\s*='
+    line: '        use_devicesfile = 0'
+    insertafter: '^\s*devices\s*\{'
+  become: yes
+
+- name: Install Debian-family NDB Era device-mapper compatibility helper
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/ndb-era-dm-compat
+    owner: root
+    group: root
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      log_file=/opt/era_base/era_dm_compat.log
+      rules_file=/etc/udev/rules.d/99-ndb-era-dm-serial.rules
+
+      mkdir -p /opt/era_base /etc/udev/rules.d
+
+      log() {
+        printf '%s %s\n' "$(date -Is)" "$*" >> "$log_file"
+      }
+
+      command -v udevadm >/dev/null 2>&1 || exit 0
+      command -v dmsetup >/dev/null 2>&1 || exit 0
+
+      ensure_dm_alias() {
+        local dm_dev=$1
+        local kernel=$2
+        local alias="/dev/${kernel}.."
+
+        if [[ -e "$alias" ]]; then
+          if [[ -L "$alias" && "$(readlink "$alias")" == "$dm_dev" ]]; then
+            return 0
+          fi
+          rm -f "$alias"
+        fi
+
+        ln -s "$dm_dev" "$alias"
+        log "Created NDB device-mapper symlink alias $alias -> $dm_dev."
+      }
+
+      tmp_rules=$(mktemp)
+      trap 'rm -f "$tmp_rules"' EXIT
+      dm_devices=()
+
+      for dm_dev in /dev/dm-[0-9]*; do
+        [[ -b "$dm_dev" ]] || continue
+        kernel=$(basename "$dm_dev")
+        [[ "$kernel" =~ ^dm-[0-9]+$ ]] || continue
+        dm_vg=$(udevadm info --query=property --name="$dm_dev" | sed -n 's/^DM_VG_NAME=//p' | head -1)
+        [[ "$dm_vg" == ntnx_era_agent_vg_* ]] || continue
+
+        ensure_dm_alias "$dm_dev" "$kernel"
+        dm_devices+=("$dm_dev")
+
+        parent=$(dmsetup deps -o devname "$dm_dev" 2>/dev/null | sed -n 's/.*(\([^)]*\)).*/\1/p' | awk '{print $1}' || true)
+        [[ -n "$parent" && -b "/dev/$parent" ]] || continue
+        serial=$(udevadm info --query=property --name="/dev/$parent" | sed -n 's/^ID_SERIAL=//p' | head -1)
+        short_serial=$(udevadm info --query=property --name="/dev/$parent" | sed -n 's/^ID_SERIAL_SHORT=//p' | head -1)
+        [[ -n "$serial" ]] || continue
+
+        printf 'KERNEL=="%s", ENV{DM_VG_NAME}=="%s", ENV{ID_SERIAL}="%s", ENV{ID_SERIAL_SHORT}="%s"\n' \
+          "$kernel" "$dm_vg" "$serial" "${short_serial:-$serial}" >> "$tmp_rules"
+      done
+
+      if [[ -s "$tmp_rules" ]] && ! cmp -s "$tmp_rules" "$rules_file"; then
+        install -m 0644 "$tmp_rules" "$rules_file"
+        udevadm control --reload-rules
+        for dm_dev in "${dm_devices[@]}"; do
+          udevadm trigger --action=change --name-match="$dm_dev" || true
+        done
+        udevadm settle || true
+        log "Refreshed NDB Era device-mapper udev serial metadata."
+      fi
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Install Debian-family NDB Era device-mapper compatibility service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ndb-era-dm-compat.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=NDB Era device-mapper compatibility
+      Documentation=man:systemd.service(5)
+      After=local-fs.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/ndb-era-dm-compat
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Install Debian-family NDB Era device-mapper compatibility timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ndb-era-dm-compat.timer
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Run NDB Era device-mapper compatibility periodically
+      Documentation=man:systemd.timer(5)
+
+      [Timer]
+      OnBootSec=30s
+      OnUnitActiveSec=10s
+      AccuracySec=1s
+      Persistent=false
+      Unit=ndb-era-dm-compat.service
+
+      [Install]
+      WantedBy=timers.target
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Enable Debian-family NDB Era device-mapper compatibility timer
+  ansible.builtin.systemd:
+    name: ndb-era-dm-compat.timer
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Run Debian-family NDB Era device-mapper compatibility helper once
+  ansible.builtin.command:
+    argv:
+      - /usr/local/sbin/ndb-era-dm-compat
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Persist NDB kernel arguments in GRUB defaults
+  ansible.builtin.shell: |
+    set -euo pipefail
+    grub_file=/etc/default/grub
+    touch "$grub_file"
+    current=$(grep -E '^GRUB_CMDLINE_LINUX=' "$grub_file" | tail -n1 || true)
+    if [[ -z "$current" ]]; then
+      printf 'GRUB_CMDLINE_LINUX="%s"\n' "{{ ndb_kernel_args | join(' ') }}" >> "$grub_file"
+      printf 'changed\n'
+      exit 0
+    fi
+    value=${current#GRUB_CMDLINE_LINUX=}
+    value=${value#\"}
+    value=${value%\"}
+    changed=0
+    for arg in {{ ndb_kernel_args | join(' ') }}; do
+      if [[ " $value " != *" $arg "* ]]; then
+        value="${value:+$value }$arg"
+        changed=1
+      fi
+    done
+    if [[ "$changed" -eq 1 ]]; then
+      escaped=${value//\\/\\\\}
+      escaped=${escaped//&/\\&}
+      sed -i.bak -E "s|^GRUB_CMDLINE_LINUX=.*|GRUB_CMDLINE_LINUX=\"$escaped\"|" "$grub_file"
+      printf 'changed\n'
+    else
+      printf 'unchanged\n'
+    fi
+  args:
+    executable: /bin/bash
+  register: ndb_grub_kernel_args_result
+  changed_when: ndb_grub_kernel_args_result.stdout == "changed"
+  become: yes
+
+- name: Apply NDB kernel arguments to Red Hat boot entries
+  ansible.builtin.command:
+    argv:
+      - grubby
+      - --update-kernel=ALL
+      - "--args={{ ndb_kernel_args | join(' ') }}"
+  when:
+    - ndb_os_family == "RedHat"
+    - ndb_grub_kernel_args_result.changed
+  become: yes
+
+- name: Force Debian GRUB to use device paths for root disk mapping
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub
+    regexp: "^{{ item.name }}="
+    line: "{{ item.name }}={{ item.value }}"
+  loop:
+    - name: GRUB_DISABLE_LINUX_UUID
+      value: "true"
+    - name: GRUB_DISABLE_LINUX_PARTUUID
+      value: "true"
+  register: ndb_debian_grub_device_path_result
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Ensure Debian GRUB defaults override directory exists
+  ansible.builtin.file:
+    path: /etc/default/grub.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Write late Debian GRUB root-device override
+  ansible.builtin.copy:
+    dest: /etc/default/grub.d/99-ndb-root-device.cfg
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by the NDB image builder. Keep this file late so cloud-image
+      # defaults cannot force UUID or PARTUUID root mappings back into grub.cfg.
+      GRUB_DISABLE_LINUX_UUID=true
+      GRUB_DISABLE_LINUX_PARTUUID=true
+      GRUB_FORCE_PARTUUID=
+  register: ndb_debian_grub_late_root_device_result
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Check Ubuntu cloud-image forced PARTUUID GRUB setting
+  ansible.builtin.stat:
+    path: /etc/default/grub.d/40-force-partuuid.cfg
+  register: ndb_debian_grub_force_partuuid_stat
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Disable Ubuntu cloud-image forced PARTUUID root
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub.d/40-force-partuuid.cfg
+    regexp: '^GRUB_FORCE_PARTUUID='
+    line: 'GRUB_FORCE_PARTUUID='
+  register: ndb_debian_grub_force_partuuid_result
+  when:
+    - ndb_os_family == "Debian"
+    - ndb_debian_grub_force_partuuid_stat.stat.exists
+  become: yes
+
+- name: Refresh Debian GRUB configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/update-grub
+  when:
+    - ndb_os_family == "Debian"
+    - ndb_grub_kernel_args_result.changed or ndb_debian_grub_device_path_result.changed or ndb_debian_grub_late_root_device_result.changed or (ndb_debian_grub_force_partuuid_result.changed | default(false))
+  become: yes
+
+- name: Set Debian-family SSH password auth in main sshd_config
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^\s*#?\s*PasswordAuthentication\s+'
+    line: 'PasswordAuthentication yes'
+  register: ndb_debian_sshd_main_password_auth_result
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Allow NDB password SSH for Debian-family clones
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/01-ndb-password-auth.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # NDB provisions cloned DB server VMs by connecting as the NDB drive user
+      # with the password it injects during first boot.
+      PasswordAuthentication yes
+  register: ndb_debian_sshd_password_auth_result
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Validate Debian-family SSH configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/sshd
+      - -t
+  changed_when: false
+  when:
+    - ndb_os_family == "Debian"
+    - (ndb_debian_sshd_main_password_auth_result.changed | default(false)) or (ndb_debian_sshd_password_auth_result.changed | default(false))
+  become: yes
+
+- name: Check Debian-family effective SSH configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/sshd
+      - -T
+  register: ndb_debian_sshd_effective_config
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Assert Debian-family SSH password auth is effective
+  ansible.builtin.assert:
+    that:
+      - "'passwordauthentication yes' in ndb_debian_sshd_effective_config.stdout"
+    fail_msg: "Expected effective OpenSSH PasswordAuthentication yes for NDB clone password injection."
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Install Debian-family passwd --stdin compatibility helper for NDB
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/ndb-passwd-stdin
+    owner: root
+    group: root
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      normalize_password_login_account() {
+        local user=$1
+
+        if [[ -x /usr/sbin/usermod ]]; then
+          /usr/sbin/usermod --unlock "$user" 2>/dev/null || true
+        fi
+
+        if [[ -x /usr/bin/chage ]]; then
+          /usr/bin/chage -E -1 -I -1 -m 0 -M 99999 "$user" 2>/dev/null || true
+        fi
+      }
+
+      args=()
+      for arg in "$@"; do
+        case "$arg" in
+          --stdin)
+            ;;
+          *)
+            args+=("$arg")
+            ;;
+        esac
+      done
+
+      arg_count=0
+      for _ in "${args[@]}"; do
+        arg_count=$((arg_count + 1))
+      done
+
+      if [[ "$arg_count" -eq 1 && "${args[0]}" != -* ]]; then
+        user=${args[0]}
+        IFS= read -r password || true
+        if [[ -z "$password" ]]; then
+          echo "No password supplied on stdin for $user" >&2
+          exit 1
+        fi
+        printf '%s:%s\n' "$user" "$password" | /usr/sbin/chpasswd
+        normalize_password_login_account "$user"
+        exit 0
+      fi
+
+      exec /usr/bin/passwd "$@"
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Check Debian-family rc.local before NDB reset sanitation
+  ansible.builtin.stat:
+    path: /etc/rc.local
+  register: ndb_debian_rc_local
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Remove stale NDB reset hook from Debian-family rc.local
+  ansible.builtin.lineinfile:
+    path: /etc/rc.local
+    regexp: '.*\/bin\/reset_password\.sh.*'
+    state: absent
+  when:
+    - ndb_os_family == "Debian"
+    - ndb_debian_rc_local.stat.exists | default(false)
+  become: yes
+
+- name: Remove stale NDB reset script from Debian-family source image
+  ansible.builtin.file:
+    path: /bin/reset_password.sh
+    state: absent
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Install Debian-family NDB SSH reset gate
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/ndb-ssh-reset-gate
+    owner: root
+    group: root
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      log=/opt/era_base/era_startup.log
+      table=ndb_ssh_reset_gate
+      done_marker=/run/ndb-reset-password.done
+
+      mkdir -p /opt/era_base /run
+
+      reset_intent_present() {
+        [[ -f /bin/reset_password.sh ]] || grep -q '/bin/reset_password.sh' /etc/rc.local 2>/dev/null
+      }
+
+      ensure_nft_available() {
+        if ! command -v nft >/dev/null 2>&1; then
+          echo "nft command is unavailable; cannot apply NDB SSH reset gate." >> "$log"
+          return 1
+        fi
+      }
+
+      unblock_gate() {
+        if command -v nft >/dev/null 2>&1; then
+          nft delete table inet "$table" 2>/dev/null || true
+        fi
+      }
+
+      gate_is_active() {
+        command -v nft >/dev/null 2>&1 && nft list table inet "$table" >/dev/null 2>&1
+      }
+
+      block_gate() {
+        ensure_nft_available
+        nft delete table inet "$table" 2>/dev/null || true
+        nft add table inet "$table"
+        nft "add chain inet $table input { type filter hook input priority -300; policy accept; }"
+        nft add rule inet "$table" input tcp dport 22 drop
+        echo "NDB SSH reset gate blocked inbound port 22 until password reset completion." >> "$log"
+      }
+
+      validate_block_rule() {
+        ensure_nft_available
+        printf 'add table inet %s\nadd chain inet %s input { type filter hook input priority -300; policy accept; }\nadd rule inet %s input tcp dport 22 drop\n' "$table" "$table" "$table" | nft --check -f -
+      }
+
+      case "${1:-}" in
+        block)
+          block_gate
+          ;;
+        block-if-reset-intent)
+          if [[ -f "$done_marker" ]]; then
+            unblock_gate
+          elif reset_intent_present; then
+            block_gate
+          else
+            unblock_gate
+          fi
+          ;;
+        unblock)
+          unblock_gate
+          echo "NDB SSH reset gate unblocked inbound port 22." >> "$log"
+          ;;
+        validate-block-rule)
+          validate_block_rule
+          ;;
+        *)
+          echo "Usage: $0 {block|block-if-reset-intent|unblock|validate-block-rule}" >&2
+          exit 2
+          ;;
+      esac
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Install Debian-family NDB password reset runner
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/ndb-run-reset-password
+    owner: root
+    group: root
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      script=/bin/reset_password.sh
+      log=/opt/era_base/era_startup.log
+      lock=/run/ndb-reset-password.lock
+      done_marker=/run/ndb-reset-password.done
+      wait_seconds=0
+      rc_local_exists=false
+      rc_local_references_reset=false
+      pam_token_user=""
+      pam_account_user=""
+      pam_password=""
+
+      if [[ "${1:-}" == "--pam-auth-token" ]]; then
+        pam_token_user=${2:-era}
+      elif [[ "${1:-}" == "--pam-account" ]]; then
+        pam_account_user=${2:-era}
+      elif [[ "${1:-}" == "--wait-for-script" ]]; then
+        wait_seconds=${2:-150}
+      fi
+
+      mkdir -p /opt/era_base /run
+
+      run_reset_script() {
+        if [[ ! -s "$script" ]]; then
+          echo "NDB reset script exists but is empty: $script" >> "$log"
+          return 1
+        fi
+
+        echo "Running NDB injected password reset helper for $script." >> "$log"
+
+        if grep -qE '(^|[[:space:];|&])(/usr/bin/|/bin/)?passwd([[:space:]]+|[[:space:]]*[;|&]|$)' "$script"; then
+          # NDB reset scripts can use interactive or Red Hat-style passwd forms.
+          # Route those invocations through a Debian-safe chpasswd wrapper.
+          sed -i -E 's#(^|[[:space:];|&])(/usr/bin/|/bin/)?passwd([[:space:]]+|[[:space:]]*[;|&]|$)#\1/usr/local/sbin/ndb-passwd-stdin\3#g' "$script"
+        fi
+
+        set +e
+        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /bin/bash "$script" >> "$log" 2>&1
+        status=$?
+        set -e
+
+        if [[ "$status" -ne 0 ]]; then
+          echo "NDB injected password reset failed with exit status $status." >> "$log"
+          return "$status"
+        fi
+
+        return 0
+      }
+
+      set_password_from_pam_token() {
+        local target_user=$1
+
+        if [[ -z "$pam_password" ]]; then
+          echo "NDB PAM password reset did not receive an auth token." >> "$log"
+          return 1
+        fi
+
+        printf '%s:%s\n' "$target_user" "$pam_password" | /usr/sbin/chpasswd
+        normalize_password_login_account "$target_user"
+        echo "NDB PAM password reset completed for $target_user." >> "$log"
+      }
+
+      normalize_password_login_account() {
+        local target_user=$1
+
+        if [[ -x /usr/sbin/usermod ]]; then
+          /usr/sbin/usermod --unlock "$target_user" >> "$log" 2>&1 || true
+        fi
+
+        if [[ -x /usr/bin/chage ]]; then
+          /usr/bin/chage -E -1 -I -1 -m 0 -M 99999 "$target_user" >> "$log" 2>&1 || true
+        fi
+
+        echo "NDB PAM account normalization completed for $target_user." >> "$log"
+      }
+
+      wait_for_late_reset_intent() {
+        local token_wait_seconds=${1:-150}
+
+        if [[ ! "$token_wait_seconds" =~ ^[0-9]+$ ]] || (( token_wait_seconds <= 0 )); then
+          token_wait_seconds=150
+        fi
+
+        echo "NDB PAM auth waiting for late injected reset script before password checks." >> "$log"
+        for _ in $(seq 1 "$token_wait_seconds"); do
+          if [[ -f "$script" ]] || grep -q '/bin/reset_password.sh' /etc/rc.local 2>/dev/null; then
+            return 0
+          fi
+          sleep 1
+        done
+
+        return 1
+      }
+
+      exec 9>"$lock"
+      flock -w 300 9
+
+      reset_already_completed=false
+      if [[ -f "$done_marker" ]]; then
+        reset_already_completed=true
+      fi
+
+      if grep -q '/bin/reset_password.sh' /etc/rc.local 2>/dev/null; then
+        rc_local_references_reset=true
+      fi
+      if [[ -e /etc/rc.local ]]; then
+        rc_local_exists=true
+      fi
+
+      if [[ -n "$pam_account_user" ]]; then
+        if [[ "${PAM_USER:-}" != "$pam_account_user" ]]; then
+          exit 0
+        fi
+
+        if [[ ! -f "$script" && "$rc_local_references_reset" != "true" && "$reset_already_completed" != "true" ]]; then
+          exit 0
+        fi
+
+        if [[ "$reset_already_completed" != "true" && -f "$script" ]]; then
+          if run_reset_script; then
+            touch "$done_marker"
+            echo "NDB injected password reset completed during PAM account check." >> "$log"
+          else
+            echo "NDB injected password reset failed during PAM account check; normalizing account state anyway." >> "$log"
+          fi
+        fi
+
+        normalize_password_login_account "$pam_account_user"
+        if [[ -f "$done_marker" ]]; then
+          /usr/local/sbin/ndb-ssh-reset-gate unblock || true
+        fi
+        exit 0
+      fi
+
+      if [[ -n "$pam_token_user" ]]; then
+        if [[ "${PAM_USER:-}" != "$pam_token_user" ]]; then
+          exit 0
+        fi
+
+        if [[ ! -f "$script" && "$rc_local_references_reset" != "true" && "$rc_local_exists" == "true" ]]; then
+          IFS= read -r pam_password || true
+          if [[ -n "$pam_password" ]]; then
+            echo "NDB PAM auth-token password reset triggered by NDB-created rc.local for $pam_token_user." >> "$log"
+            set_password_from_pam_token "$pam_token_user"
+            touch "$done_marker"
+            /usr/local/sbin/ndb-ssh-reset-gate unblock || true
+            exit 0
+          fi
+          wait_for_late_reset_intent 150 || true
+          if grep -q '/bin/reset_password.sh' /etc/rc.local 2>/dev/null; then
+            rc_local_references_reset=true
+          fi
+        fi
+
+        if [[ ! -f "$script" && "$rc_local_references_reset" != "true" ]]; then
+          exit 0
+        fi
+
+        IFS= read -r pam_password || true
+
+        script_completed=false
+        if [[ "$reset_already_completed" == "true" ]]; then
+          script_completed=true
+          echo "NDB injected password reset was already marked complete before PAM auth." >> "$log"
+        elif [[ -f "$script" ]] && run_reset_script; then
+          script_completed=true
+          echo "NDB injected password reset completed." >> "$log"
+        else
+          echo "NDB injected password reset did not complete; using PAM auth-token password reset for $pam_token_user." >> "$log"
+        fi
+
+        if [[ -n "$pam_password" ]]; then
+          echo "Applying PAM auth-token password reset for $pam_token_user." >> "$log"
+          set_password_from_pam_token "$pam_token_user"
+          touch "$done_marker"
+          /usr/local/sbin/ndb-ssh-reset-gate unblock || true
+          exit 0
+        fi
+
+        if [[ "$script_completed" == "true" ]]; then
+          echo "PAM auth token unavailable; trusting completed NDB injected password reset." >> "$log"
+          /usr/local/sbin/ndb-ssh-reset-gate unblock || true
+          exit 0
+        fi
+
+        echo "PAM auth token unavailable and NDB injected password reset did not complete." >> "$log"
+        exit 1
+      fi
+
+      if [[ "$reset_already_completed" == "true" ]]; then
+        /usr/local/sbin/ndb-ssh-reset-gate unblock || true
+        exit 0
+      fi
+
+      if [[ ! -f "$script" ]]; then
+        if [[ "$rc_local_references_reset" != "true" ]]; then
+          /usr/local/sbin/ndb-ssh-reset-gate unblock || true
+          exit 0
+        fi
+
+        if [[ ! "$wait_seconds" =~ ^[0-9]+$ ]] || (( wait_seconds <= 0 )); then
+          wait_seconds=300
+        fi
+
+        for _ in $(seq 1 "$wait_seconds"); do
+          [[ -f "$script" ]] && break
+          sleep 1
+        done
+
+        if [[ ! -f "$script" ]]; then
+          echo "NDB reset script was referenced by /etc/rc.local but did not appear before timeout." >> "$log"
+          exit 1
+        fi
+      fi
+
+      run_reset_script
+
+      touch "$done_marker"
+      /usr/local/sbin/ndb-ssh-reset-gate unblock || true
+      echo "NDB injected password reset completed." >> "$log"
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Run NDB injected password reset before Debian-family SSH password authentication
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/sshd
+    regexp: '^\s*auth\s+required\s+pam_exec\.so\s+quiet(?:\s+(?:seteuid|expose_authtok))*\s+/usr/local/sbin/ndb-run-reset-password.*$'
+    line: 'auth required pam_exec.so quiet seteuid expose_authtok /usr/local/sbin/ndb-run-reset-password --pam-auth-token {{ ndb_drive_user }}'
+    insertbefore: '^@include\s+common-auth'
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Bypass Debian-family boot nologin for NDB drive user
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/sshd
+    regexp: '^\s*account\s+\[success=1\s+default=ignore\]\s+pam_succeed_if\.so\s+quiet\s+user\s+=\s+.*$'
+    line: 'account [success=1 default=ignore] pam_succeed_if.so quiet user = {{ ndb_drive_user }}'
+    insertbefore: '^\s*account\s+required\s+pam_nologin\.so'
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Normalize NDB drive user before Debian-family SSH account checks
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/sshd
+    regexp: '^\s*account\s+required\s+pam_exec\.so\s+quiet(?:\s+seteuid)?\s+/usr/local/sbin/ndb-run-reset-password.*$'
+    line: 'account required pam_exec.so quiet seteuid /usr/local/sbin/ndb-run-reset-password --pam-account {{ ndb_drive_user }}'
+    insertbefore: '^@include\s+common-account'
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Ensure SSH service is enabled on Debian family
+  ansible.builtin.service:
+    name: ssh
+    state: started
+    enabled: true
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Check Debian-family SSH socket activation unit
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - list-unit-files
+      - ssh.socket
+      - --no-legend
+  register: ndb_debian_ssh_socket_unit
+  changed_when: false
+  failed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Disable Debian-family SSH socket activation for NDB target clones
+  ansible.builtin.systemd:
+    name: ssh.socket
+    state: stopped
+    enabled: false
+    masked: false
+    daemon_reload: true
+  when:
+    - ndb_os_family == "Debian"
+    - ndb_debian_ssh_socket_unit.stdout | trim | length > 0
+  become: yes
+
+- name: Ensure Debian-family SSH service remains enabled after socket activation disablement
+  ansible.builtin.systemd:
+    name: ssh.service
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Install NDB SSH reset gate service (Debian family)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ndb-ssh-reset-gate.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=NDB SSH reset gate
+      Documentation=man:systemd.service(5)
+      DefaultDependencies=no
+      After=local-fs.target
+      Before=sysinit.target basic.target ndb-reset-password-compat.service networking.service NetworkManager.service systemd-networkd.service network-pre.target network.target network-online.target ssh.service sshd.service multi-user.target
+      Wants=network-pre.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/ndb-ssh-reset-gate block-if-reset-intent
+
+      [Install]
+      WantedBy=sysinit.target
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Enable NDB SSH reset gate service (Debian family)
+  ansible.builtin.systemd:
+    name: ndb-ssh-reset-gate.service
+    enabled: true
+    daemon_reload: true
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Ensure Debian-family networking service drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/networking.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Run NDB injected password reset before networking starts (Debian family)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/networking.service.d/10-ndb-reset-password.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Service]
+      ExecStartPre=/usr/local/sbin/ndb-run-reset-password
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Ensure Debian-family SSH service drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/ssh.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Run NDB injected password reset before SSH starts (Debian family)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ssh.service.d/10-ndb-reset-password.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Wants=ndb-reset-password-compat.service
+      After=ndb-reset-password-compat.service
+
+      [Service]
+      ExecStartPre=/usr/local/sbin/ndb-run-reset-password --wait-for-script 150
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Ensure Debian-family SSH alias drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/sshd.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Run NDB injected password reset before SSH alias starts (Debian family)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/sshd.service.d/10-ndb-reset-password.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Wants=ndb-reset-password-compat.service
+      After=ndb-reset-password-compat.service
+
+      [Service]
+      ExecStartPre=/usr/local/sbin/ndb-run-reset-password --wait-for-script 150
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Install NDB password reset compatibility service (Debian family)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ndb-reset-password-compat.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=NDB injected password reset compatibility
+      Documentation=man:systemd.service(5)
+      DefaultDependencies=no
+      Wants=ndb-ssh-reset-gate.service
+      After=local-fs.target ndb-ssh-reset-gate.service
+      Before=networking.service NetworkManager.service systemd-networkd.service network-pre.target network.target network-online.target ssh.service sshd.service multi-user.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/ndb-run-reset-password
+
+      [Install]
+      WantedBy=multi-user.target
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Enable NDB password reset compatibility service (Debian family)
+  ansible.builtin.systemd:
+    name: ndb-reset-password-compat.service
+    enabled: true
+    daemon_reload: true
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Ensure Debian-family D-Bus socket wants directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/sockets.target.wants
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Ensure Debian-family D-Bus service wants directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/basic.target.wants
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Ensure Debian-family D-Bus socket is pulled in during first boot
+  ansible.builtin.file:
+    src: /lib/systemd/system/dbus.socket
+    dest: /etc/systemd/system/sockets.target.wants/dbus.socket
+    state: link
+    force: true
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Ensure Debian-family D-Bus service is pulled in during first boot
+  ansible.builtin.file:
+    src: /lib/systemd/system/dbus.service
+    dest: /etc/systemd/system/basic.target.wants/dbus.service
+    state: link
+    force: true
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Ensure Debian-family D-Bus service is running
+  ansible.builtin.systemd:
+    name: dbus.service
+    state: started
+    daemon_reload: true
   when: ndb_os_family == "Debian"
   become: yes
 
@@ -166,11 +1133,56 @@
   when: ndb_os_family in ["RedHat", "Debian"]
   become: yes
 
+- name: Check firewalld SSH service rule
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - --permanent
+      - --query-service=ssh
+  register: ndb_firewalld_ssh_rule
+  changed_when: false
+  failed_when: false
+  when: ndb_os_family in ["RedHat", "Debian"]
+  become: yes
+
+- name: Allow SSH through firewalld
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - --permanent
+      - --add-service=ssh
+  register: ndb_firewalld_allow_ssh
+  changed_when: ndb_firewalld_allow_ssh.rc == 0
+  when:
+    - ndb_os_family in ["RedHat", "Debian"]
+    - ndb_firewalld_ssh_rule.rc != 0
+  become: yes
+
+- name: Reload firewalld after allowing SSH
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - --reload
+  changed_when: true
+  when:
+    - ndb_os_family in ["RedHat", "Debian"]
+    - ndb_firewalld_allow_ssh is changed
+  become: yes
+
 - name: Ensure chrony service is enabled
   ansible.builtin.service:
     name: "{{ 'chronyd' if ndb_os_family == 'RedHat' else 'chrony' }}"
     state: started
     enabled: true
+  become: yes
+
+- name: Expose Debian-family chrony config at NDB expected path
+  ansible.builtin.file:
+    src: /etc/chrony/chrony.conf
+    dest: /etc/chrony.conf
+    state: link
+    force: true
+  when: ndb_os_family == "Debian"
   become: yes
 
 - name: Ensure cron service is running
@@ -194,6 +1206,14 @@
     regexp: '^Defaults    requiretty'
     state: absent
     validate: 'visudo -cf %s'
+  become: yes
+
+- name: Ensure NDB drive user exists
+  ansible.builtin.user:
+    name: "{{ ndb_drive_user }}"
+    shell: /bin/bash
+    create_home: true
+    state: present
   become: yes
 
 - name: Ensure /tmp has correct permissions (1777 with sticky bit)

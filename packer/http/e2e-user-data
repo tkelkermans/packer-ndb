@@ -1,0 +1,16 @@
+#cloud-config
+# E2E source VMs boot from already-built images. Keep first boot offline-safe:
+# do not run package updates or install packages from external repositories here.
+users:
+  - name: packer
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    home: /home/packer
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+runcmd:
+  - |
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl enable sshd 2>/dev/null || systemctl enable ssh 2>/dev/null || true
+        systemctl start sshd 2>/dev/null || systemctl start ssh 2>/dev/null || true
+    fi

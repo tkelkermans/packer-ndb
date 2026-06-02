@@ -59,6 +59,48 @@ print_command() {
   printf '%s\n' "$rendered"
 }
 
+postgres_ha_components_summary() {
+  local row_json=$1
+  jq -r '
+    (.ha_components // {}) as $ha
+    | if ($ha | length) == 0 then
+        "none"
+      else
+        [$ha | to_entries[] | "\(.key) \(.value | join("/"))"] | join(", ")
+      end
+  ' <<<"$row_json"
+}
+
+postgres_base_image_suffix() {
+  local row_json=$1
+  local suffix="" package_pin package_suffix
+  if [[ "$(jq '(.ha_components // {}) | length' <<<"$row_json")" -gt 0 ]]; then
+    suffix="ha"
+  fi
+  package_pin=$(jq -r '.postgres_package_version_prefix // ""' <<<"$row_json")
+  if [[ -n "$package_pin" ]]; then
+    package_suffix="pg${package_pin//./-}"
+    if [[ -n "$suffix" ]]; then
+      suffix+="-${package_suffix}"
+    else
+      suffix="$package_suffix"
+    fi
+  fi
+  printf '%s' "$suffix"
+}
+
+combine_postgres_image_suffixes() {
+  local base_suffix=$1
+  local extension_suffix=$2
+  if [[ -n "$base_suffix" && -n "$extension_suffix" ]]; then
+    printf '%s-%s' "$base_suffix" "$extension_suffix"
+  elif [[ -n "$base_suffix" ]]; then
+    printf '%s' "$base_suffix"
+  else
+    printf '%s' "$extension_suffix"
+  fi
+}
+
 prompt_menu() {
   local title=$1
   shift
@@ -352,7 +394,7 @@ row_label() {
 
 print_row_details() {
   local row_json=$1
-  local role db_type os_type os_version db_version extensions reason deployments edition
+  local role db_type os_type os_version db_version extensions reason deployments edition version_range package_pin package_archive
   role=$(jq -r '.provisioning_role' <<<"$row_json")
   db_type=$(jq -r '.db_type' <<<"$row_json")
   os_type=$(jq -r '.os_type' <<<"$row_json")
@@ -364,6 +406,16 @@ print_row_details() {
   printf '  OS: %s %s\n' "$os_type" "$os_version"
 
   if [[ "$role" == "postgresql" ]]; then
+    version_range=$(jq -r '.postgres_qualified_version_range // ""' <<<"$row_json")
+    package_pin=$(jq -r '.postgres_package_version_prefix // ""' <<<"$row_json")
+    package_archive=$(jq -r '.postgres_package_use_archive // false' <<<"$row_json")
+    if [[ -n "$version_range" ]]; then
+      printf '  Qualified PostgreSQL version range: %s\n' "$version_range"
+    fi
+    if [[ -n "$package_pin" ]]; then
+      printf '  PostgreSQL package pin: %s%s\n' "$package_pin" "$( [[ "$package_archive" == "true" ]] && printf ' via PGDG archive' || printf '' )"
+    fi
+    printf '  HA profile components: %s\n' "$(postgres_ha_components_summary "$row_json")"
     extensions=$(jq -c '.qualified_extensions // []' <<<"$row_json" | join_json_array)
     if [[ -n "$extensions" ]]; then
       printf '  Qualified extensions: %s\n' "$extensions"
@@ -390,7 +442,7 @@ print_selected_recipe() {
   local source_summary=$3
   local extensions_summary=${4:-none}
   local image_suffix_summary=${5:-none}
-  local role db_type os_type os_version db_version ndb_version validation_summary manifest_summary edition deployments
+  local role db_type os_type os_version db_version ndb_version validation_summary manifest_summary edition deployments version_range package_pin package_archive
 
   role=$(jq -r '.provisioning_role' <<<"$row_json")
   db_type=$(jq -r '.db_type' <<<"$row_json")
@@ -425,6 +477,16 @@ print_selected_recipe() {
   printf '  Manifest: %s\n' "$manifest_summary"
 
   if [[ "$role" == "postgresql" ]]; then
+    version_range=$(jq -r '.postgres_qualified_version_range // ""' <<<"$row_json")
+    package_pin=$(jq -r '.postgres_package_version_prefix // ""' <<<"$row_json")
+    package_archive=$(jq -r '.postgres_package_use_archive // false' <<<"$row_json")
+    if [[ -n "$version_range" ]]; then
+      printf '  Qualified PostgreSQL version range: %s\n' "$version_range"
+    fi
+    if [[ -n "$package_pin" ]]; then
+      printf '  PostgreSQL package pin: %s%s\n' "$package_pin" "$( [[ "$package_archive" == "true" ]] && printf ' via PGDG archive' || printf '' )"
+    fi
+    printf '  HA profile components: %s\n' "$(postgres_ha_components_summary "$row_json")"
     printf '  PostgreSQL extensions: %s\n' "$extensions_summary"
     printf '  Image variant suffix: %s\n' "$image_suffix_summary"
   elif [[ "$role" == "mongodb" ]]; then
@@ -533,17 +595,29 @@ prompt_multi_select() {
 append_postgres_extension_args() {
   local row_json=$1
   local qualified_json installable_json qualified_installable_json advanced_json selected_json selected_csv warnings_json
-  local resolved_for_suffix_json image_suffix
+  local resolved_for_suffix_json base_image_suffix extension_image_suffix image_suffix
+  local version_range package_pin package_archive
   local options=() extension
 
   POSTGRES_EXTENSIONS_SUMMARY="none"
-  POSTGRES_IMAGE_SUFFIX_SUMMARY="none"
+  base_image_suffix=$(postgres_base_image_suffix "$row_json")
+  POSTGRES_IMAGE_SUFFIX_SUMMARY="${base_image_suffix:-none}"
   qualified_json=$(jq -c '.qualified_extensions // []' <<<"$row_json")
+  version_range=$(jq -r '.postgres_qualified_version_range // ""' <<<"$row_json")
+  package_pin=$(jq -r '.postgres_package_version_prefix // ""' <<<"$row_json")
+  package_archive=$(jq -r '.postgres_package_use_archive // false' <<<"$row_json")
   installable_json=$(postgres_installable_extensions_json)
   qualified_installable_json=$(jq -nc --argjson qualified "$qualified_json" --argjson installable "$installable_json" '$qualified | map(select(. as $name | $installable | index($name)))')
   advanced_json=$(jq -nc --argjson qualified "$qualified_json" --argjson installable "$installable_json" '$installable | map(select(. as $name | $qualified | index($name) | not))')
 
   printf '\nPostgreSQL extensions are optional. Default: none.\n'
+  if [[ -n "$version_range" ]]; then
+    printf 'Qualified PostgreSQL version range: %s\n' "$version_range"
+  fi
+  if [[ -n "$package_pin" ]]; then
+    printf 'PostgreSQL package pin: %s%s\n' "$package_pin" "$( [[ "$package_archive" == "true" ]] && printf ' via PGDG archive' || printf '' )"
+  fi
+  printf 'HA profile components: %s\n' "$(postgres_ha_components_summary "$row_json")"
   printf 'Qualified extensions: %s\n' "$(jq -r 'if length > 0 then join(", ") else "none" end' <<<"$qualified_json")"
 
   while IFS= read -r extension; do
@@ -563,7 +637,8 @@ append_postgres_extension_args() {
   if [[ -n "$selected_csv" ]]; then
     COMMAND_ARGS+=("--extensions" "$selected_csv")
     resolved_for_suffix_json=$(postgres_extensions_resolve_selection_json "$selected_csv" "$qualified_json")
-    image_suffix=$(postgres_extensions_image_name_suffix_json "$resolved_for_suffix_json")
+    extension_image_suffix=$(postgres_extensions_image_name_suffix_json "$resolved_for_suffix_json")
+    image_suffix=$(combine_postgres_image_suffixes "$base_image_suffix" "$extension_image_suffix")
     warnings_json=$(postgres_extensions_not_qualified_json "$selected_json" "$qualified_json")
     if [[ "$(jq 'length' <<<"$warnings_json")" -gt 0 ]]; then
       while IFS= read -r extension; do
@@ -571,14 +646,14 @@ append_postgres_extension_args() {
       done < <(jq -r '.[]' <<<"$warnings_json")
     fi
     printf 'Selected extensions: %s\n' "$(jq -r 'join(", ")' <<<"$selected_json")"
-    printf 'Image name suffix: %s\n' "$image_suffix"
+    printf 'Image name suffix: %s\n' "${image_suffix:-none}"
     POSTGRES_EXTENSIONS_SUMMARY="$(jq -r 'join(", ")' <<<"$selected_json")"
-    POSTGRES_IMAGE_SUFFIX_SUMMARY="$image_suffix"
+    POSTGRES_IMAGE_SUFFIX_SUMMARY="${image_suffix:-none}"
   else
     printf 'Selected extensions: none\n'
-    printf 'Image name suffix: none\n'
+    printf 'Image name suffix: %s\n' "${base_image_suffix:-none}"
     POSTGRES_EXTENSIONS_SUMMARY="none"
-    POSTGRES_IMAGE_SUFFIX_SUMMARY="none"
+    POSTGRES_IMAGE_SUFFIX_SUMMARY="${base_image_suffix:-none}"
   fi
 }
 

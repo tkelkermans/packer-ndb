@@ -2,6 +2,12 @@ postgres_extensions: []
 postgres_extensions_databases:
   - postgres
 postgres_extensions_allow_skips: false
+postgres_ha_components: {}
+postgres_ha_install_dir: /usr/local/bin
+postgres_etcd_download_base_url: https://github.com/etcd-io/etcd/releases/download
+postgres_qualified_version_range: ""
+postgres_package_version_prefix: ""
+postgres_package_use_archive: false
 postgres_extension_package_map:
   RedHat:
     pg_cron: "pg_cron_%s"
@@ -29,11 +35,6 @@ postgres_psql_bin_map:
 postgres_conf_path_map:
   RedHat: "/var/lib/pgsql/%s/data/postgresql.conf"
   Debian: "/etc/postgresql/%s/main/postgresql.conf"
-
-postgres_contrib_version_overrides:
-  RedHat:
-    "17": "17.6-1PGDG.rhel9"
-  Debian: {}
 
 postgres_extension_metadata:
   RedHat:

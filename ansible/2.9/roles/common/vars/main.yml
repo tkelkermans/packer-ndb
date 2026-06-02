@@ -7,10 +7,13 @@ common_packages:
   - dbus
   - flex
   - gcc
+  - logrotate
   - lsof
   - lvm2
+  - lsscsi
   - net-tools
   - openssh-server
+  - parted
   - perl
   - python3-pip
   - rsync
@@ -18,12 +21,15 @@ common_packages:
   - sshpass
   - tar
   - unzip
+  - util-linux
   - wget
   - zip
 redhat_packages:
   - bzip2-devel
+  - cronie
   - dbus-tools
   - gdbm-devel
+  - grubby
   - initscripts
   - ncurses-devel
   - NetworkManager-initscripts-updown
@@ -46,6 +52,7 @@ debian_packages:
   - cron
   - dbus
   - gnupg
+  - ifupdown
   - "{{ debian_libaio_package }}"
   - libbz2-dev
   - libgdbm-dev
@@ -56,10 +63,17 @@ debian_packages:
   - libssl-dev
   - libsystemd-dev
   - network-manager
+  - nftables
   - python3-dev
+  - python3-selinux
+  - systemd
   - tk-dev
   - xz-utils
   - zlib1g-dev
   - open-iscsi
   - libffi-dev
   - libicu-dev
+  - xfsprogs
+ndb_kernel_args:
+  - numa=off
+  - transparent_hugepage=never

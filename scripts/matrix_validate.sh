@@ -143,6 +143,35 @@ validate_matrix_file() {
               | to_entries[]
               | select((.key | nonempty_string | not) or ((.value | type) != "array") or any(.value[]; (nonempty_string | not)))
               | "\(ctx($idx; $entry)): ha_components['\''\(.key)'\''] must be a list of non-empty strings"
+            ),
+            (
+              select(($entry | has("postgres_qualified_version_range")) and (($entry.postgres_qualified_version_range | nonempty_string) | not))
+              | "\(ctx($idx; $entry)): '\''postgres_qualified_version_range'\'' must be a non-empty string when present"
+            ),
+            (
+              select(($entry | has("postgres_package_version_prefix")) and (($entry.postgres_package_version_prefix | nonempty_string) | not))
+              | "\(ctx($idx; $entry)): '\''postgres_package_version_prefix'\'' must be a non-empty string when present"
+            ),
+            (
+              select(($entry.postgres_package_version_prefix | type) == "string" and (($entry.postgres_package_version_prefix | test("^[0-9]+(\\.[0-9]+)*$")) | not))
+              | "\(ctx($idx; $entry)): '\''postgres_package_version_prefix'\'' must be a numeric version prefix such as 16.12"
+            ),
+            (
+              select(($entry.db_type // null) == "pgsql" and ($entry.db_version | type) == "string" and ($entry.postgres_package_version_prefix | type) == "string")
+              | select((($entry.postgres_package_version_prefix == $entry.db_version) or ($entry.postgres_package_version_prefix | startswith($entry.db_version + "."))) | not)
+              | "\(ctx($idx; $entry)): '\''postgres_package_version_prefix'\'' must match db_version major \($entry.db_version | tojson)"
+            ),
+            (
+              select(($entry.postgres_package_version_prefix | type) == "string" and (($entry.postgres_qualified_version_range // "") | nonempty_string | not))
+              | "\(ctx($idx; $entry)): PostgreSQL package pins must include '\''postgres_qualified_version_range'\'' for release-note traceability"
+            ),
+            (
+              select(($entry | has("postgres_package_use_archive")) and (($entry.postgres_package_use_archive | type) != "boolean"))
+              | "\(ctx($idx; $entry)): '\''postgres_package_use_archive'\'' must be true or false when present"
+            ),
+            (
+              select(($entry.postgres_package_use_archive // false) == true and (($entry.postgres_package_version_prefix // "") | nonempty_string | not))
+              | "\(ctx($idx; $entry)): '\''postgres_package_use_archive'\'' requires '\''postgres_package_version_prefix'\''"
             )
           end
       ),

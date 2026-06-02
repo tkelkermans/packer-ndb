@@ -371,6 +371,9 @@ cmd_record_artifact_validation() {
         artifact_status="failed"
       fi
     fi
+    if [[ "$exit_status" -ne 0 ]]; then
+      artifact_status="failed"
+    fi
   else
     artifact_status="failed"
     artifact_vm_name=""

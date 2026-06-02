@@ -410,10 +410,22 @@ function generate_ansible_vars_json() {
   local customization_profile_name=${10}
   local customization_profile_file=${11}
   local customization_repo_root=${12}
-  local qualified_extensions_json=${13:-[]}
+  local qualified_extensions_json="${13:-}"
+  local postgres_ha_components_json="${14:-}"
+  local postgres_qualified_version_range="${15:-}"
+  local postgres_package_version_prefix="${16:-}"
+  local postgres_package_use_archive="${17:-false}"
   local rhel_subscription_enabled=false
   local rhel_subscription_org_id=""
   local rhel_subscription_activation_key=""
+
+  if [[ -z "$qualified_extensions_json" ]]; then
+    qualified_extensions_json="[]"
+  fi
+
+  if [[ -z "$postgres_ha_components_json" ]]; then
+    postgres_ha_components_json="{}"
+  fi
 
   if [[ ( "${OS_TYPE:-}" == "RHEL" || "${OS_TYPE:-}" == "Red Hat Enterprise Linux (RHEL)" ) && -n "${NDB_RHEL_ORGID:-}" && -n "${NDB_RHEL_ACTIVATIONKEY:-}" ]]; then
     rhel_subscription_enabled=true
@@ -430,11 +442,15 @@ function generate_ansible_vars_json() {
     --arg customization_profile_name "$customization_profile_name" \
     --arg customization_profile_file "$customization_profile_file" \
     --arg customization_repo_root "$customization_repo_root" \
+    --arg postgres_qualified_version_range "$postgres_qualified_version_range" \
+    --arg postgres_package_version_prefix "$postgres_package_version_prefix" \
     --arg rhel_subscription_org_id "$rhel_subscription_org_id" \
     --arg rhel_subscription_activation_key "$rhel_subscription_activation_key" \
     --argjson validate_build "$validate_build" \
     --argjson postgres_extensions "${extensions_json:-[]}" \
-    --argjson qualified_extensions "${qualified_extensions_json:-[]}" \
+    --argjson qualified_extensions "$qualified_extensions_json" \
+    --argjson postgres_ha_components "$postgres_ha_components_json" \
+    --argjson postgres_package_use_archive "$postgres_package_use_archive" \
     --argjson mongodb_deployments "${mongodb_deployments_json:-[]}" \
     --argjson customization_enabled "$customization_enabled" \
     --argjson rhel_subscription_enabled "$rhel_subscription_enabled" \
@@ -447,6 +463,10 @@ function generate_ansible_vars_json() {
       postgres_extensions: $postgres_extensions,
       selected_extensions: $postgres_extensions,
       qualified_extensions: $qualified_extensions,
+      postgres_ha_components: $postgres_ha_components,
+      postgres_qualified_version_range: $postgres_qualified_version_range,
+      postgres_package_version_prefix: $postgres_package_version_prefix,
+      postgres_package_use_archive: $postgres_package_use_archive,
       mongodb_edition: $mongodb_edition,
       mongodb_deployments: $mongodb_deployments,
       customization_enabled: $customization_enabled,
@@ -593,6 +613,9 @@ Selection:
   Provisioning role: ${PROVISIONING_ROLE}
   Qualified PostgreSQL extensions: $(jq -r 'if length > 0 then join(", ") else "none" end' <<<"$POSTGRES_QUALIFIED_EXTENSIONS_JSON")
   Selected PostgreSQL extensions: $(jq -r 'if length > 0 then join(", ") else "none" end' <<<"$POSTGRES_SELECTED_EXTENSIONS_JSON")
+  Qualified PostgreSQL version range: ${POSTGRES_QUALIFIED_VERSION_RANGE:-not specified}
+  PostgreSQL package pin: ${POSTGRES_PACKAGE_VERSION_PREFIX:-latest available}
+  PostgreSQL archive repo for pin: $( [[ "$POSTGRES_PACKAGE_USE_ARCHIVE" == "true" ]] && echo "yes" || echo "no" )
 
 Resolved files:
   Matrix file: ${MATRIX_FILE}
@@ -940,6 +963,12 @@ fi
 ENGINE_NAME=$(echo "$CONFIG" | jq -r '.engine // ""')
 PROVISIONING_ROLE=$(echo "$CONFIG" | jq -r '.provisioning_role // "postgresql"')
 POSTGRES_QUALIFIED_EXTENSIONS_JSON=$(echo "$CONFIG" | jq -c '.qualified_extensions // []')
+POSTGRES_HA_COMPONENTS_JSON=$(echo "$CONFIG" | jq -c '.ha_components // {}')
+POSTGRES_QUALIFIED_VERSION_RANGE=$(echo "$CONFIG" | jq -r '.postgres_qualified_version_range // ""')
+POSTGRES_PACKAGE_VERSION_PREFIX=$(echo "$CONFIG" | jq -r '.postgres_package_version_prefix // ""')
+POSTGRES_PACKAGE_USE_ARCHIVE=$(echo "$CONFIG" | jq -r '.postgres_package_use_archive // false')
+PATRONI_VERSION=$(echo "$CONFIG" | jq -r '.patroni_version // .ha_components.patroni[0] // ""')
+ETCD_VERSION=$(echo "$CONFIG" | jq -r '.etcd_version // .ha_components.etcd[0] // ""')
 
 if [[ "$PROVISIONING_ROLE" != "postgresql" && "$POSTGRES_EXTENSIONS_SELECTION" != "none" ]]; then
   echo "Error: --extensions is only valid for PostgreSQL builds." >&2
@@ -969,7 +998,7 @@ fi
 
 MONGODB_EDITION=$(echo "$CONFIG" | jq -r '.mongodb_edition // "community"')
 MONGODB_DEPLOYMENTS_JSON=$(echo "$CONFIG" | jq -c '.deployment // []')
-ANSIBLE_VARS_JSON=$(generate_ansible_vars_json "$NDB_VERSION" "$DB_VERSION" "$POSTGRES_SELECTED_EXTENSIONS_JSON" "$DB_TYPE" "$VALIDATE_BUILD" "$PROVISIONING_ROLE" "$MONGODB_EDITION" "$MONGODB_DEPLOYMENTS_JSON" "$CUSTOMIZATION_ENABLED" "$CUSTOMIZATION_PROFILE_NAME" "$CUSTOMIZATION_PROFILE_FILE" "$SCRIPT_DIR" "$POSTGRES_QUALIFIED_EXTENSIONS_JSON")
+ANSIBLE_VARS_JSON=$(generate_ansible_vars_json "$NDB_VERSION" "$DB_VERSION" "$POSTGRES_SELECTED_EXTENSIONS_JSON" "$DB_TYPE" "$VALIDATE_BUILD" "$PROVISIONING_ROLE" "$MONGODB_EDITION" "$MONGODB_DEPLOYMENTS_JSON" "$CUSTOMIZATION_ENABLED" "$CUSTOMIZATION_PROFILE_NAME" "$CUSTOMIZATION_PROFILE_FILE" "$SCRIPT_DIR" "$POSTGRES_QUALIFIED_EXTENSIONS_JSON" "$POSTGRES_HA_COMPONENTS_JSON" "$POSTGRES_QUALIFIED_VERSION_RANGE" "$POSTGRES_PACKAGE_VERSION_PREFIX" "$POSTGRES_PACKAGE_USE_ARCHIVE")
 case "$PROVISIONING_ROLE" in
   postgresql|mongodb)
     ;;
@@ -982,9 +1011,6 @@ case "$PROVISIONING_ROLE" in
     exit 1
     ;;
 esac
-PATRONI_VERSION=$(echo "$CONFIG" | jq -r '.patroni_version // .ha_components.patroni[0] // ""')
-ETCD_VERSION=$(echo "$CONFIG" | jq -r '.etcd_version // .ha_components.etcd[0] // ""')
-
 # --- Get Source Image URI ---
 IMAGES_FILE="images.json"
 SOURCE_IMAGE_RESOLUTION_STATUS="resolved"
@@ -1132,7 +1158,33 @@ fi
 # --- Generate Image Name ---
 TIMESTAMP=$(date +%Y%m%d%H%M%S)
 IMAGE_VARIANT_SUFFIX=""
-POSTGRES_IMAGE_NAME_SUFFIX=$(postgres_extensions_image_name_suffix_json "$POSTGRES_SELECTED_EXTENSIONS_JSON")
+POSTGRES_HA_IMAGE_NAME_SUFFIX=""
+POSTGRES_PACKAGE_IMAGE_NAME_SUFFIX=""
+POSTGRES_EXTENSIONS_IMAGE_NAME_SUFFIX=$(postgres_extensions_image_name_suffix_json "$POSTGRES_SELECTED_EXTENSIONS_JSON")
+POSTGRES_IMAGE_NAME_SUFFIX=""
+if [[ "$PROVISIONING_ROLE" == "postgresql" && "$(jq 'length' <<<"$POSTGRES_HA_COMPONENTS_JSON")" -gt 0 ]]; then
+  POSTGRES_HA_IMAGE_NAME_SUFFIX="ha"
+fi
+if [[ "$PROVISIONING_ROLE" == "postgresql" && -n "$POSTGRES_PACKAGE_VERSION_PREFIX" ]]; then
+  POSTGRES_PACKAGE_IMAGE_NAME_SUFFIX="pg${POSTGRES_PACKAGE_VERSION_PREFIX//./-}"
+fi
+if [[ -n "$POSTGRES_HA_IMAGE_NAME_SUFFIX" ]]; then
+  POSTGRES_IMAGE_NAME_SUFFIX="$POSTGRES_HA_IMAGE_NAME_SUFFIX"
+fi
+if [[ -n "$POSTGRES_PACKAGE_IMAGE_NAME_SUFFIX" ]]; then
+  if [[ -n "$POSTGRES_IMAGE_NAME_SUFFIX" ]]; then
+    POSTGRES_IMAGE_NAME_SUFFIX+="-${POSTGRES_PACKAGE_IMAGE_NAME_SUFFIX}"
+  else
+    POSTGRES_IMAGE_NAME_SUFFIX="$POSTGRES_PACKAGE_IMAGE_NAME_SUFFIX"
+  fi
+fi
+if [[ -n "$POSTGRES_EXTENSIONS_IMAGE_NAME_SUFFIX" ]]; then
+  if [[ -n "$POSTGRES_IMAGE_NAME_SUFFIX" ]]; then
+    POSTGRES_IMAGE_NAME_SUFFIX+="-${POSTGRES_EXTENSIONS_IMAGE_NAME_SUFFIX}"
+  else
+    POSTGRES_IMAGE_NAME_SUFFIX="$POSTGRES_EXTENSIONS_IMAGE_NAME_SUFFIX"
+  fi
+fi
 if [[ -n "$POSTGRES_IMAGE_NAME_SUFFIX" ]]; then
   IMAGE_VARIANT_SUFFIX="-${POSTGRES_IMAGE_NAME_SUFFIX}"
 fi
@@ -1157,6 +1209,8 @@ if [[ "$WRITE_MANIFEST" == "true" && "$DRY_RUN" != "true" && "$PREFLIGHT_ONLY" !
   "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".extensions.qualified" --json-value "$POSTGRES_QUALIFIED_EXTENSIONS_JSON"
   "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".extensions.selected" --json-value "$POSTGRES_SELECTED_EXTENSIONS_JSON"
   "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".extensions.not_release_note_qualified" --json-value "$POSTGRES_EXTENSION_WARNINGS_JSON"
+  "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".postgres_ha_components" --json-value "$POSTGRES_HA_COMPONENTS_JSON"
+  "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".postgres_version" --json-value "$(jq -nc --arg qualified_range "$POSTGRES_QUALIFIED_VERSION_RANGE" --arg package_version_prefix "$POSTGRES_PACKAGE_VERSION_PREFIX" --argjson package_use_archive "$POSTGRES_PACKAGE_USE_ARCHIVE" '{qualified_range:$qualified_range, package_version_prefix:$package_version_prefix, package_use_archive:$package_use_archive}')"
 fi
 
 if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
@@ -1299,6 +1353,10 @@ if [[ "$VALIDATE_ARTIFACT" == "true" ]]; then
     --db-version "$DB_VERSION"
     --db-type "$DB_TYPE"
     --extensions "$POSTGRES_SELECTED_EXTENSIONS_JSON"
+    --postgres-ha-components "$POSTGRES_HA_COMPONENTS_JSON"
+    --postgres-qualified-version-range "$POSTGRES_QUALIFIED_VERSION_RANGE"
+    --postgres-package-version-prefix "$POSTGRES_PACKAGE_VERSION_PREFIX"
+    --postgres-package-use-archive "$POSTGRES_PACKAGE_USE_ARCHIVE"
     --provisioning-role "$PROVISIONING_ROLE"
     --mongodb-edition "$MONGODB_EDITION"
     --mongodb-deployments "$MONGODB_DEPLOYMENTS_JSON"

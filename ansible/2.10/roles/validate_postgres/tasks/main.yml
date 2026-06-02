@@ -7,6 +7,11 @@
   ansible.builtin.set_fact:
     validate_postgres_major_version: "{{ postgres_major_version | default(db_version) }}"
     validate_postgres_psql_binary: "{{ (postgres_psql_bin_map | default(validate_postgres_psql_bin_map)).get(ndb_os_family, 'psql') | replace('%s', (postgres_major_version | default(db_version))) }}"
+    validate_postgres_postgres_binary: "{{ (validate_postgres_postgres_bin_map.get(ndb_os_family, 'postgres')) | replace('%s', (postgres_major_version | default(db_version))) }}"
+    validate_postgres_pg_config_binary: "{{ (validate_postgres_pg_config_bin_map.get(ndb_os_family, 'pg_config')) | replace('%s', (postgres_major_version | default(db_version))) }}"
+    validate_postgres_service_check:
+      label: postgresql
+      unit: "{{ 'postgresql-' + (postgres_major_version | default(db_version)) + '.service' if ndb_os_family == 'RedHat' else 'postgresql.service' }}"
     validate_service_checks:
       - label: firewalld
         unit: firewalld.service
@@ -14,8 +19,6 @@
         unit: "{{ 'chronyd.service' if ndb_os_family == 'RedHat' else 'chrony.service' }}"
       - label: cron
         unit: "{{ 'crond.service' if ndb_os_family == 'RedHat' else 'cron.service' }}"
-      - label: postgresql
-        unit: "{{ 'postgresql-' + (postgres_major_version | default(db_version)) + '.service' if ndb_os_family == 'RedHat' else 'postgresql.service' }}"
 
 - name: Check required services are active
   ansible.builtin.command:
@@ -66,6 +69,307 @@
   loop_control:
     label: "{{ item.item.label }}"
 
+- name: Check firewalld SSH service rule
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - --query-service=ssh
+  register: validate_firewalld_ssh_rule
+  changed_when: false
+  failed_when: false
+  when: ndb_os_family in ["RedHat", "Debian"]
+  become: yes
+
+- name: Assert firewalld allows SSH
+  ansible.builtin.assert:
+    that:
+      - validate_firewalld_ssh_rule.rc == 0
+    fail_msg: "Expected firewalld to allow SSH so saved image clones are reachable"
+  when: ndb_os_family in ["RedHat", "Debian"]
+
+- name: Check Debian-family NDB chrony config path
+  ansible.builtin.stat:
+    path: /etc/chrony.conf
+    follow: true
+  register: validate_ndb_chrony_conf
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Assert Debian-family NDB chrony config path exists
+  ansible.builtin.assert:
+    that:
+      - validate_ndb_chrony_conf.stat.exists
+    fail_msg: "Expected /etc/chrony.conf to exist for NDB chrony configuration compatibility"
+  when: ndb_os_family == "Debian"
+
+- name: Validate Debian-family D-Bus first-boot readiness
+  ansible.builtin.command:
+    argv:
+      - bash
+      - -lc
+      - "test -S /run/dbus/system_bus_socket && systemctl is-active dbus.service | grep -Fx active && test -L /etc/systemd/system/sockets.target.wants/dbus.socket && test -L /etc/systemd/system/basic.target.wants/dbus.service && test \"$(readlink /etc/systemd/system/sockets.target.wants/dbus.socket)\" = /lib/systemd/system/dbus.socket && test \"$(readlink /etc/systemd/system/basic.target.wants/dbus.service)\" = /lib/systemd/system/dbus.service"
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Validate Debian-family captured image has no stale NDB reset script
+  ansible.builtin.command:
+    argv:
+      - bash
+      - -lc
+      - "test ! -e /bin/reset_password.sh"
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Validate Debian-family rc.local has no stale NDB reset hook
+  ansible.builtin.command:
+    argv:
+      - bash
+      - -lc
+      - "! grep -q '/bin/reset_password.sh' /etc/rc.local 2>/dev/null"
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Validate Debian-family NDB reset helper wait mode
+  ansible.builtin.command:
+    argv:
+      - /usr/local/sbin/ndb-run-reset-password
+      - --wait-for-script
+      - "1"
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Validate Debian-family SSH reset port gate helper
+  ansible.builtin.command:
+    argv:
+      - bash
+      - -lc
+      - "command -v nft >/dev/null && test -x /usr/local/sbin/ndb-ssh-reset-gate && grep -F 'block)' /usr/local/sbin/ndb-ssh-reset-gate && grep -F 'NDB PAM auth waiting for late injected reset script' /usr/local/sbin/ndb-run-reset-password && /usr/local/sbin/ndb-ssh-reset-gate validate-block-rule && /usr/local/sbin/ndb-ssh-reset-gate block-if-reset-intent && ! nft list table inet ndb_ssh_reset_gate >/dev/null 2>&1"
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Validate Debian-family SSH reset port gate service
+  ansible.builtin.command:
+    argv:
+      - bash
+      - -lc
+      - "systemctl is-enabled ndb-ssh-reset-gate.service | grep -Fx enabled && systemctl cat ndb-ssh-reset-gate.service | grep -F 'Type=oneshot' && systemctl cat ndb-ssh-reset-gate.service | grep -F 'ExecStart=/usr/local/sbin/ndb-ssh-reset-gate block-if-reset-intent' && ! systemctl cat ndb-ssh-reset-gate.service | grep -F 'watch-reset-intent' && systemctl cat ndb-ssh-reset-gate.service | grep -F 'Before=sysinit.target basic.target' && ! systemctl cat ndb-ssh-reset-gate.service | grep -E 'Before=.*firewalld.service' && test -L /etc/systemd/system/sysinit.target.wants/ndb-ssh-reset-gate.service"
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Validate Debian-family SSH PAM reset gate
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -E
+      - --quiet
+      - '^[[:space:]]*auth[[:space:]]+required[[:space:]]+pam_exec\.so[[:space:]]+quiet[[:space:]]+seteuid[[:space:]]+expose_authtok[[:space:]]+/usr/local/sbin/ndb-run-reset-password[[:space:]]+--pam-auth-token[[:space:]]+era[[:space:]]*$'
+      - /etc/pam.d/sshd
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Validate Debian-family SSH PAM nologin bypass for NDB drive user
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -E
+      - --quiet
+      - '^[[:space:]]*account[[:space:]]+\[success=1[[:space:]]+default=ignore\][[:space:]]+pam_succeed_if\.so[[:space:]]+quiet[[:space:]]+user[[:space:]]+=[[:space:]]+era[[:space:]]*$'
+      - /etc/pam.d/sshd
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Validate Debian-family SSH PAM account normalization gate
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -E
+      - --quiet
+      - '^[[:space:]]*account[[:space:]]+required[[:space:]]+pam_exec\.so[[:space:]]+quiet[[:space:]]+seteuid[[:space:]]+/usr/local/sbin/ndb-run-reset-password[[:space:]]+--pam-account[[:space:]]+era[[:space:]]*$'
+      - /etc/pam.d/sshd
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Validate Debian-family reset helper normalizes PAM account state
+  ansible.builtin.command:
+    argv:
+      - bash
+      - -lc
+      - "grep -F 'pam_account_user=' /usr/local/sbin/ndb-run-reset-password && grep -F 'usermod --unlock' /usr/local/sbin/ndb-run-reset-password && grep -F 'chage -E -1 -I -1 -m 0 -M 99999' /usr/local/sbin/ndb-run-reset-password && grep -F 'NDB PAM account normalization completed' /usr/local/sbin/ndb-run-reset-password && grep -F 'NDB injected password reset completed during PAM account check' /usr/local/sbin/ndb-run-reset-password"
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Validate Debian-family SSH reset gate drop-ins
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -F
+      - --quiet
+      - --
+      - --wait-for-script 150
+      - "{{ item }}"
+  loop:
+    - /etc/systemd/system/ssh.service.d/10-ndb-reset-password.conf
+    - /etc/systemd/system/sshd.service.d/10-ndb-reset-password.conf
+  when: ndb_os_family == "Debian"
+  changed_when: false
+  become: yes
+
+- name: Check Debian-family SSH socket activation state
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - ssh.socket
+  register: validate_ndb_ssh_socket_state
+  failed_when: false
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Assert Debian-family SSH socket activation cannot bypass reset gate
+  ansible.builtin.assert:
+    that:
+      - validate_ndb_ssh_socket_state.rc != 0 or validate_ndb_ssh_socket_state.stdout == "disabled"
+    fail_msg: "Expected ssh.socket to be disabled or absent so socket activation cannot bypass the NDB reset gate"
+  when: ndb_os_family == "Debian"
+
+- name: Check Debian-family SSH service enablement after socket activation disablement
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - ssh.service
+  register: validate_ndb_ssh_service_state
+  failed_when: false
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Assert Debian-family SSH service is enabled after socket activation disablement
+  ansible.builtin.assert:
+    that:
+      - validate_ndb_ssh_service_state.rc == 0
+      - validate_ndb_ssh_service_state.stdout == "enabled"
+    fail_msg: "Expected ssh.service to be enabled so Debian-family images expose SSH after ssh.socket is disabled"
+  when: ndb_os_family == "Debian"
+
+- name: Read GRUB defaults for NDB kernel arguments
+  ansible.builtin.slurp:
+    src: /etc/default/grub
+  register: validate_ndb_grub_defaults
+  become: yes
+
+- name: Assert GRUB defaults include NDB kernel arguments
+  ansible.builtin.assert:
+    that:
+      - item in (validate_ndb_grub_defaults.content | b64decode)
+    fail_msg: "Expected /etc/default/grub to include {{ item }} for NDB Linux prechecks"
+  loop: "{{ validate_ndb_kernel_args }}"
+
+- name: Read Debian GRUB config for NDB root disk mapping
+  ansible.builtin.slurp:
+    src: /boot/grub/grub.cfg
+  register: validate_ndb_grub_cfg
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Assert Debian GRUB uses device paths for NDB root disk mapping
+  ansible.builtin.assert:
+    that:
+      - "'root=/dev/' in (validate_ndb_grub_cfg.content | b64decode)"
+      - "'root=PARTUUID=' not in (validate_ndb_grub_cfg.content | b64decode)"
+    fail_msg: "Expected Debian GRUB to use root=/dev/... instead of root=PARTUUID=... so NDB can map the root disk"
+  when: ndb_os_family == "Debian"
+
+- name: Validate NDB storage mapping tools
+  ansible.builtin.command:
+    argv:
+      - bash
+      - -lc
+      - "command -v parted && command -v lsblk && command -v lsscsi"
+  changed_when: false
+  become: yes
+
+- name: Validate Debian-family NDB Era device-mapper helper
+  ansible.builtin.command:
+    argv:
+      - bash
+      - -lc
+      - "test -x /usr/local/sbin/ndb-era-dm-compat && grep -F 'ntnx_era_agent_vg_*' /usr/local/sbin/ndb-era-dm-compat && grep -F '/dev/${kernel}..' /usr/local/sbin/ndb-era-dm-compat && grep -F 'ln -s \"$dm_dev\" \"$alias\"' /usr/local/sbin/ndb-era-dm-compat && ! grep -F 'mknod ' /usr/local/sbin/ndb-era-dm-compat && grep -F '99-ndb-era-dm-serial.rules' /usr/local/sbin/ndb-era-dm-compat && /usr/local/sbin/ndb-era-dm-compat"
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Validate Debian-family NDB Era device-mapper timer
+  ansible.builtin.command:
+    argv:
+      - bash
+      - -lc
+      - "systemctl is-enabled ndb-era-dm-compat.timer | grep -Fx enabled && systemctl cat ndb-era-dm-compat.service | grep -F 'ExecStart=/usr/local/sbin/ndb-era-dm-compat' && systemctl cat ndb-era-dm-compat.timer | grep -F 'OnBootSec=30s' && systemctl cat ndb-era-dm-compat.timer | grep -F 'OnUnitActiveSec=10s' && systemctl cat ndb-era-dm-compat.timer | grep -F 'WantedBy=timers.target'"
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Check packaged PostgreSQL service is inactive
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ validate_postgres_service_check.unit }}"
+  register: validate_postgres_service_active
+  changed_when: false
+  failed_when: false
+  become: yes
+
+- name: Assert packaged PostgreSQL service is inactive
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_service_active.stdout != "active"
+    fail_msg: "Expected packaged PostgreSQL service {{ validate_postgres_service_check.unit }} to be inactive so NDB can bind port 5432, got {{ validate_postgres_service_active.stdout | default('') | trim }}"
+
+- name: Check packaged PostgreSQL service is disabled
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - "{{ validate_postgres_service_check.unit }}"
+  register: validate_postgres_service_enabled
+  changed_when: false
+  failed_when: false
+  become: yes
+
+- name: Assert packaged PostgreSQL service is disabled
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_service_enabled.stdout in validate_disabled_status_values
+    fail_msg: "Expected packaged PostgreSQL service {{ validate_postgres_service_check.unit }} to be disabled so NDB-provisioned VMs boot without a default PostgreSQL listener, got {{ validate_postgres_service_enabled.stdout | default('') | trim }}"
+
+- name: Check PostgreSQL listener port is free
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ss -H -ltn "( sport = :{{ listener_port | default(5432) }} )"
+  args:
+    executable: /bin/bash
+  register: validate_postgres_listener_check
+  changed_when: false
+  become: yes
+
+- name: Assert PostgreSQL listener port is free
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_listener_check.stdout | trim == ""
+    fail_msg: "Expected no packaged PostgreSQL process to listen on port {{ listener_port | default(5432) }}, got {{ validate_postgres_listener_check.stdout | trim }}"
+
 - name: Check NDB sudoers drop-in exists
   ansible.builtin.stat:
     path: "{{ validate_sudoers_path }}"
@@ -107,12 +411,11 @@
       - validate_psql_version.stdout is regex("(^|\\s)" ~ validate_postgres_major_version ~ "(\\.|\\s|$)")
     fail_msg: "Expected psql version {{ validate_postgres_major_version }}, got {{ validate_psql_version.stdout | default('') | trim }}"
 
-- name: Check PostgreSQL server version
+- name: Check PostgreSQL server binary version
   ansible.builtin.command:
     argv:
-      - "{{ validate_postgres_psql_binary }}"
-      - -Atqc
-      - SHOW server_version;
+      - "{{ validate_postgres_postgres_binary }}"
+      - --version
   register: validate_postgres_server_version
   changed_when: false
   become: yes
@@ -121,8 +424,99 @@
 - name: Assert PostgreSQL server version matches matrix selection
   ansible.builtin.assert:
     that:
-      - validate_postgres_server_version.stdout is regex("^" ~ validate_postgres_major_version ~ "(\\.|$)")
+      - validate_postgres_server_version.stdout is regex("(^|\\s)" ~ validate_postgres_major_version ~ "(\\.|\\s|$)")
     fail_msg: "Expected PostgreSQL server version {{ validate_postgres_major_version }}, got {{ validate_postgres_server_version.stdout | default('') | trim }}"
+
+- name: Assert PostgreSQL server version matches release-note package pin
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_server_version.stdout is regex("(^|\\s)" ~ (postgres_package_version_prefix | regex_escape) ~ "(\\.|\\s|\\-|$)")
+    fail_msg: "Expected PostgreSQL {{ postgres_package_version_prefix }} from NDB-qualified range {{ postgres_qualified_version_range | default('not specified') }}, got {{ validate_postgres_server_version.stdout | default('') | trim }}"
+  when: postgres_package_version_prefix | default('') | length > 0
+
+- name: Check PostgreSQL pg_config version
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_postgres_pg_config_binary }}"
+      - --version
+  register: validate_postgres_pg_config_version
+  changed_when: false
+  become: yes
+
+- name: Assert PostgreSQL pg_config version matches matrix selection
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_pg_config_version.stdout is regex("(^|\\s)" ~ validate_postgres_major_version ~ "(\\.|\\s|$)")
+    fail_msg: "Expected pg_config version {{ validate_postgres_major_version }}, got {{ validate_postgres_pg_config_version.stdout | default('') | trim }}"
+
+- name: Assert PostgreSQL pg_config version matches release-note package pin
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_pg_config_version.stdout is regex("(^|\\s)" ~ (postgres_package_version_prefix | regex_escape) ~ "(\\.|\\s|\\-|$)")
+    fail_msg: "Expected pg_config {{ postgres_package_version_prefix }} from NDB-qualified range {{ postgres_qualified_version_range | default('not specified') }}, got {{ validate_postgres_pg_config_version.stdout | default('') | trim }}"
+  when: postgres_package_version_prefix | default('') | length > 0
+
+- name: Derive expected PostgreSQL HA component versions
+  ansible.builtin.set_fact:
+    validate_postgres_patroni_versions: "{{ (postgres_ha_components | default({})).get('patroni', []) }}"
+    validate_postgres_etcd_versions: "{{ (postgres_ha_components | default({})).get('etcd', []) }}"
+    validate_postgres_haproxy_versions: "{{ (postgres_ha_components | default({})).get('haproxy', []) }}"
+    validate_postgres_keepalived_versions: "{{ (postgres_ha_components | default({})).get('keepalived', []) }}"
+
+- name: Select expected PostgreSQL HA component versions
+  ansible.builtin.set_fact:
+    validate_postgres_patroni_version: "{{ validate_postgres_patroni_versions[0] if validate_postgres_patroni_versions | length > 0 else '' }}"
+    validate_postgres_etcd_version: "{{ validate_postgres_etcd_versions[0] if validate_postgres_etcd_versions | length > 0 else '' }}"
+
+- name: Check Patroni version
+  ansible.builtin.command:
+    argv:
+      - patroni
+      - --version
+  register: validate_patroni_version
+  changed_when: false
+  when: validate_postgres_patroni_version | length > 0
+
+- name: Assert Patroni version matches matrix selection
+  ansible.builtin.assert:
+    that:
+      - validate_patroni_version.stdout is regex("patroni\\s+" ~ (validate_postgres_patroni_version | regex_escape))
+    fail_msg: "Expected Patroni {{ validate_postgres_patroni_version }}, got {{ validate_patroni_version.stdout | default(validate_patroni_version.stderr | default('')) | trim }}"
+  when: validate_postgres_patroni_version | length > 0
+
+- name: Check etcd version
+  ansible.builtin.command:
+    argv:
+      - etcd
+      - --version
+  register: validate_etcd_version
+  changed_when: false
+  when: validate_postgres_etcd_version | length > 0
+
+- name: Assert etcd version matches matrix selection
+  ansible.builtin.assert:
+    that:
+      - validate_etcd_version.stdout is regex("etcd Version:\\s+" ~ (validate_postgres_etcd_version | regex_escape))
+    fail_msg: "Expected etcd {{ validate_postgres_etcd_version }}, got {{ validate_etcd_version.stdout | default(validate_etcd_version.stderr | default('')) | trim }}"
+  when: validate_postgres_etcd_version | length > 0
+
+- name: Check HAProxy is installed
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/haproxy
+      - -v
+  register: validate_haproxy_version
+  changed_when: false
+  when: validate_postgres_haproxy_versions | length > 0
+
+- name: Check Keepalived is installed
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/keepalived
+      - --version
+  register: validate_keepalived_version
+  changed_when: false
+  when: validate_postgres_keepalived_versions | length > 0
 
 - name: Initialize PostgreSQL extension validation planning
   ansible.builtin.set_fact:
@@ -166,29 +560,29 @@
     - postgres_extensions | default([]) | length > 0
     - not validate_postgres_extensions_allow_skips | default(postgres_extensions_allow_skips | default(false)) | bool
 
-- name: Check expected PostgreSQL extensions exist in target databases
+- name: Get PostgreSQL shared extension directory
   ansible.builtin.command:
     argv:
-      - "{{ validate_postgres_psql_binary }}"
-      - -Atq
-      - -d
-      - "{{ item.0 }}"
-      - -c
-      - "SELECT 1 FROM pg_extension WHERE extname = '{{ item.1 }}';"
-  loop: "{{ (postgres_extensions_databases | default(['postgres'])) | product(validate_expected_postgres_extensions | default([])) | list }}"
-  register: validate_extension_presence_results
+      - "{{ validate_postgres_pg_config_binary }}"
+      - --sharedir
+  register: validate_postgres_sharedir
   changed_when: false
-  become: yes
-  become_user: postgres
   when:
-    - postgres_extensions_databases | default([]) | length > 0
     - validate_expected_postgres_extensions | default([]) | length > 0
 
-- name: Assert expected PostgreSQL extensions exist in target databases
+- name: Check expected PostgreSQL extension control files exist
+  ansible.builtin.stat:
+    path: "{{ validate_postgres_sharedir.stdout | trim }}/extension/{{ item }}.control"
+  loop: "{{ validate_expected_postgres_extensions | default([]) }}"
+  register: validate_extension_control_results
+  when:
+    - validate_expected_postgres_extensions | default([]) | length > 0
+
+- name: Assert expected PostgreSQL extension control files exist
   ansible.builtin.assert:
     that:
-      - item.stdout | trim == "1"
-    fail_msg: "Expected extension {{ item.item.1 }} in database {{ item.item.0 }}, but it was not found"
-  loop: "{{ validate_extension_presence_results.results | default([]) }}"
+      - item.stat.exists
+    fail_msg: "Expected PostgreSQL extension control file for {{ item.item }} under {{ validate_postgres_sharedir.stdout | trim }}/extension"
+  loop: "{{ validate_extension_control_results.results | default([]) }}"
   loop_control:
-    label: "{{ item.item.0 }} -> {{ item.item.1 }}"
+    label: "{{ item.item }}"

@@ -49,6 +49,18 @@
     - ndb_os_family == "RedHat"
     - rhel_subscription_enabled | default(false) | bool
 
+- name: Enable RHEL CodeReady Builder repository
+  become: yes
+  ansible.builtin.command:
+    argv:
+      - subscription-manager
+      - repos
+      - "--enable=codeready-builder-for-rhel-{{ ansible_facts['distribution_major_version'] }}-{{ ansible_facts['architecture'] }}-rpms"
+  changed_when: false
+  when:
+    - ndb_os_family == "RedHat"
+    - rhel_subscription_enabled | default(false) | bool
+
 - name: Enable activation-key configured RHEL repositories
   become: yes
   ansible.builtin.command:

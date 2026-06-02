@@ -10,6 +10,10 @@ NDB_VERSION=""
 DB_VERSION=""
 DB_TYPE="pgsql"
 EXTENSIONS_JSON="[]"
+POSTGRES_HA_COMPONENTS_JSON="{}"
+POSTGRES_QUALIFIED_VERSION_RANGE=""
+POSTGRES_PACKAGE_VERSION_PREFIX=""
+POSTGRES_PACKAGE_USE_ARCHIVE=false
 PROVISIONING_ROLE=""
 MONGODB_EDITION="community"
 MONGODB_DEPLOYMENTS_JSON="[]"
@@ -37,6 +41,14 @@ Options:
   --db-version VERSION   PostgreSQL major version expected in the image
   --db-type TYPE         Database type expected in the image (default: pgsql)
   --extensions JSON      Selected PostgreSQL extensions JSON (default: [])
+  --postgres-ha-components JSON
+                         PostgreSQL HA components JSON from the matrix row (default: {})
+  --postgres-qualified-version-range RANGE
+                         Human-readable PostgreSQL version range from the release notes
+  --postgres-package-version-prefix VERSION
+                         Required installed PostgreSQL patch prefix, for example 16.12
+  --postgres-package-use-archive BOOL
+                         Whether the build used the PGDG archive repository for the pin
   --provisioning-role ROLE
                          Provisioning role from the selected matrix row
   --mongodb-edition EDITION
@@ -58,6 +70,11 @@ Options:
 Environment:
   NDB_ARTIFACT_PRIVATE_KEY_PATH  Override packer/id_rsa for validation SSH
   NDB_ARTIFACT_PUBLIC_KEY_PATH   Override packer/id_rsa.pub for cloud-init
+  NDB_ARTIFACT_USER_DATA_TEMPLATE
+                                  Override saved-artifact validation cloud-init
+                                  (default: packer/http/e2e-user-data)
+  NDB_ARTIFACT_SSH_MAX_POLLS     SSH readiness attempts before failing (default: 90)
+  NDB_ARTIFACT_SSH_POLL_SECONDS  Seconds between SSH readiness attempts (default: 10)
 EOF
 }
 
@@ -103,6 +120,11 @@ json_mongodb_deployments() {
   jq -ce 'if type == "array" and all(.[]; type == "string" and (. == "single-instance" or . == "replica-set" or . == "sharded-cluster")) then . else error("expected MongoDB deployment array") end' <<<"$json"
 }
 
+json_postgres_ha_components() {
+  local json=$1
+  jq -ce 'if type == "object" and all(.[]; type == "array" and all(.[]; type == "string" and length > 0)) then . else error("expected PostgreSQL HA components object") end' <<<"$json"
+}
+
 base64_no_wrap() {
   base64 | tr -d '\n'
 }
@@ -130,6 +152,39 @@ wait_required_task_from_response() {
     return 1
   fi
   prism_wait_task "$task_uuid" >/dev/null
+}
+
+guest_boot_ready_probe() {
+  cat <<'EOF'
+test -S /run/dbus/system_bus_socket || exit 1
+state=$(systemctl is-system-running 2>/dev/null || true)
+case "$state" in
+  running|degraded) ;;
+  *) exit 1 ;;
+esac
+if command -v cloud-init >/dev/null 2>&1; then
+  cloud_state=$(cloud-init status 2>/dev/null || true)
+  case "$cloud_state" in
+    *"status: running"*) exit 1 ;;
+  esac
+fi
+EOF
+}
+
+wait_guest_boot_ready() {
+  local user=$1 ip=$2
+  local i
+
+  printf 'Waiting for systemd/D-Bus readiness on %s...\n' "$ip"
+  for i in $(seq 1 90); do
+    if ssh "${SSH_COMMON_ARGS[@]}" "${user}@${ip}" "$(guest_boot_ready_probe)" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 10
+  done
+
+  ssh "${SSH_COMMON_ARGS[@]}" "${user}@${ip}" "systemctl is-system-running || true; ls -l /run/dbus/system_bus_socket || true; cloud-init status || true" >&2 || true
+  ssh "${SSH_COMMON_ARGS[@]}" "${user}@${ip}" "$(guest_boot_ready_probe)" >/dev/null
 }
 
 write_result() {
@@ -237,6 +292,26 @@ while [[ $# -gt 0 ]]; do
       EXTENSIONS_JSON=$2
       shift
       ;;
+    --postgres-ha-components)
+      require_option_value "$1" "$#"
+      POSTGRES_HA_COMPONENTS_JSON=$2
+      shift
+      ;;
+    --postgres-qualified-version-range)
+      require_option_value "$1" "$#"
+      POSTGRES_QUALIFIED_VERSION_RANGE=$2
+      shift
+      ;;
+    --postgres-package-version-prefix)
+      require_option_value "$1" "$#"
+      POSTGRES_PACKAGE_VERSION_PREFIX=$2
+      shift
+      ;;
+    --postgres-package-use-archive)
+      require_option_value "$1" "$#"
+      POSTGRES_PACKAGE_USE_ARCHIVE=$2
+      shift
+      ;;
     --provisioning-role)
       require_option_value "$1" "$#"
       PROVISIONING_ROLE=$2
@@ -304,6 +379,7 @@ fi
 CUSTOMIZATION_ROLES_PATH_ENV=${CUSTOMIZATION_ROLES_PATH_ENV#ANSIBLE_ROLES_PATH=}
 
 EXTENSIONS_JSON=$(json_string_array "$EXTENSIONS_JSON")
+POSTGRES_HA_COMPONENTS_JSON=$(json_postgres_ha_components "$POSTGRES_HA_COMPONENTS_JSON")
 MONGODB_DEPLOYMENTS_JSON=$(json_mongodb_deployments "$MONGODB_DEPLOYMENTS_JSON")
 PROVISIONING_ROLE=${PROVISIONING_ROLE:-$([[ "$DB_TYPE" == "mongodb" ]] && echo "mongodb" || echo "postgresql")}
 case "$PROVISIONING_ROLE" in
@@ -327,7 +403,9 @@ require_command jq curl ssh ansible-playbook base64
 
 PRIVATE_KEY_PATH="${NDB_ARTIFACT_PRIVATE_KEY_PATH:-$ROOT_DIR/packer/id_rsa}"
 PUBLIC_KEY_PATH="${NDB_ARTIFACT_PUBLIC_KEY_PATH:-$ROOT_DIR/packer/id_rsa.pub}"
-USER_DATA_TEMPLATE="$ROOT_DIR/packer/http/user-data"
+SSH_MAX_POLLS="${NDB_ARTIFACT_SSH_MAX_POLLS:-90}"
+SSH_POLL_SECONDS="${NDB_ARTIFACT_SSH_POLL_SECONDS:-10}"
+USER_DATA_TEMPLATE="${NDB_ARTIFACT_USER_DATA_TEMPLATE:-$ROOT_DIR/packer/http/e2e-user-data}"
 ANSIBLE_DIR="$ROOT_DIR/ansible/$NDB_VERSION"
 ANSIBLE_CFG_PATH="$ANSIBLE_DIR/ansible.cfg"
 POSTGRES_DEFAULTS="$ANSIBLE_DIR/roles/postgres/defaults/main.yml"
@@ -336,6 +414,14 @@ require_file "$PRIVATE_KEY_PATH"
 require_file "$PUBLIC_KEY_PATH"
 require_file "$USER_DATA_TEMPLATE"
 require_file "$ANSIBLE_CFG_PATH"
+if ! [[ "$SSH_MAX_POLLS" =~ ^[0-9]+$ ]] || (( SSH_MAX_POLLS < 1 )); then
+  printf 'Error: NDB_ARTIFACT_SSH_MAX_POLLS must be a positive integer.\n' >&2
+  exit 1
+fi
+if ! [[ "$SSH_POLL_SECONDS" =~ ^[0-9]+$ ]] || (( SSH_POLL_SECONDS < 1 )); then
+  printf 'Error: NDB_ARTIFACT_SSH_POLL_SECONDS must be a positive integer.\n' >&2
+  exit 1
+fi
 if [[ "$LOAD_POSTGRES_DEFAULTS" == "true" ]]; then
   require_file "$POSTGRES_DEFAULTS"
 fi
@@ -471,13 +557,22 @@ SSH_COMMON_ARGS=(
   -o BatchMode=yes
   -o ConnectTimeout=10
 )
-for _ in {1..90}; do
+SSH_READY=false
+for ((attempt = 1; attempt <= SSH_MAX_POLLS; attempt++)); do
   if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" true >/dev/null 2>&1; then
+    SSH_READY=true
     break
   fi
-  sleep 10
+  if (( attempt % 6 == 0 || attempt == SSH_MAX_POLLS )); then
+    printf 'Still waiting for SSH on %s (attempt %s/%s)...\n' "$VM_IP" "$attempt" "$SSH_MAX_POLLS"
+  fi
+  sleep "$SSH_POLL_SECONDS"
 done
-ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" true >/dev/null
+if [[ "$SSH_READY" != "true" ]]; then
+  printf 'Error: timed out waiting for SSH on validation VM %s after %s attempts.\n' "$VM_IP" "$SSH_MAX_POLLS" >&2
+  exit 1
+fi
+wait_guest_boot_ready packer "$VM_IP"
 
 cat > "$ARTIFACT_VALIDATE_WORKDIR/inventory" <<EOF
 [validation]
@@ -501,10 +596,14 @@ jq -n \
   --arg db_type "$DB_TYPE" \
   --arg provisioning_role "$PROVISIONING_ROLE" \
   --arg mongodb_edition "$MONGODB_EDITION" \
+  --arg postgres_qualified_version_range "$POSTGRES_QUALIFIED_VERSION_RANGE" \
+  --arg postgres_package_version_prefix "$POSTGRES_PACKAGE_VERSION_PREFIX" \
   --arg customization_profile_name "$CUSTOMIZATION_PROFILE_NAME" \
   --arg customization_profile_file "$CUSTOMIZATION_PROFILE_FILE" \
   --arg customization_repo_root "$ROOT_DIR" \
   --argjson postgres_extensions "$EXTENSIONS_JSON" \
+  --argjson postgres_ha_components "$POSTGRES_HA_COMPONENTS_JSON" \
+  --argjson postgres_package_use_archive "$POSTGRES_PACKAGE_USE_ARCHIVE" \
   --argjson mongodb_deployments "$MONGODB_DEPLOYMENTS_JSON" \
   --argjson customization_enabled "$CUSTOMIZATION_ENABLED" \
   '{
@@ -514,6 +613,10 @@ jq -n \
     configure_ndb_sudoers: true,
     postgres_extensions: $postgres_extensions,
     postgres_extensions_databases: ["postgres"],
+    postgres_ha_components: $postgres_ha_components,
+    postgres_qualified_version_range: $postgres_qualified_version_range,
+    postgres_package_version_prefix: $postgres_package_version_prefix,
+    postgres_package_use_archive: $postgres_package_use_archive,
     mongodb_edition: $mongodb_edition,
     mongodb_deployments: $mongodb_deployments,
     customization_enabled: $customization_enabled,

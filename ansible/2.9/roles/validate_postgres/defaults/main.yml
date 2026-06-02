@@ -1,6 +1,9 @@
 validate_build: false
 validate_sudoers_path: /etc/sudoers.d/ndb
 validate_postgres_extensions_allow_skips: false
+postgres_qualified_version_range: ""
+postgres_package_version_prefix: ""
+postgres_package_use_archive: false
 validate_service_active_retries: 12
 validate_service_active_delay: 5
 validate_enabled_status_values:
@@ -9,6 +12,20 @@ validate_enabled_status_values:
   - static
   - indirect
   - generated
+validate_disabled_status_values:
+  - disabled
+  - static
+  - indirect
+  - generated
+validate_ndb_kernel_args:
+  - numa=off
+  - transparent_hugepage=never
 validate_postgres_psql_bin_map:
   RedHat: "/usr/pgsql-%s/bin/psql"
   Debian: "/usr/lib/postgresql/%s/bin/psql"
+validate_postgres_postgres_bin_map:
+  RedHat: "/usr/pgsql-%s/bin/postgres"
+  Debian: "/usr/lib/postgresql/%s/bin/postgres"
+validate_postgres_pg_config_bin_map:
+  RedHat: "/usr/pgsql-%s/bin/pg_config"
+  Debian: "/usr/lib/postgresql/%s/bin/pg_config"

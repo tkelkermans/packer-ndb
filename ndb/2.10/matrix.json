@@ -500,6 +500,9 @@
     "os_type": "Ubuntu Linux",
     "os_version": "24.04",
     "db_version": "18",
+    "postgres_qualified_version_range": "18.0",
+    "postgres_package_version_prefix": "18.0",
+    "postgres_package_use_archive": true,
     "patroni_version": "4.0.5",
     "etcd_version": "3.5.12",
     "ha_components": {
@@ -528,6 +531,9 @@
     "os_type": "Ubuntu Linux",
     "os_version": "22.04",
     "db_version": "16",
+    "postgres_qualified_version_range": "16.0 - 16.12",
+    "postgres_package_version_prefix": "16.12",
+    "postgres_package_use_archive": true,
     "patroni_version": "3.2.2",
     "etcd_version": "3.5.12",
     "ha_components": {
@@ -555,6 +561,9 @@
     "os_type": "Ubuntu Linux",
     "os_version": "22.04",
     "db_version": "15",
+    "postgres_qualified_version_range": "15.0 - 15.16",
+    "postgres_package_version_prefix": "15.16",
+    "postgres_package_use_archive": true,
     "patroni_version": "3.2.2",
     "etcd_version": "3.5.12",
     "ha_components": {
@@ -582,6 +591,9 @@
     "os_type": "Debian",
     "os_version": "12",
     "db_version": "18",
+    "postgres_qualified_version_range": "18.0",
+    "postgres_package_version_prefix": "18.0",
+    "postgres_package_use_archive": true,
     "patroni_version": "4.0.5",
     "etcd_version": "3.5.12",
     "ha_components": {
@@ -609,6 +621,9 @@
     "os_type": "Debian",
     "os_version": "12",
     "db_version": "17",
+    "postgres_qualified_version_range": "17.5 - 17.8",
+    "postgres_package_version_prefix": "17.8",
+    "postgres_package_use_archive": true,
     "patroni_version": "4.0.5",
     "etcd_version": "3.5.12",
     "ha_components": {
@@ -636,6 +651,9 @@
     "os_type": "Debian",
     "os_version": "12",
     "db_version": "16",
+    "postgres_qualified_version_range": "16.9 - 16.12",
+    "postgres_package_version_prefix": "16.12",
+    "postgres_package_use_archive": true,
     "patroni_version": "4.0.5",
     "etcd_version": "3.5.12",
     "ha_components": {
