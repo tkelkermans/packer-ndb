@@ -576,6 +576,19 @@ prove the database starts correctly.
 For PostgreSQL, the final guest smoke check records the connected database name
 and server version as `database|version` in the evidence file.
 
+Live runs need both Prism and NDB settings in `.env` or 1Password. At minimum,
+set the Prism `PKR_VAR_*` values used for normal builds, the NDB login values
+`NDB_SERVER_ADDRESS`, `NDB_SERVER_USER`, and `NDB_SERVER_PASSWORD`, plus these
+NDB profile IDs:
+
+- `NDB_E2E_CLUSTER_ID` is the NDB cluster where source and target VMs are created.
+- `NDB_E2E_COMPUTE_PROFILE_ID` is the compute profile used for database provisioning.
+- `NDB_E2E_SLA_ID` is the SLA used for the Time Machine/protection workflow.
+- `NDB_E2E_POSTGRES_NETWORK_PROFILE_ID` is required for PostgreSQL rows. The legacy `NDB_E2E_NETWORK_PROFILE_ID` name is still accepted.
+- `NDB_E2E_POSTGRES_DB_PARAM_PROFILE_ID` is required for PostgreSQL rows.
+- `NDB_E2E_MONGODB_DB_PARAM_PROFILE_ID` is required for MongoDB rows.
+- `NDB_E2E_MONGODB_NETWORK_PROFILE_ID` is optional. If omitted, the script discovers the first READY MongoDB network profile.
+
 First preview the rows it will run:
 
 ```bash
@@ -682,10 +695,8 @@ Useful options:
 
 Useful optional environment overrides:
 
-- `NDB_E2E_POSTGRES_NETWORK_PROFILE_ID` sets the PostgreSQL NDB network profile. If omitted, the legacy `NDB_E2E_NETWORK_PROFILE_ID` value is used.
 - `NDB_E2E_POSTGRES_SOFTWARE_HOME_BASE` sets the PostgreSQL software mount base for E2E source VMs. The default is `/opt/ndb/postgresql`.
 - `NDB_E2E_POSTGRES_SOFTWARE_DISK_SIZE_GB` sets the temporary PostgreSQL software disk size for E2E source VMs. The default is `10`.
-- `NDB_E2E_MONGODB_NETWORK_PROFILE_ID` sets the MongoDB NDB network profile. If omitted, the script discovers the first READY MongoDB network profile.
 - `NDB_E2E_MONGODB_SOFTWARE_HOME` sets the MongoDB software home used when registering source VMs. The default is `/opt/ndb/mongodb`; do not use `/usr`, because NDB will mount the profile software disk there during provision.
 - `NDB_E2E_SOURCE_VM_MAX_ATTEMPTS` controls how many disposable source VMs the runner may try when Prism assigns an IP that never becomes SSH-ready. The default is `3`.
 - `NDB_E2E_SSH_MAX_POLLS` and `NDB_E2E_GUEST_READY_MAX_POLLS` control source/provisioned guest SSH and first-boot readiness polling. SSH readiness defaults to `30` polls with a short connection timeout so unreachable Prism IPs recycle quickly; first-boot readiness still waits longer after SSH is reachable.

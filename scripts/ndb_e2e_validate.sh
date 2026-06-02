@@ -30,13 +30,13 @@ TARGET_OBSERVER_INTERVAL_SECONDS=${NDB_E2E_TARGET_OBSERVER_INTERVAL_SECONDS:-10}
 TARGET_OBSERVER_MAX_SECONDS=${NDB_E2E_TARGET_OBSERVER_MAX_SECONDS:-900}
 TARGET_OBSERVER_PID=""
 
-NDB_CLUSTER_ID=${NDB_E2E_CLUSTER_ID:-8c4a628f-d3a1-4ef2-b771-c92e20420824}
-NDB_POSTGRES_NETWORK_PROFILE_ID=${NDB_E2E_POSTGRES_NETWORK_PROFILE_ID:-${NDB_E2E_NETWORK_PROFILE_ID:-97a2d940-9aa7-4e77-8d54-2f64268635f1}}
+NDB_CLUSTER_ID=${NDB_E2E_CLUSTER_ID:-}
+NDB_POSTGRES_NETWORK_PROFILE_ID=${NDB_E2E_POSTGRES_NETWORK_PROFILE_ID:-${NDB_E2E_NETWORK_PROFILE_ID:-}}
 NDB_MONGODB_NETWORK_PROFILE_ID=${NDB_E2E_MONGODB_NETWORK_PROFILE_ID:-}
-NDB_POSTGRES_DB_PARAM_PROFILE_ID=${NDB_E2E_POSTGRES_DB_PARAM_PROFILE_ID:-45549e8a-d3fc-4128-87f6-c8d8f4136ddf}
-NDB_MONGODB_DB_PARAM_PROFILE_ID=${NDB_E2E_MONGODB_DB_PARAM_PROFILE_ID:-9c9dcaad-cf15-4a2e-9878-1f26353e7884}
-NDB_COMPUTE_PROFILE_ID=${NDB_E2E_COMPUTE_PROFILE_ID:-0227836b-c7ef-4d8b-bdcd-f309191fb15c}
-NDB_SLA_ID=${NDB_E2E_SLA_ID:-de4b96d6-420c-4f2b-98c6-88bd8f4dddcc}
+NDB_POSTGRES_DB_PARAM_PROFILE_ID=${NDB_E2E_POSTGRES_DB_PARAM_PROFILE_ID:-}
+NDB_MONGODB_DB_PARAM_PROFILE_ID=${NDB_E2E_MONGODB_DB_PARAM_PROFILE_ID:-}
+NDB_COMPUTE_PROFILE_ID=${NDB_E2E_COMPUTE_PROFILE_ID:-}
+NDB_SLA_ID=${NDB_E2E_SLA_ID:-}
 NDB_POSTGRES_SOFTWARE_HOME_BASE=${NDB_E2E_POSTGRES_SOFTWARE_HOME_BASE:-/opt/ndb/postgresql}
 NDB_POSTGRES_SOFTWARE_DISK_SIZE_GB=${NDB_E2E_POSTGRES_SOFTWARE_DISK_SIZE_GB:-10}
 NDB_MONGODB_SOFTWARE_HOME=${NDB_E2E_MONGODB_SOFTWARE_HOME:-/opt/ndb/mongodb}
@@ -63,6 +63,7 @@ Options:
 
 Environment:
   Run through: op run --env-file=.env -- scripts/ndb_e2e_validate.sh ...
+  Live runs require NDB_SERVER_*, Prism PKR_VAR_*, and NDB_E2E_* profile IDs.
   NDB_E2E_POSTGRES_SOFTWARE_HOME_BASE defaults to /opt/ndb/postgresql.
   NDB_E2E_POSTGRES_SOFTWARE_DISK_SIZE_GB defaults to 10.
   NDB_E2E_NDB_API_TIMEOUT defaults to 300 seconds.
@@ -1438,6 +1439,59 @@ validate_row_filter_exists() {
   return 1
 }
 
+selected_targets_include_db() {
+  local wanted_db_type=$1
+  local attempted=0 index=0
+  local ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at row_id
+
+  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at; do
+    index=$((index + 1))
+    [[ -n "$DB_TYPE_FILTER" && "$db_type" != "$DB_TYPE_FILTER" ]] && continue
+    row_id=$(row_id_for "$ndb_version" "$db_type" "$os_type" "$os_version" "$db_version" "$mongodb_edition" "$mongodb_deployments")
+    [[ -n "$ROW_FILTER" && "$row_id" != "$ROW_FILTER" ]] && continue
+
+    attempted=$((attempted + 1))
+    [[ "$db_type" == "$wanted_db_type" ]] && return 0
+    if [[ "$LIMIT" -gt 0 && "$attempted" -ge "$LIMIT" ]]; then
+      break
+    fi
+  done < "$TARGETS_FILE"
+
+  return 1
+}
+
+require_value() {
+  local value=$1 label=$2
+  if [[ -z "$value" ]]; then
+    printf 'Error: required environment setting is missing: %s\n' "$label" >&2
+    return 1
+  fi
+}
+
+validate_live_e2e_config() {
+  require_env \
+    NDB_SERVER_ADDRESS \
+    NDB_SERVER_USER \
+    NDB_SERVER_PASSWORD \
+    PKR_VAR_pc_username \
+    PKR_VAR_pc_password \
+    PKR_VAR_pc_ip \
+    PKR_VAR_cluster_name \
+    PKR_VAR_subnet_name \
+    NDB_E2E_CLUSTER_ID \
+    NDB_E2E_COMPUTE_PROFILE_ID \
+    NDB_E2E_SLA_ID || return 1
+
+  if selected_targets_include_db pgsql; then
+    require_value "$NDB_POSTGRES_NETWORK_PROFILE_ID" "NDB_E2E_POSTGRES_NETWORK_PROFILE_ID or NDB_E2E_NETWORK_PROFILE_ID" || return 1
+    require_env NDB_E2E_POSTGRES_DB_PARAM_PROFILE_ID || return 1
+  fi
+
+  if selected_targets_include_db mongodb; then
+    require_env NDB_E2E_MONGODB_DB_PARAM_PROFILE_ID || return 1
+  fi
+}
+
 run_target() {
   local index=$1 ndb_version=$2 db_type=$3 os_type=$4 os_version=$5 db_version=$6 mongodb_edition=$7 mongodb_deployments=$8 image_name=$9 image_uuid=${10}
   local row_id short_key run_id row_dir state_file db_name vm_name profile_name provision_ip
@@ -1506,7 +1560,6 @@ main() {
       printf 'Error: NDB_E2E_NDB_API_TIMEOUT must be a positive integer.\n' >&2
       return 1
     fi
-    require_env NDB_SERVER_ADDRESS NDB_SERVER_USER NDB_SERVER_PASSWORD PKR_VAR_pc_username PKR_VAR_pc_password PKR_VAR_pc_ip PKR_VAR_cluster_name PKR_VAR_subnet_name
     require_file "$PRIVATE_KEY_PATH"
     require_file "$PUBLIC_KEY_PATH"
     require_file "$USER_DATA_TEMPLATE"
@@ -1526,6 +1579,7 @@ main() {
   fi
   validate_row_filter_exists
   if [[ "$DRY_RUN" != "true" ]]; then
+    validate_live_e2e_config
     preflight_target_images
     if [[ "$PREFLIGHT_IMAGES" == "true" ]]; then
       return 0
