@@ -157,7 +157,7 @@ on_error() {
   fi
   ERROR_RECORDED=true
   if [[ "$DRY_RUN" != "true" && -n "$CURRENT_STATE_FILE" && -f "$CURRENT_STATE_FILE" ]]; then
-    record_result "$CURRENT_STATE_FILE" fail "row execution failed at line ${line}" || true
+    record_result "$CURRENT_STATE_FILE" fail "$(classify_failure_message "$CURRENT_STATE_FILE" "row execution failed at line ${line}")" || true
   fi
 }
 
@@ -811,9 +811,11 @@ create_source_vm() {
       --arg source_vm_uuid "$vm_uuid" \
       --arg source_vm_ip "$vm_ip" \
       --arg db_version "$db_version" \
+      --arg db_type "$db_type" \
       --arg source_vm_attempt "$attempt" \
       '{
         row_id: $row_id,
+        db_type: $db_type,
         image_name: $image_name,
         image_uuid: $image_uuid,
         source_vm_name: $source_vm_name,
@@ -1353,11 +1355,45 @@ validate_guest_database() {
   printf 'Guest validation: %s\n' "$validation"
 }
 
+classify_failure_message() {
+  local state_file=$1 default_message=$2
+  local row_id row_dir observer_dir
+  row_id=$(jq -r '.row_id // ""' "$state_file" 2>/dev/null || true)
+  row_dir=$(dirname "$state_file")
+  observer_dir="$row_dir/target-observer"
+
+  if [[ "$row_id" =~ ^210-pg(16|17|18)-debian12$ && -d "$observer_dir" ]] \
+    && grep -Rqs 'ntnx_era_agent_vg_' "$observer_dir" \
+    && grep -Rqs 'OS_SOFTWARE' "$observer_dir" \
+    && grep -Rqs 'Detected invalid Volume Group' "$observer_dir"; then
+    printf 'known_ndb_debian_pg_storage_protection_blocker: NDB classified its own ntnx_era_agent_vg_* as OS_SOFTWARE and Prism rejected protection-domain add_entities; use target-observer evidence for NDB support escalation'
+    return 0
+  fi
+
+  printf '%s' "$default_message"
+}
+
+failure_class_for_message() {
+  local message=$1
+  case "$message" in
+    known_ndb_debian_pg_storage_protection_blocker:*)
+      printf 'known_ndb_debian_pg_storage_protection_blocker'
+      ;;
+    *)
+      printf ''
+      ;;
+  esac
+}
+
 record_result() {
   local state_file=$1 status=$2 error_message=${3:-}
-  jq -c --arg status "$status" --arg error_message "$error_message" '{
+  local failure_class
+  failure_class=$(failure_class_for_message "$error_message")
+  jq -c --arg status "$status" --arg error_message "$error_message" --arg failure_class "$failure_class" '{
     row_id,
+    db_type,
     status: $status,
+    failure_class: $failure_class,
     error_message: $error_message,
     image_name,
     image_uuid,
