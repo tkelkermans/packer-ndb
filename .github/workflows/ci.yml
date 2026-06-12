@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  static-gates:
+    name: Static gates (credential-free)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck jq
+          pipx install ansible-core
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@v3
+
+      - name: Shell syntax
+        run: bash -n build.sh test.sh scripts/*.sh
+
+      - name: ShellCheck
+        # Per-file invocation: a single multi-file run cross-contaminates
+        # shellcheck's variable analysis between scripts (false SC2178/SC2128).
+        run: printf '%s\n' build.sh test.sh scripts/*.sh | xargs -n1 shellcheck -S warning
+
+      - name: JSON validity
+        run: jq empty images.json ndb/*/matrix.json
+
+      - name: Matrix validation
+        run: scripts/matrix_validate.sh ndb/*/matrix.json
+
+      - name: Self-tests
+        run: bash scripts/selftest.sh
+
+      - name: Packer fmt
+        run: packer fmt -check packer/
+
+      - name: Packer validate (placeholder credentials)
+        run: |
+          ssh-keygen -t rsa -b 2048 -f packer/id_rsa -N "" -q
+          echo '{}' > /tmp/ci-ansible-vars.json
+          packer init packer/
+          packer validate \
+            -var pc_username=placeholder \
+            -var pc_password=placeholder \
+            -var pc_ip=192.0.2.1 \
+            -var cluster_name=placeholder \
+            -var subnet_name=placeholder \
+            -var image_name=ci-placeholder \
+            -var ndb_version=2.10 \
+            -var db_type=pgsql \
+            -var db_version=18 \
+            -var os_type="Rocky Linux" \
+            -var os_version=9.7 \
+            -var patroni_version=4.0.5 \
+            -var etcd_version=3.5.12 \
+            -var source_image_uri=https://example.invalid/source.qcow2 \
+            -var ansible_site_playbook=ansible/2.10/playbooks/site.yml \
+            -var "ansible_config_path=ANSIBLE_CONFIG=ansible/2.10/ansible.cfg" \
+            -var ansible_extra_vars_file=/tmp/ci-ansible-vars.json \
+            -var "ssh_public_key=$(cat packer/id_rsa.pub)" \
+            packer/
+
+      - name: Ansible syntax check
+        run: |
+          for ver in 2.9 2.10; do
+            ANSIBLE_CONFIG="ansible/${ver}/ansible.cfg" ansible-playbook \
+              -i "ansible/${ver}/inventory/hosts" \
+              --syntax-check "ansible/${ver}/playbooks/site.yml"
+          done
+
+      - name: Whitespace check
+        run: git diff --check

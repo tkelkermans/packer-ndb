@@ -21,7 +21,6 @@ FINAL_STATUS="failed"
 RHEL_REPOSITORY_CHECK=false
 RHEL_REPOSITORY_CHECK_STATUS="not-requested"
 RHEL_REPOSITORY_PACKAGES=(bison firewalld flex gcc gdbm-devel lsof lvm2 net-tools perl python3-pip sshpass unzip wget zip)
-RHEL_REPOSITORY_REGISTERED=false
 
 usage() {
   cat <<'EOF'
@@ -457,10 +456,8 @@ EOF
 }
 
 wait_guest_boot_ready() {
-  local i
-
   printf 'Waiting for systemd/D-Bus readiness on %s...\n' "$VM_IP"
-  for i in $(seq 1 90); do
+  for _ in $(seq 1 90); do
     if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "$(guest_boot_ready_probe)" >/dev/null 2>&1; then
       return 0
     fi
@@ -488,6 +485,8 @@ run_rhel_repository_check() {
   printf -v org_id_quoted "%q" "${NDB_RHEL_ORGID:-}"
   printf -v activation_key_quoted "%q" "${NDB_RHEL_ACTIVATIONKEY:-}"
 
+  # shellcheck disable=SC2087  # client-side expansion is intentional: only the %q-quoted
+  # values above are substituted; remote-side variables are escaped with \$ in the heredoc.
   if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "sudo -n bash -s" <<EOF
 set -euo pipefail
 

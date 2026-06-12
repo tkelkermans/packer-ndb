@@ -30,6 +30,7 @@ prism_require_env() {
 
 prism_endpoint() {
   prism_require_env || return 1
+  # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
   prism_endpoint_from_host "$PKR_VAR_pc_ip"
 }
 
@@ -46,6 +47,7 @@ prism_curl() {
   response_file=$(mktemp -t ndb-prism-response.XXXXXX)
 
   if [[ -n "$payload" ]]; then
+    # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
     http_status=$(curl -sS -k -u "${PKR_VAR_pc_username}:${PKR_VAR_pc_password}" \
       -H "Content-Type: application/json" \
       -X "$method" \

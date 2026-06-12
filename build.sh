@@ -760,7 +760,6 @@ CUSTOMIZATION_PROFILE_FILE=""
 CUSTOMIZATION_PROFILE_NAME=""
 CUSTOMIZATION_ENABLED=false
 CUSTOMIZATION_NO_CUSTOMIZATIONS=false
-CUSTOMIZATION_ROLE_PATHS=()
 CUSTOMIZATION_SUMMARY_FILE=""
 POSTGRES_EXTENSIONS_SELECTION="none"
 POSTGRES_SELECTED_EXTENSIONS_JSON="[]"
@@ -1223,6 +1222,7 @@ if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
   fi
 
   PREFLIGHT_STATUS=0
+  # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
   source_image_preflight \
     --source-image-name "$PACKER_SOURCE_IMAGE_NAME" \
     --source-image-uuid "$PACKER_SOURCE_IMAGE_UUID" \

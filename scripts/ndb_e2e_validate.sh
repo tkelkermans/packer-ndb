@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# State and temp files created by this script can hold generated database and
+# OS passwords; keep everything it writes private to the invoking user.
+umask 0077
+
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 # shellcheck source=scripts/prism.sh
@@ -29,6 +33,16 @@ TARGET_OBSERVER=${NDB_E2E_TARGET_OBSERVER:-false}
 TARGET_OBSERVER_INTERVAL_SECONDS=${NDB_E2E_TARGET_OBSERVER_INTERVAL_SECONDS:-10}
 TARGET_OBSERVER_MAX_SECONDS=${NDB_E2E_TARGET_OBSERVER_MAX_SECONDS:-900}
 TARGET_OBSERVER_PID=""
+
+for numeric_var in OPERATION_MAX_POLLS OPERATION_POLL_SECONDS OPERATION_STALL_POLLS \
+  NDB_API_TIMEOUT SOURCE_VM_MAX_ATTEMPTS SSH_MAX_POLLS GUEST_READY_MAX_POLLS \
+  TARGET_OBSERVER_INTERVAL_SECONDS TARGET_OBSERVER_MAX_SECONDS; do
+  if ! [[ "${!numeric_var}" =~ ^[0-9]+$ ]]; then
+    printf 'Error: %s must be a non-negative integer, got: %s\n' "$numeric_var" "${!numeric_var}" >&2
+    exit 1
+  fi
+done
+unset numeric_var
 
 NDB_CLUSTER_ID=${NDB_E2E_CLUSTER_ID:-}
 NDB_POSTGRES_NETWORK_PROFILE_ID=${NDB_E2E_POSTGRES_NETWORK_PROFILE_ID:-${NDB_E2E_NETWORK_PROFILE_ID:-}}
@@ -389,21 +403,19 @@ network_profile_id_for() {
   return 1
 }
 
-ssh_options() {
-  printf '%s\n' \
-    -i "$PRIVATE_KEY_PATH" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o IdentitiesOnly=yes \
-    -o IdentityAgent=none \
-    -o BatchMode=yes \
-    -o ConnectTimeout=5
-}
-
 ssh_as() {
   local user=$1 ip=$2
   shift 2
-  ssh $(ssh_options) "${user}@${ip}" "$@"
+  local -a ssh_opts=(
+    -i "$PRIVATE_KEY_PATH"
+    -o StrictHostKeyChecking=no
+    -o UserKnownHostsFile=/dev/null
+    -o IdentitiesOnly=yes
+    -o IdentityAgent=none
+    -o BatchMode=yes
+    -o ConnectTimeout=5
+  )
+  ssh "${ssh_opts[@]}" "${user}@${ip}" "$@"
 }
 
 wait_ssh() {
@@ -712,7 +724,9 @@ create_source_vm() {
   local cluster_uuid subnet_uuid timestamp short_key vm_name ssh_public_key user_data_b64 create_payload create_response vm_uuid power_response vm_ip attempt source_ready
 
   image_uuid=$(resolve_image_uuid "$image_name" "$image_uuid")
+  # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
   cluster_uuid=$(prism_cluster_uuid_by_name "$PKR_VAR_cluster_name")
+  # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
   subnet_uuid=$(prism_subnet_uuid_by_name "$PKR_VAR_subnet_name")
   if [[ -z "$cluster_uuid" || -z "$subnet_uuid" ]]; then
     printf 'Error: could not resolve Prism cluster/subnet UUID.\n' >&2
@@ -965,7 +979,9 @@ prepare_postgres_source_vm() {
 
   printf 'Preparing PostgreSQL source VM for profile creation...\n'
   ssh_as packer "$vm_ip" "sudo systemctl start '$service' && sudo systemctl disable '$service'"
-  ssh_as packer "$vm_ip" "sudo -u postgres '$psql' -c \"ALTER USER postgres WITH PASSWORD '${db_password}';\" >/dev/null"
+  # Send the password over stdin so it never appears in local or remote process listings.
+  printf "ALTER USER postgres WITH PASSWORD '%s';\n" "$db_password" \
+    | ssh_as packer "$vm_ip" "sudo -u postgres '$psql' -q >/dev/null"
   ssh_as packer "$vm_ip" "sudo sed -i \"s/^#\\?listen_addresses.*/listen_addresses = '*'/\" '$conf'"
   ssh_as packer "$vm_ip" "sudo grep -q '^host all all 0.0.0.0/0' '$hba' || printf '%s\n' 'host all all 0.0.0.0/0 scram-sha-256' | sudo tee -a '$hba' >/dev/null"
   ssh_as packer "$vm_ip" "if command -v firewall-cmd >/dev/null 2>&1; then sudo firewall-cmd --permanent --add-port=5432/tcp >/dev/null && sudo firewall-cmd --reload >/dev/null; fi"
@@ -1421,12 +1437,12 @@ row_already_passed() {
 }
 
 preflight_target_images() {
-  local images_file ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at
+  local images_file ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid
   local row_id selected=0 missing=0
   images_file=$(mktemp -t ndb-e2e-images.XXXXXX)
   prism_list_resource images image 5000 > "$images_file"
 
-  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at; do
+  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid _; do
     [[ -n "$DB_TYPE_FILTER" && "$db_type" != "$DB_TYPE_FILTER" ]] && continue
     row_id=$(row_id_for "$ndb_version" "$db_type" "$os_type" "$os_version" "$db_version" "$mongodb_edition" "$mongodb_deployments")
     [[ -n "$ROW_FILTER" && "$row_id" != "$ROW_FILTER" ]] && continue
@@ -1460,9 +1476,9 @@ preflight_target_images() {
 validate_row_filter_exists() {
   [[ -n "$ROW_FILTER" ]] || return 0
 
-  local ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at
+  local ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid
   local row_id
-  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at; do
+  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid _; do
     [[ -n "$DB_TYPE_FILTER" && "$db_type" != "$DB_TYPE_FILTER" ]] && continue
     row_id=$(row_id_for "$ndb_version" "$db_type" "$os_type" "$os_version" "$db_version" "$mongodb_edition" "$mongodb_deployments")
     if [[ "$row_id" == "$ROW_FILTER" ]]; then
@@ -1478,9 +1494,9 @@ validate_row_filter_exists() {
 selected_targets_include_db() {
   local wanted_db_type=$1
   local attempted=0 index=0
-  local ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at row_id
+  local ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid row_id
 
-  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at; do
+  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid _; do
     index=$((index + 1))
     [[ -n "$DB_TYPE_FILTER" && "$db_type" != "$DB_TYPE_FILTER" ]] && continue
     row_id=$(row_id_for "$ndb_version" "$db_type" "$os_type" "$os_version" "$db_version" "$mongodb_edition" "$mongodb_deployments")
@@ -1623,7 +1639,7 @@ main() {
   fi
 
   local attempted=0 index=0
-  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at; do
+  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid _; do
     index=$((index + 1))
     [[ -n "$DB_TYPE_FILTER" && "$db_type" != "$DB_TYPE_FILTER" ]] && continue
     local row_id

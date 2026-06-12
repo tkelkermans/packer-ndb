@@ -58,7 +58,7 @@ PUBLISHED_TARGETS=()
 
 cleanup_staging() {
   local target
-  if [[ "$SCAFFOLD_COMPLETE" != "true" && (( ${#PUBLISHED_TARGETS[@]} > 0 )) ]]; then
+  if [[ "$SCAFFOLD_COMPLETE" != "true" ]] && (( ${#PUBLISHED_TARGETS[@]} > 0 )); then
     for target in "${PUBLISHED_TARGETS[@]}"; do
       rm -rf "$target"
     done

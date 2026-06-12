@@ -173,10 +173,9 @@ EOF
 
 wait_guest_boot_ready() {
   local user=$1 ip=$2
-  local i
 
   printf 'Waiting for systemd/D-Bus readiness on %s...\n' "$ip"
-  for i in $(seq 1 90); do
+  for _ in $(seq 1 90); do
     if ssh "${SSH_COMMON_ARGS[@]}" "${user}@${ip}" "$(guest_boot_ready_probe)" >/dev/null 2>&1; then
       return 0
     fi
