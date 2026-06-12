@@ -44,14 +44,21 @@ function manifest_set_if_present() {
   local value=$2
 
   if [[ -n "${MANIFEST_FILE:-}" && -f "${MANIFEST_FILE:-}" ]]; then
-    "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key "$key" --value "$value" >/dev/null 2>&1 || true
+    if ! "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key "$key" --value "$value" >/dev/null 2>&1 \
+      && [[ "${DEBUG:-false}" == "true" ]]; then
+      echo "Warning: failed to update manifest key ${key}" >&2
+    fi
   fi
 }
 
 function cleanup_failed_builder_vm() {
   local vm_uuid response task_uuid
 
-  vm_uuid=$(prism_vm_uuid_by_name "$VM_NAME" 2>/dev/null || true)
+  if ! vm_uuid=$(prism_vm_uuid_by_name "$VM_NAME"); then
+    echo "Warning: could not query Prism for builder VM ${VM_NAME}; skipping cleanup." >&2
+    manifest_set_if_present ".cleanup.packer_builder_vm" "lookup-failed"
+    return 0
+  fi
   if [[ -z "$vm_uuid" ]]; then
     manifest_set_if_present ".cleanup.packer_builder_vm" "not-found"
     return 0
@@ -78,7 +85,7 @@ function cleanup_failed_builder_vm() {
     return 0
   fi
 
-  task_uuid=$(jq -r '(.status.execution_context.task_uuid // .status.execution_context.task_uuid_list // empty) | if type == "array" then .[0] else . end // ""' <<<"$response" 2>/dev/null || true)
+  task_uuid=$(prism_extract_task_uuid <<<"$response" 2>/dev/null || true)
   if [[ -n "$task_uuid" && "$task_uuid" != "null" ]]; then
     if prism_wait_task "$task_uuid" 600 5 >/dev/null; then
       manifest_set_if_present ".cleanup.packer_builder_vm" "deleted"
@@ -260,7 +267,9 @@ function materialize_source_image() {
     temp_image=$(mktemp -t ndb-source-image.XXXXXX)
     TEMP_FILES+=("$temp_image")
     echo "--- Downloading source image locally ---" >&2
-    curl -fL -o "$temp_image" "$source_image"
+    # Abort stalled downloads (under 1 KiB/s for 5 minutes) instead of hanging forever;
+    # no total time cap so large images on slow lab links still complete.
+    curl -fL --connect-timeout 30 --speed-limit 1024 --speed-time 300 -o "$temp_image" "$source_image"
     echo "file://${temp_image}"
     return
   fi

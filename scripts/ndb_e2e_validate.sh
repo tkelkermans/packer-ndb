@@ -292,23 +292,9 @@ ndb_post_file() {
     -d @"$2"
 }
 
-extract_task_uuid() {
-  jq -r '.status.execution_context.task_uuid // .task_uuid // ""'
-}
-
-wait_prism_response_task() {
-  local response=$1 action=$2 task_uuid
-  task_uuid=$(extract_task_uuid <<<"$response")
-  if [[ -z "$task_uuid" ]]; then
-    printf 'Error: Prism %s response did not include a task UUID.\n' "$action" >&2
-    return 1
-  fi
-  prism_wait_task "$task_uuid" >/dev/null
-}
-
 delete_disposable_vm() {
   local vm_uuid=$1 reason=$2
-  local response task_uuid
+  local response
 
   if [[ -z "$vm_uuid" ]]; then
     return 0
@@ -316,10 +302,7 @@ delete_disposable_vm() {
 
   printf 'Deleting disposable VM %s (%s)...\n' "$vm_uuid" "$reason" >&2
   response=$(prism_delete_vm "$vm_uuid") || return 1
-  task_uuid=$(extract_task_uuid <<<"$response")
-  if [[ -n "$task_uuid" ]]; then
-    prism_wait_task "$task_uuid" >/dev/null
-  fi
+  prism_wait_task_from_response "$response"
 }
 
 wait_operation() {
@@ -804,11 +787,11 @@ create_source_vm() {
       printf 'Error: Prism create response did not include VM UUID.\n' >&2
       return 1
     fi
-    wait_prism_response_task "$create_response" "create VM"
+    prism_wait_required_task_from_response "$create_response" "create VM"
 
     printf 'Powering on source VM %s...\n' "$vm_uuid"
     power_response=$(prism_power_on_vm "$vm_uuid")
-    wait_prism_response_task "$power_response" "power on VM"
+    prism_wait_required_task_from_response "$power_response" "power on VM"
 
     printf 'Waiting for source VM IP...\n'
     for _ in $(seq 1 90); do

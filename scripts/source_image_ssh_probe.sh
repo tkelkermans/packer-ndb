@@ -113,22 +113,6 @@ base64_no_wrap() {
   base64 | tr -d '\n'
 }
 
-extract_task_uuid() {
-  jq -r '.status.execution_context.task_uuid // .task_uuid // ""'
-}
-
-wait_task_from_response() {
-  local response=$1
-  local action=$2
-  local task_uuid
-  task_uuid=$(extract_task_uuid <<<"$response")
-  if [[ -z "$task_uuid" ]]; then
-    printf 'Error: Prism %s response did not include a task UUID.\n' "$action" >&2
-    return 1
-  fi
-  prism_wait_task "$task_uuid" >/dev/null
-}
-
 write_result() {
   local status=$1
   if [[ -z "$RESULT_FILE" ]]; then
@@ -177,7 +161,7 @@ cleanup_vm() {
 
   CLEANUP_STATUS="deleting"
   if delete_response=$(prism_delete_vm "$VM_UUID"); then
-    wait_task_from_response "$delete_response" "delete VM" || {
+    prism_wait_required_task_from_response "$delete_response" "delete VM" || {
       CLEANUP_STATUS="delete-task-failed"
       return 1
     }
@@ -405,11 +389,11 @@ if [[ -z "$VM_UUID" ]]; then
   printf 'Error: Prism create response did not include VM UUID.\n' >&2
   exit 1
 fi
-wait_task_from_response "$CREATE_RESPONSE" "create VM"
+prism_wait_required_task_from_response "$CREATE_RESPONSE" "create VM"
 
 printf 'Powering on source image probe VM %s...\n' "$VM_UUID"
 POWER_RESPONSE=$(prism_power_on_vm "$VM_UUID")
-wait_task_from_response "$POWER_RESPONSE" "power on VM"
+prism_wait_required_task_from_response "$POWER_RESPONSE" "power on VM"
 
 printf 'Waiting for source image probe VM IP...\n'
 VM_IP=""

@@ -174,6 +174,35 @@ prism_wait_task() {
   return 124
 }
 
+prism_extract_task_uuid() {
+  jq -r '(.status.execution_context.task_uuid
+          // .status.execution_context.task_uuid_list
+          // .task_uuid
+          // "")
+         | if type == "array" then (.[0] // "") else . end'
+}
+
+prism_wait_task_from_response() {
+  local response=$1
+  local task_uuid
+  task_uuid=$(prism_extract_task_uuid <<<"$response")
+  if [[ -n "$task_uuid" ]]; then
+    prism_wait_task "$task_uuid" >/dev/null
+  fi
+}
+
+prism_wait_required_task_from_response() {
+  local response=$1
+  local action=$2
+  local task_uuid
+  task_uuid=$(prism_extract_task_uuid <<<"$response")
+  if [[ -z "$task_uuid" ]]; then
+    printf 'Error: Prism %s response did not include a task UUID.\n' "$action" >&2
+    return 1
+  fi
+  prism_wait_task "$task_uuid" >/dev/null
+}
+
 prism_vm_json() {
   local vm_uuid=$1
 
