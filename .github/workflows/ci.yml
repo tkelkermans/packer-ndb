@@ -11,12 +11,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need base ref for the committed-diff whitespace check
 
       - name: Install tools
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq shellcheck jq
-          pipx install ansible-core
+          # Pin the major line: the postgres/mongodb roles still use
+          # ansible.builtin.apt_repository, removed in ansible-core 2.25, so an
+          # unpinned install would break the syntax-check with no code change.
+          pipx install 'ansible-core>=2.16,<2.25'
 
       - name: Setup Packer
         uses: hashicorp/setup-packer@v3
@@ -74,4 +79,14 @@ jobs:
           done
 
       - name: Whitespace check
-        run: git diff --check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # On PRs, lint only the committed diff against the base; on a fresh
+          # checkout `git diff --check` alone compares the worktree to HEAD and
+          # so checks nothing. Fall back to that when no base ref is available.
+          if [ -n "$BASE_SHA" ] && git cat-file -e "$BASE_SHA" 2>/dev/null; then
+            git diff --check "$BASE_SHA" HEAD
+          else
+            git diff --check
+          fi
