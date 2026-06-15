@@ -3489,3 +3489,83 @@ run_readme_customization_tests() {
 }
 
 run_readme_customization_tests
+
+run_ansible_tree_drift_tests() {
+  # The ansible/<ver> trees are deliberately parallel (release_scaffold.sh copies
+  # a prior version). Only files listed here may differ between versions, and the
+  # difference must be an intentional vendor-qualification delta. Any other
+  # divergence is unintended drift: a change applied to one version's role but
+  # not the others. Sync the change across versions, or add the file here with a
+  # comment explaining why it legitimately differs.
+  local allowlist=(
+    "roles/common/tasks/main.yml"     # version-specific NDB guest workarounds
+    "roles/postgres/vars/main.yml"    # per-version qualified PostgreSQL versions
+  )
+
+  local versions=()
+  while IFS= read -r version_dir; do
+    versions+=("$(basename "$version_dir")")
+  done < <(find "$ROOT_DIR/ansible" -mindepth 1 -maxdepth 1 -type d | sort)
+
+  if (( ${#versions[@]} < 2 )); then
+    pass "ansible tree drift check (only one NDB version present)"
+    return
+  fi
+
+  local ref="${versions[0]}"
+  local ref_dir="$ROOT_DIR/ansible/$ref"
+  local ver ver_dir rel allowed entry
+  for ver in "${versions[@]:1}"; do
+    ver_dir="$ROOT_DIR/ansible/$ver"
+
+    if ! diff <(cd "$ref_dir" && find . -type f | sort) \
+              <(cd "$ver_dir" && find . -type f | sort) >/dev/null; then
+      diff <(cd "$ref_dir" && find . -type f | sort) \
+           <(cd "$ver_dir" && find . -type f | sort) >&2 || true
+      fail "ansible/$ver file set differs from ansible/$ref (keep version trees in lockstep)"
+    fi
+
+    while IFS= read -r rel; do
+      rel="${rel#./}"
+      allowed=false
+      for entry in "${allowlist[@]}"; do
+        if [[ "$rel" == "$entry" ]]; then
+          allowed=true
+          break
+        fi
+      done
+      if cmp -s "$ref_dir/$rel" "$ver_dir/$rel"; then
+        if [[ "$allowed" == "true" ]]; then
+          fail "stale ansible drift allowlist: $rel is identical between $ref and $ver; remove it from the allowlist"
+        fi
+      else
+        if [[ "$allowed" != "true" ]]; then
+          fail "unintended ansible drift: ansible/$ver/$rel differs from ansible/$ref/$rel (sync the change or allowlist it with justification)"
+        fi
+      fi
+    done < <(cd "$ref_dir" && find . -type f | sort)
+  done
+
+  pass "ansible tree drift between NDB versions is intentional"
+}
+
+run_ansible_tree_drift_tests
+
+run_matrix_ha_components_source_of_truth_tests() {
+  # ha_components is the single source of truth for HA install versions. The old
+  # top-level patroni_version/etcd_version fields duplicated ha_components[0],
+  # were passed to Packer as variables it never referenced, and must not return.
+  local matrix
+  for matrix in "$ROOT_DIR"/ndb/*/matrix.json; do
+    if jq -e 'any(.[]; has("patroni_version") or has("etcd_version"))' "$matrix" >/dev/null; then
+      fail "$matrix reintroduced dead patroni_version/etcd_version fields; use ha_components instead"
+    fi
+  done
+  ! grep -q "patroni_version=" "$ROOT_DIR/build.sh" \
+    || fail "build.sh passes the dead patroni_version Packer variable"
+  ! grep -q 'variable "patroni_version"' "$ROOT_DIR/packer/variables.pkr.hcl" \
+    || fail "packer still declares the unused patroni_version variable"
+  pass "matrix HA versions sourced only from ha_components"
+}
+
+run_matrix_ha_components_source_of_truth_tests
