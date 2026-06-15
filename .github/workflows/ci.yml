@@ -15,9 +15,18 @@ jobs:
           fetch-depth: 0   # need base ref for the committed-diff whitespace check
 
       - name: Install tools
+        env:
+          SHELLCHECK_VERSION: v0.11.0
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq shellcheck jq
+          sudo apt-get install -y -qq jq
+          # Pin shellcheck instead of using the runner image's apt version:
+          # different shellcheck releases flag different findings (e.g. SC2218),
+          # so an unpinned CI version can fail on code that passes a developer's
+          # local shellcheck. Pin to the version the static gate is run with.
+          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" | tar -xJ
+          sudo install "shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
+          shellcheck --version
           # Pin the major line: the postgres/mongodb roles still use
           # ansible.builtin.apt_repository, removed in ansible-core 2.25, so an
           # unpinned install would break the syntax-check with no code change.

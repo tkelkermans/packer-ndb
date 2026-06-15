@@ -3068,7 +3068,7 @@ run_validate_mongodb_role_static_tests() {
 
 run_validate_mongodb_role_static_tests
 
-run_ndb_linux_precheck_guard_tests() {
+run_ndb_common_runtime_guard_tests() {
   local version newline_less_password newline_less_pam_password
 
   newline_less_password=$(printf 'secret' | bash -c 'password=""; IFS= read -r password || true; printf "%s" "$password"')
@@ -3278,10 +3278,10 @@ run_ndb_linux_precheck_guard_tests() {
   grep -q "ndb-era-dm-compat" "$ROOT_DIR/README.md" || fail "README missing Debian/Ubuntu NDB Era device-mapper helper guidance"
   grep -q "NDB-side storage/protection issue" "$ROOT_DIR/README.md" || fail "README missing Debian/Ubuntu NDB storage/protection escalation guidance"
   grep -q -- "-u mongodb" "$ROOT_DIR/README.md" || fail "README missing Ubuntu/Debian MongoDB precheck user guidance"
-  pass "NDB Linux precheck guards"
+  pass "NDB common runtime guards"
 }
 
-run_ndb_linux_precheck_guard_tests
+run_ndb_common_runtime_guard_tests
 
 run_image_prepare_tests() {
   local version
