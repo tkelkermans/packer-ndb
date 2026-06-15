@@ -6,8 +6,6 @@
     "os_type": "Rocky Linux",
     "os_version": "9.6",
     "db_version": "17",
-    "patroni_version": "4.0.5",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "4.0.5",
@@ -34,8 +32,6 @@
     "os_type": "Rocky Linux",
     "os_version": "9.6",
     "db_version": "16",
-    "patroni_version": "4.0.5",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "4.0.5",
@@ -62,8 +58,6 @@
     "os_type": "Rocky Linux",
     "os_version": "9.6",
     "db_version": "15",
-    "patroni_version": "4.0.5",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "4.0.5",
@@ -90,8 +84,6 @@
     "os_type": "Rocky Linux",
     "os_version": "9.6",
     "db_version": "14",
-    "patroni_version": "4.0.5",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "4.0.5",
@@ -118,8 +110,6 @@
     "os_type": "Red Hat Enterprise Linux (RHEL)",
     "os_version": "9.6",
     "db_version": "17",
-    "patroni_version": "4.0.5",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "4.0.5",
@@ -146,8 +136,6 @@
     "os_type": "Red Hat Enterprise Linux (RHEL)",
     "os_version": "9.6",
     "db_version": "16",
-    "patroni_version": "4.0.5",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "4.0.5",
@@ -174,8 +162,6 @@
     "os_type": "Red Hat Enterprise Linux (RHEL)",
     "os_version": "9.6",
     "db_version": "15",
-    "patroni_version": "4.0.5",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "4.0.5",
@@ -202,8 +188,6 @@
     "os_type": "Red Hat Enterprise Linux (RHEL)",
     "os_version": "9.6",
     "db_version": "14",
-    "patroni_version": "4.0.5",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "4.0.5",
@@ -230,8 +214,6 @@
     "os_type": "Ubuntu Linux",
     "os_version": "22.04",
     "db_version": "17",
-    "patroni_version": "3.2.2",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "3.2.2"
@@ -257,8 +239,6 @@
     "os_type": "Ubuntu Linux",
     "os_version": "22.04",
     "db_version": "16",
-    "patroni_version": "3.2.2",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "3.2.2"
@@ -284,8 +264,6 @@
     "os_type": "Ubuntu Linux",
     "os_version": "22.04",
     "db_version": "15",
-    "patroni_version": "3.2.2",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "3.2.2"
@@ -311,8 +289,6 @@
     "os_type": "Ubuntu Linux",
     "os_version": "22.04",
     "db_version": "14",
-    "patroni_version": "3.2.2",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "3.2.2"
@@ -338,8 +314,6 @@
     "os_type": "Red Hat Enterprise Linux (RHEL)",
     "os_version": "9.4",
     "db_version": "17",
-    "patroni_version": "4.0.5",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "4.0.5",
@@ -365,8 +339,6 @@
     "os_type": "Red Hat Enterprise Linux (RHEL)",
     "os_version": "8.10",
     "db_version": "17",
-    "patroni_version": "4.0.5",
-    "etcd_version": "3.5.12",
     "ha_components": {
       "patroni": [
         "4.0.5",
@@ -392,8 +364,6 @@
     "os_type": "Red Hat Enterprise Linux (RHEL)",
     "os_version": "8.8",
     "db_version": "16",
-    "patroni_version": "3.2.2",
-    "etcd_version": "3.4.20",
     "ha_components": {
       "patroni": [
         "3.2.2"
@@ -418,8 +388,6 @@
     "os_type": "Red Hat Enterprise Linux (RHEL)",
     "os_version": "8.6",
     "db_version": "15",
-    "patroni_version": "2.1.4",
-    "etcd_version": "3.4.20",
     "ha_components": {
       "patroni": [
         "2.1.4"
@@ -444,8 +412,6 @@
     "os_type": "Ubuntu Linux",
     "os_version": "20.04",
     "db_version": "15",
-    "patroni_version": "2.1.4",
-    "etcd_version": "3.2.26",
     "ha_components": {
       "patroni": [
         "2.1.4"
@@ -470,8 +436,6 @@
     "os_type": "Ubuntu Linux",
     "os_version": "20.04",
     "db_version": "14",
-    "patroni_version": "2.1.4",
-    "etcd_version": "3.2.26",
     "ha_components": {
       "patroni": [
         "2.1.4"

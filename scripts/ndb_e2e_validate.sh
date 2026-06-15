@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# State and temp files created by this script can hold generated database and
+# OS passwords; keep everything it writes private to the invoking user.
+umask 0077
+
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 # shellcheck source=scripts/prism.sh
@@ -29,6 +33,16 @@ TARGET_OBSERVER=${NDB_E2E_TARGET_OBSERVER:-false}
 TARGET_OBSERVER_INTERVAL_SECONDS=${NDB_E2E_TARGET_OBSERVER_INTERVAL_SECONDS:-10}
 TARGET_OBSERVER_MAX_SECONDS=${NDB_E2E_TARGET_OBSERVER_MAX_SECONDS:-900}
 TARGET_OBSERVER_PID=""
+
+for numeric_var in OPERATION_MAX_POLLS OPERATION_POLL_SECONDS OPERATION_STALL_POLLS \
+  NDB_API_TIMEOUT SOURCE_VM_MAX_ATTEMPTS SSH_MAX_POLLS GUEST_READY_MAX_POLLS \
+  TARGET_OBSERVER_INTERVAL_SECONDS TARGET_OBSERVER_MAX_SECONDS; do
+  if ! [[ "${!numeric_var}" =~ ^[0-9]+$ ]]; then
+    printf 'Error: %s must be a non-negative integer, got: %s\n' "$numeric_var" "${!numeric_var}" >&2
+    exit 1
+  fi
+done
+unset numeric_var
 
 NDB_CLUSTER_ID=${NDB_E2E_CLUSTER_ID:-}
 NDB_POSTGRES_NETWORK_PROFILE_ID=${NDB_E2E_POSTGRES_NETWORK_PROFILE_ID:-${NDB_E2E_NETWORK_PROFILE_ID:-}}
@@ -157,7 +171,7 @@ on_error() {
   fi
   ERROR_RECORDED=true
   if [[ "$DRY_RUN" != "true" && -n "$CURRENT_STATE_FILE" && -f "$CURRENT_STATE_FILE" ]]; then
-    record_result "$CURRENT_STATE_FILE" fail "row execution failed at line ${line}" || true
+    record_result "$CURRENT_STATE_FILE" fail "$(classify_failure_message "$CURRENT_STATE_FILE" "row execution failed at line ${line}")" || true
   fi
 }
 
@@ -278,23 +292,9 @@ ndb_post_file() {
     -d @"$2"
 }
 
-extract_task_uuid() {
-  jq -r '.status.execution_context.task_uuid // .task_uuid // ""'
-}
-
-wait_prism_response_task() {
-  local response=$1 action=$2 task_uuid
-  task_uuid=$(extract_task_uuid <<<"$response")
-  if [[ -z "$task_uuid" ]]; then
-    printf 'Error: Prism %s response did not include a task UUID.\n' "$action" >&2
-    return 1
-  fi
-  prism_wait_task "$task_uuid" >/dev/null
-}
-
 delete_disposable_vm() {
   local vm_uuid=$1 reason=$2
-  local response task_uuid
+  local response
 
   if [[ -z "$vm_uuid" ]]; then
     return 0
@@ -302,10 +302,7 @@ delete_disposable_vm() {
 
   printf 'Deleting disposable VM %s (%s)...\n' "$vm_uuid" "$reason" >&2
   response=$(prism_delete_vm "$vm_uuid") || return 1
-  task_uuid=$(extract_task_uuid <<<"$response")
-  if [[ -n "$task_uuid" ]]; then
-    prism_wait_task "$task_uuid" >/dev/null
-  fi
+  prism_wait_task_from_response "$response"
 }
 
 wait_operation() {
@@ -389,21 +386,19 @@ network_profile_id_for() {
   return 1
 }
 
-ssh_options() {
-  printf '%s\n' \
-    -i "$PRIVATE_KEY_PATH" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o IdentitiesOnly=yes \
-    -o IdentityAgent=none \
-    -o BatchMode=yes \
-    -o ConnectTimeout=5
-}
-
 ssh_as() {
   local user=$1 ip=$2
   shift 2
-  ssh $(ssh_options) "${user}@${ip}" "$@"
+  local -a ssh_opts=(
+    -i "$PRIVATE_KEY_PATH"
+    -o StrictHostKeyChecking=no
+    -o UserKnownHostsFile=/dev/null
+    -o IdentitiesOnly=yes
+    -o IdentityAgent=none
+    -o BatchMode=yes
+    -o ConnectTimeout=5
+  )
+  ssh "${ssh_opts[@]}" "${user}@${ip}" "$@"
 }
 
 wait_ssh() {
@@ -712,7 +707,9 @@ create_source_vm() {
   local cluster_uuid subnet_uuid timestamp short_key vm_name ssh_public_key user_data_b64 create_payload create_response vm_uuid power_response vm_ip attempt source_ready
 
   image_uuid=$(resolve_image_uuid "$image_name" "$image_uuid")
+  # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
   cluster_uuid=$(prism_cluster_uuid_by_name "$PKR_VAR_cluster_name")
+  # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
   subnet_uuid=$(prism_subnet_uuid_by_name "$PKR_VAR_subnet_name")
   if [[ -z "$cluster_uuid" || -z "$subnet_uuid" ]]; then
     printf 'Error: could not resolve Prism cluster/subnet UUID.\n' >&2
@@ -790,11 +787,11 @@ create_source_vm() {
       printf 'Error: Prism create response did not include VM UUID.\n' >&2
       return 1
     fi
-    wait_prism_response_task "$create_response" "create VM"
+    prism_wait_required_task_from_response "$create_response" "create VM"
 
     printf 'Powering on source VM %s...\n' "$vm_uuid"
     power_response=$(prism_power_on_vm "$vm_uuid")
-    wait_prism_response_task "$power_response" "power on VM"
+    prism_wait_required_task_from_response "$power_response" "power on VM"
 
     printf 'Waiting for source VM IP...\n'
     for _ in $(seq 1 90); do
@@ -811,9 +808,11 @@ create_source_vm() {
       --arg source_vm_uuid "$vm_uuid" \
       --arg source_vm_ip "$vm_ip" \
       --arg db_version "$db_version" \
+      --arg db_type "$db_type" \
       --arg source_vm_attempt "$attempt" \
       '{
         row_id: $row_id,
+        db_type: $db_type,
         image_name: $image_name,
         image_uuid: $image_uuid,
         source_vm_name: $source_vm_name,
@@ -963,7 +962,9 @@ prepare_postgres_source_vm() {
 
   printf 'Preparing PostgreSQL source VM for profile creation...\n'
   ssh_as packer "$vm_ip" "sudo systemctl start '$service' && sudo systemctl disable '$service'"
-  ssh_as packer "$vm_ip" "sudo -u postgres '$psql' -c \"ALTER USER postgres WITH PASSWORD '${db_password}';\" >/dev/null"
+  # Send the password over stdin so it never appears in local or remote process listings.
+  printf "ALTER USER postgres WITH PASSWORD '%s';\n" "$db_password" \
+    | ssh_as packer "$vm_ip" "sudo -u postgres '$psql' -q >/dev/null"
   ssh_as packer "$vm_ip" "sudo sed -i \"s/^#\\?listen_addresses.*/listen_addresses = '*'/\" '$conf'"
   ssh_as packer "$vm_ip" "sudo grep -q '^host all all 0.0.0.0/0' '$hba' || printf '%s\n' 'host all all 0.0.0.0/0 scram-sha-256' | sudo tee -a '$hba' >/dev/null"
   ssh_as packer "$vm_ip" "if command -v firewall-cmd >/dev/null 2>&1; then sudo firewall-cmd --permanent --add-port=5432/tcp >/dev/null && sudo firewall-cmd --reload >/dev/null; fi"
@@ -1353,11 +1354,45 @@ validate_guest_database() {
   printf 'Guest validation: %s\n' "$validation"
 }
 
+classify_failure_message() {
+  local state_file=$1 default_message=$2
+  local row_id row_dir observer_dir
+  row_id=$(jq -r '.row_id // ""' "$state_file" 2>/dev/null || true)
+  row_dir=$(dirname "$state_file")
+  observer_dir="$row_dir/target-observer"
+
+  if [[ "$row_id" =~ ^210-pg(16|17|18)-debian12$ && -d "$observer_dir" ]] \
+    && grep -Rqs 'ntnx_era_agent_vg_' "$observer_dir" \
+    && grep -Rqs 'OS_SOFTWARE' "$observer_dir" \
+    && grep -Rqs 'Detected invalid Volume Group' "$observer_dir"; then
+    printf 'known_ndb_debian_pg_storage_protection_blocker: NDB classified its own ntnx_era_agent_vg_* as OS_SOFTWARE and Prism rejected protection-domain add_entities; use target-observer evidence for NDB support escalation'
+    return 0
+  fi
+
+  printf '%s' "$default_message"
+}
+
+failure_class_for_message() {
+  local message=$1
+  case "$message" in
+    known_ndb_debian_pg_storage_protection_blocker:*)
+      printf 'known_ndb_debian_pg_storage_protection_blocker'
+      ;;
+    *)
+      printf ''
+      ;;
+  esac
+}
+
 record_result() {
   local state_file=$1 status=$2 error_message=${3:-}
-  jq -c --arg status "$status" --arg error_message "$error_message" '{
+  local failure_class
+  failure_class=$(failure_class_for_message "$error_message")
+  jq -c --arg status "$status" --arg error_message "$error_message" --arg failure_class "$failure_class" '{
     row_id,
+    db_type,
     status: $status,
+    failure_class: $failure_class,
     error_message: $error_message,
     image_name,
     image_uuid,
@@ -1385,12 +1420,12 @@ row_already_passed() {
 }
 
 preflight_target_images() {
-  local images_file ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at
+  local images_file ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid
   local row_id selected=0 missing=0
   images_file=$(mktemp -t ndb-e2e-images.XXXXXX)
   prism_list_resource images image 5000 > "$images_file"
 
-  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at; do
+  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid _; do
     [[ -n "$DB_TYPE_FILTER" && "$db_type" != "$DB_TYPE_FILTER" ]] && continue
     row_id=$(row_id_for "$ndb_version" "$db_type" "$os_type" "$os_version" "$db_version" "$mongodb_edition" "$mongodb_deployments")
     [[ -n "$ROW_FILTER" && "$row_id" != "$ROW_FILTER" ]] && continue
@@ -1424,9 +1459,9 @@ preflight_target_images() {
 validate_row_filter_exists() {
   [[ -n "$ROW_FILTER" ]] || return 0
 
-  local ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at
+  local ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid
   local row_id
-  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at; do
+  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid _; do
     [[ -n "$DB_TYPE_FILTER" && "$db_type" != "$DB_TYPE_FILTER" ]] && continue
     row_id=$(row_id_for "$ndb_version" "$db_type" "$os_type" "$os_version" "$db_version" "$mongodb_edition" "$mongodb_deployments")
     if [[ "$row_id" == "$ROW_FILTER" ]]; then
@@ -1442,9 +1477,9 @@ validate_row_filter_exists() {
 selected_targets_include_db() {
   local wanted_db_type=$1
   local attempted=0 index=0
-  local ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at row_id
+  local ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid row_id
 
-  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at; do
+  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid _; do
     index=$((index + 1))
     [[ -n "$DB_TYPE_FILTER" && "$db_type" != "$DB_TYPE_FILTER" ]] && continue
     row_id=$(row_id_for "$ndb_version" "$db_type" "$os_type" "$os_version" "$db_version" "$mongodb_edition" "$mongodb_deployments")
@@ -1587,7 +1622,7 @@ main() {
   fi
 
   local attempted=0 index=0
-  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid finished_at; do
+  while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid _; do
     index=$((index + 1))
     [[ -n "$DB_TYPE_FILTER" && "$db_type" != "$DB_TYPE_FILTER" ]] && continue
     local row_id

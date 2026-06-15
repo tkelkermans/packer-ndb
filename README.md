@@ -343,6 +343,13 @@ Each entry can be:
 
 If a remote import is slow over VPN, staging or reusing an existing Prism image is usually faster and more reliable than asking Packer to import the remote URI every time.
 
+If Prism reports `ImageCreate failed`, `Unable to fetch the file size from
+range request`, or an HTTP `404`, check the source image URI first. That failure
+happens before the build VM exists, so it is not caused by Ansible, PostgreSQL,
+MongoDB, or selected extensions. Use `./build.sh --dry-run ...` to see the exact
+URI, then either fix `images.json` or pass a known-good Prism image with
+`--source-image-uuid`.
+
 If Prism has duplicate images with the same source-image name or URI, use the exact Prism image UUID:
 
 ```bash
@@ -683,6 +690,10 @@ shows NDB including its own Era agent volume group as `OS_SOFTWARE`, or Prism
 rejects `add_entities` with `Detected invalid Volume Group(s)`, treat that as an
 NDB-side storage/protection issue and attach the observer evidence to the NDB
 support case.
+For the known NDB 2.10 Debian 12 PostgreSQL rows, the E2E runner records this
+as failure class `known_ndb_debian_pg_storage_protection_blocker` when the
+target-observer evidence contains the Era agent VG, `OS_SOFTWARE`, and the
+Prism invalid-volume-group rejection.
 
 Useful options:
 
@@ -791,6 +802,9 @@ image capture. If that is true and the observer still shows NDB sending its own
 Era agent volume group to Prism protection-domain `add_entities`, stop changing
 the image and escalate with the captured NDB operation and target-observer
 evidence.
+The E2E evidence row will include `failure_class:
+known_ndb_debian_pg_storage_protection_blocker` for that known Debian 12
+PostgreSQL pattern.
 
 ### Source image import timed out
 
@@ -801,6 +815,19 @@ Example:
 ```bash
 ./build.sh --ci --source-image-name "Rocky-9-GenericCloud-LVM-9.7-20251123.2.x86_64.qcow2" --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
+
+### Source image URL returns 404
+
+If the build fails in a few seconds with `ImageCreate failed`, `Unable to fetch
+the file size from range request`, and `GET response: 404`, Prism could not
+download the qcow2 URL from `images.json`. Run the same command with
+`--dry-run` and check the `Effective packer source_image_uri` line.
+
+Fix options:
+
+- Update the matching entry in `images.json` if the public distribution URL moved.
+- Pass `--source-image-uuid` if the source image already exists and is active in Prism.
+- Pass `--source-image-uri` with a reachable qcow2 URL for a one-off build.
 
 ### Source image name is ambiguous
 
@@ -1012,8 +1039,6 @@ The matrix file is the support contract for one NDB version. Each buildable Post
   "os_version": "9.7",
   "db_version": "18",
   "provisioning_role": "postgresql",
-  "patroni_version": "4.0.5",
-  "etcd_version": "3.5.12",
   "ha_components": {
     "patroni": ["4.0.5"],
     "etcd": ["3.5.12"],
@@ -1073,7 +1098,7 @@ You can use this prompt with a language model to draft a new matrix from release
 ```text
 Please create a JSON array of all possible build combinations from the provided markdown file.
 Each object must include ndb_version, engine, db_type, os_type, os_version, db_version, and provisioning_role.
-Add patroni_version, etcd_version, and ha_components when the release notes include PostgreSQL HA component data.
+Add ha_components (with patroni, etcd, haproxy, and keepalived version arrays) when the release notes include PostgreSQL HA component data.
 Use provisioning_role=postgresql only for combinations that are actually buildable by the current PostgreSQL pipeline.
 Use provisioning_role=mongodb only for combinations that are actually buildable by the current MongoDB pipeline, and include mongodb_edition plus deployment metadata for those rows.
 For buildable PostgreSQL rows, add release-note-qualified PostgreSQL extensions in qualified_extensions.

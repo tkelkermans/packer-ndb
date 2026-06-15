@@ -21,7 +21,6 @@ FINAL_STATUS="failed"
 RHEL_REPOSITORY_CHECK=false
 RHEL_REPOSITORY_CHECK_STATUS="not-requested"
 RHEL_REPOSITORY_PACKAGES=(bison firewalld flex gcc gdbm-devel lsof lvm2 net-tools perl python3-pip sshpass unzip wget zip)
-RHEL_REPOSITORY_REGISTERED=false
 
 usage() {
   cat <<'EOF'
@@ -114,22 +113,6 @@ base64_no_wrap() {
   base64 | tr -d '\n'
 }
 
-extract_task_uuid() {
-  jq -r '.status.execution_context.task_uuid // .task_uuid // ""'
-}
-
-wait_task_from_response() {
-  local response=$1
-  local action=$2
-  local task_uuid
-  task_uuid=$(extract_task_uuid <<<"$response")
-  if [[ -z "$task_uuid" ]]; then
-    printf 'Error: Prism %s response did not include a task UUID.\n' "$action" >&2
-    return 1
-  fi
-  prism_wait_task "$task_uuid" >/dev/null
-}
-
 write_result() {
   local status=$1
   if [[ -z "$RESULT_FILE" ]]; then
@@ -178,7 +161,7 @@ cleanup_vm() {
 
   CLEANUP_STATUS="deleting"
   if delete_response=$(prism_delete_vm "$VM_UUID"); then
-    wait_task_from_response "$delete_response" "delete VM" || {
+    prism_wait_required_task_from_response "$delete_response" "delete VM" || {
       CLEANUP_STATUS="delete-task-failed"
       return 1
     }
@@ -406,11 +389,11 @@ if [[ -z "$VM_UUID" ]]; then
   printf 'Error: Prism create response did not include VM UUID.\n' >&2
   exit 1
 fi
-wait_task_from_response "$CREATE_RESPONSE" "create VM"
+prism_wait_required_task_from_response "$CREATE_RESPONSE" "create VM"
 
 printf 'Powering on source image probe VM %s...\n' "$VM_UUID"
 POWER_RESPONSE=$(prism_power_on_vm "$VM_UUID")
-wait_task_from_response "$POWER_RESPONSE" "power on VM"
+prism_wait_required_task_from_response "$POWER_RESPONSE" "power on VM"
 
 printf 'Waiting for source image probe VM IP...\n'
 VM_IP=""
@@ -457,10 +440,8 @@ EOF
 }
 
 wait_guest_boot_ready() {
-  local i
-
   printf 'Waiting for systemd/D-Bus readiness on %s...\n' "$VM_IP"
-  for i in $(seq 1 90); do
+  for _ in $(seq 1 90); do
     if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "$(guest_boot_ready_probe)" >/dev/null 2>&1; then
       return 0
     fi
@@ -488,6 +469,8 @@ run_rhel_repository_check() {
   printf -v org_id_quoted "%q" "${NDB_RHEL_ORGID:-}"
   printf -v activation_key_quoted "%q" "${NDB_RHEL_ACTIVATIONKEY:-}"
 
+  # shellcheck disable=SC2087  # client-side expansion is intentional: only the %q-quoted
+  # values above are substituted; remote-side variables are escaped with \$ in the heredoc.
   if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "sudo -n bash -s" <<EOF
 set -euo pipefail
 

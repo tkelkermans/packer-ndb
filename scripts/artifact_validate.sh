@@ -129,31 +129,6 @@ base64_no_wrap() {
   base64 | tr -d '\n'
 }
 
-extract_task_uuid() {
-  jq -r '.status.execution_context.task_uuid // .task_uuid // ""'
-}
-
-wait_task_from_response() {
-  local response=$1
-  local task_uuid
-  task_uuid=$(extract_task_uuid <<<"$response")
-  if [[ -n "$task_uuid" ]]; then
-    prism_wait_task "$task_uuid" >/dev/null
-  fi
-}
-
-wait_required_task_from_response() {
-  local response=$1
-  local action=$2
-  local task_uuid
-  task_uuid=$(extract_task_uuid <<<"$response")
-  if [[ -z "$task_uuid" ]]; then
-    printf 'Error: Prism %s response did not include a task UUID.\n' "$action" >&2
-    return 1
-  fi
-  prism_wait_task "$task_uuid" >/dev/null
-}
-
 guest_boot_ready_probe() {
   cat <<'EOF'
 test -S /run/dbus/system_bus_socket || exit 1
@@ -173,10 +148,9 @@ EOF
 
 wait_guest_boot_ready() {
   local user=$1 ip=$2
-  local i
 
   printf 'Waiting for systemd/D-Bus readiness on %s...\n' "$ip"
-  for i in $(seq 1 90); do
+  for _ in $(seq 1 90); do
     if ssh "${SSH_COMMON_ARGS[@]}" "${user}@${ip}" "$(guest_boot_ready_probe)" >/dev/null 2>&1; then
       return 0
     fi
@@ -234,7 +208,7 @@ cleanup_vm() {
 
   CLEANUP_STATUS="deleting"
   if delete_response=$(prism_delete_vm "$VM_UUID"); then
-    wait_task_from_response "$delete_response" || {
+    prism_wait_task_from_response "$delete_response" || {
       CLEANUP_STATUS="delete-task-failed"
       return 1
     }
@@ -527,11 +501,11 @@ if [[ -z "$VM_UUID" ]]; then
   printf 'Error: Prism create response did not include VM UUID.\n' >&2
   exit 1
 fi
-wait_required_task_from_response "$CREATE_RESPONSE" "create VM"
+prism_wait_required_task_from_response "$CREATE_RESPONSE" "create VM"
 
 printf 'Powering on validation VM %s...\n' "$VM_UUID"
 POWER_RESPONSE=$(prism_power_on_vm "$VM_UUID")
-wait_required_task_from_response "$POWER_RESPONSE" "power on VM"
+prism_wait_required_task_from_response "$POWER_RESPONSE" "power on VM"
 
 printf 'Waiting for validation VM IP...\n'
 VM_IP=""

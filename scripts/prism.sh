@@ -30,6 +30,7 @@ prism_require_env() {
 
 prism_endpoint() {
   prism_require_env || return 1
+  # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
   prism_endpoint_from_host "$PKR_VAR_pc_ip"
 }
 
@@ -46,6 +47,7 @@ prism_curl() {
   response_file=$(mktemp -t ndb-prism-response.XXXXXX)
 
   if [[ -n "$payload" ]]; then
+    # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
     http_status=$(curl -sS -k -u "${PKR_VAR_pc_username}:${PKR_VAR_pc_password}" \
       -H "Content-Type: application/json" \
       -X "$method" \
@@ -170,6 +172,35 @@ prism_wait_task() {
 
   printf 'Error: timed out waiting for Prism task %s after %s seconds.\n' "$task_uuid" "$timeout_seconds" >&2
   return 124
+}
+
+prism_extract_task_uuid() {
+  jq -r '(.status.execution_context.task_uuid
+          // .status.execution_context.task_uuid_list
+          // .task_uuid
+          // "")
+         | if type == "array" then (.[0] // "") else . end'
+}
+
+prism_wait_task_from_response() {
+  local response=$1
+  local task_uuid
+  task_uuid=$(prism_extract_task_uuid <<<"$response")
+  if [[ -n "$task_uuid" ]]; then
+    prism_wait_task "$task_uuid" >/dev/null
+  fi
+}
+
+prism_wait_required_task_from_response() {
+  local response=$1
+  local action=$2
+  local task_uuid
+  task_uuid=$(prism_extract_task_uuid <<<"$response")
+  if [[ -z "$task_uuid" ]]; then
+    printf 'Error: Prism %s response did not include a task UUID.\n' "$action" >&2
+    return 1
+  fi
+  prism_wait_task "$task_uuid" >/dev/null
 }
 
 prism_vm_json() {

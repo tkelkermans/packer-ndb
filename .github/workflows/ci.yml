@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  static-gates:
+    name: Static gates (credential-free)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need base ref for the committed-diff whitespace check
+
+      - name: Install tools
+        env:
+          SHELLCHECK_VERSION: v0.11.0
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq jq
+          # Pin shellcheck instead of using the runner image's apt version:
+          # different shellcheck releases flag different findings (e.g. SC2218),
+          # so an unpinned CI version can fail on code that passes a developer's
+          # local shellcheck. Pin to the version the static gate is run with.
+          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" | tar -xJ
+          sudo install "shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
+          shellcheck --version
+          # Pin the major line: the postgres/mongodb roles still use
+          # ansible.builtin.apt_repository, removed in ansible-core 2.25, so an
+          # unpinned install would break the syntax-check with no code change.
+          pipx install 'ansible-core>=2.16,<2.25'
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@v3
+
+      - name: Shell syntax
+        run: bash -n build.sh test.sh scripts/*.sh
+
+      - name: ShellCheck
+        # Per-file invocation: a single multi-file run cross-contaminates
+        # shellcheck's variable analysis between scripts (false SC2178/SC2128).
+        run: printf '%s\n' build.sh test.sh scripts/*.sh | xargs -n1 shellcheck -S warning
+
+      - name: JSON validity
+        run: jq empty images.json ndb/*/matrix.json
+
+      - name: Matrix validation
+        run: scripts/matrix_validate.sh ndb/*/matrix.json
+
+      - name: Self-tests
+        run: bash scripts/selftest.sh
+
+      - name: Packer fmt
+        run: packer fmt -check packer/
+
+      - name: Packer validate (placeholder credentials)
+        run: |
+          ssh-keygen -t rsa -b 2048 -f packer/id_rsa -N "" -q
+          echo '{}' > /tmp/ci-ansible-vars.json
+          packer init packer/
+          packer validate \
+            -var pc_username=placeholder \
+            -var pc_password=placeholder \
+            -var pc_ip=192.0.2.1 \
+            -var cluster_name=placeholder \
+            -var subnet_name=placeholder \
+            -var image_name=ci-placeholder \
+            -var ndb_version=2.10 \
+            -var db_type=pgsql \
+            -var db_version=18 \
+            -var os_type="Rocky Linux" \
+            -var os_version=9.7 \
+            -var source_image_uri=https://example.invalid/source.qcow2 \
+            -var ansible_site_playbook=ansible/2.10/playbooks/site.yml \
+            -var "ansible_config_path=ANSIBLE_CONFIG=ansible/2.10/ansible.cfg" \
+            -var ansible_extra_vars_file=/tmp/ci-ansible-vars.json \
+            -var "ssh_public_key=$(cat packer/id_rsa.pub)" \
+            packer/
+
+      - name: Ansible syntax check
+        run: |
+          for ver in 2.9 2.10; do
+            ANSIBLE_CONFIG="ansible/${ver}/ansible.cfg" ansible-playbook \
+              -i "ansible/${ver}/inventory/hosts" \
+              --syntax-check "ansible/${ver}/playbooks/site.yml"
+          done
+
+      - name: Whitespace check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # On PRs, lint only the committed diff against the base; on a fresh
+          # checkout `git diff --check` alone compares the worktree to HEAD and
+          # so checks nothing. Fall back to that when no base ref is available.
+          if [ -n "$BASE_SHA" ] && git cat-file -e "$BASE_SHA" 2>/dev/null; then
+            git diff --check "$BASE_SHA" HEAD
+          else
+            git diff --check
+          fi

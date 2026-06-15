@@ -189,7 +189,6 @@ done
 
 uri_ready=false
 uuid_ready=false
-activation_ready=false
 
 printf 'RHEL source URI readiness: '
 if all_set NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI; then
@@ -213,7 +212,6 @@ env_status RHEL_97_UUID || true
 
 printf '\nRHEL activation key readiness: '
 if all_set NDB_RHEL_ORGID NDB_RHEL_ACTIVATIONKEY; then
-  activation_ready=true
   printf 'complete\n'
 else
   printf 'incomplete\n'

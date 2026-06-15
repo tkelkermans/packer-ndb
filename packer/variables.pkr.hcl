@@ -100,14 +100,6 @@ variable "os_version" {
   type = string
 }
 
-variable "patroni_version" {
-  type = string
-}
-
-variable "etcd_version" {
-  type = string
-}
-
 variable "ssh_public_key" {
   type    = string
   default = ""
