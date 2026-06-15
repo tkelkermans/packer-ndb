@@ -1039,8 +1039,6 @@ The matrix file is the support contract for one NDB version. Each buildable Post
   "os_version": "9.7",
   "db_version": "18",
   "provisioning_role": "postgresql",
-  "patroni_version": "4.0.5",
-  "etcd_version": "3.5.12",
   "ha_components": {
     "patroni": ["4.0.5"],
     "etcd": ["3.5.12"],
@@ -1100,7 +1098,7 @@ You can use this prompt with a language model to draft a new matrix from release
 ```text
 Please create a JSON array of all possible build combinations from the provided markdown file.
 Each object must include ndb_version, engine, db_type, os_type, os_version, db_version, and provisioning_role.
-Add patroni_version, etcd_version, and ha_components when the release notes include PostgreSQL HA component data.
+Add ha_components (with patroni, etcd, haproxy, and keepalived version arrays) when the release notes include PostgreSQL HA component data.
 Use provisioning_role=postgresql only for combinations that are actually buildable by the current PostgreSQL pipeline.
 Use provisioning_role=mongodb only for combinations that are actually buildable by the current MongoDB pipeline, and include mongodb_edition plus deployment metadata for those rows.
 For buildable PostgreSQL rows, add release-note-qualified PostgreSQL extensions in qualified_extensions.

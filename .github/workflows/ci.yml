@@ -58,8 +58,6 @@ jobs:
             -var db_version=18 \
             -var os_type="Rocky Linux" \
             -var os_version=9.7 \
-            -var patroni_version=4.0.5 \
-            -var etcd_version=3.5.12 \
             -var source_image_uri=https://example.invalid/source.qcow2 \
             -var ansible_site_playbook=ansible/2.10/playbooks/site.yml \
             -var "ansible_config_path=ANSIBLE_CONFIG=ansible/2.10/ansible.cfg" \

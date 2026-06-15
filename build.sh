@@ -277,6 +277,25 @@ function materialize_source_image() {
   echo "$source_image"
 }
 
+# Single setter for the five packer source-image fields plus the mode/action
+# summary pair; dry-run/preflight passes "<not used>"-style display placeholders
+# while live builds pass empty strings.
+function set_packer_source_fields() {
+  PACKER_SOURCE_IMAGE_NAME=$1
+  PACKER_SOURCE_IMAGE_UUID=$2
+  PACKER_SOURCE_IMAGE_URI=$3
+  PACKER_SOURCE_IMAGE_PATH=$4
+  SOURCE_IMAGE_MODE=$5
+  SOURCE_IMAGE_RUNTIME_ACTION=$6
+}
+
+function is_rhel_os_type() {
+  case "${1:-}" in
+    RHEL|"Red Hat Enterprise Linux (RHEL)") return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 function slugify() {
   normalize_image_key_part "$1"
 }
@@ -436,7 +455,7 @@ function generate_ansible_vars_json() {
     postgres_ha_components_json="{}"
   fi
 
-  if [[ ( "${OS_TYPE:-}" == "RHEL" || "${OS_TYPE:-}" == "Red Hat Enterprise Linux (RHEL)" ) && -n "${NDB_RHEL_ORGID:-}" && -n "${NDB_RHEL_ACTIVATIONKEY:-}" ]]; then
+  if is_rhel_os_type "${OS_TYPE:-}" && [[ -n "${NDB_RHEL_ORGID:-}" && -n "${NDB_RHEL_ACTIVATIONKEY:-}" ]]; then
     rhel_subscription_enabled=true
     rhel_subscription_org_id="${NDB_RHEL_ORGID:-}"
     rhel_subscription_activation_key="${NDB_RHEL_ACTIVATIONKEY:-}"
@@ -692,8 +711,6 @@ Packer variable preview:
   os_version=${OS_VERSION}
   db_type=${DB_TYPE}
   db_version=${DB_VERSION}
-  patroni_version=${PATRONI_VERSION}
-  etcd_version=${ETCD_VERSION}
   source_image_name=${PACKER_SOURCE_IMAGE_NAME}
   source_image_uuid=${PACKER_SOURCE_IMAGE_UUID}
   source_image_uri=${PACKER_SOURCE_IMAGE_URI}
@@ -975,8 +992,6 @@ POSTGRES_HA_COMPONENTS_JSON=$(echo "$CONFIG" | jq -c '.ha_components // {}')
 POSTGRES_QUALIFIED_VERSION_RANGE=$(echo "$CONFIG" | jq -r '.postgres_qualified_version_range // ""')
 POSTGRES_PACKAGE_VERSION_PREFIX=$(echo "$CONFIG" | jq -r '.postgres_package_version_prefix // ""')
 POSTGRES_PACKAGE_USE_ARCHIVE=$(echo "$CONFIG" | jq -r '.postgres_package_use_archive // false')
-PATRONI_VERSION=$(echo "$CONFIG" | jq -r '.patroni_version // .ha_components.patroni[0] // ""')
-ETCD_VERSION=$(echo "$CONFIG" | jq -r '.etcd_version // .ha_components.etcd[0] // ""')
 
 if [[ "$PROVISIONING_ROLE" != "postgresql" && "$POSTGRES_EXTENSIONS_SELECTION" != "none" ]]; then
   echo "Error: --extensions is only valid for PostgreSQL builds." >&2
@@ -1062,102 +1077,56 @@ else
   fi
 fi
 
-if [[ "$OS_TYPE" == "RHEL" || "$OS_TYPE" == "Red Hat Enterprise Linux (RHEL)" ]]; then
+if is_rhel_os_type "$OS_TYPE"; then
   PREFETCH_SOURCE_IMAGE=true
 fi
 
 if [[ "$DRY_RUN" == "true" || "$PREFLIGHT_ONLY" == "true" ]]; then
   if [[ -n "$SOURCE_IMAGE_UUID_OVERRIDE" ]]; then
-    PACKER_SOURCE_IMAGE_NAME="<not used>"
-    PACKER_SOURCE_IMAGE_UUID="$SOURCE_IMAGE_UUID_OVERRIDE"
-    PACKER_SOURCE_IMAGE_URI="<not used>"
-    PACKER_SOURCE_IMAGE_PATH="<not used>"
-    SOURCE_IMAGE_MODE="existing-prism-image-uuid"
-    SOURCE_IMAGE_RUNTIME_ACTION="reuse the existing Prism image by UUID"
+    set_packer_source_fields "<not used>" "$SOURCE_IMAGE_UUID_OVERRIDE" "<not used>" "<not used>" \
+      "existing-prism-image-uuid" "reuse the existing Prism image by UUID"
   elif [[ -n "$SOURCE_IMAGE_NAME_OVERRIDE" ]]; then
-    PACKER_SOURCE_IMAGE_NAME="$SOURCE_IMAGE_NAME_OVERRIDE"
-    PACKER_SOURCE_IMAGE_UUID="<not used>"
-    PACKER_SOURCE_IMAGE_URI="<not used>"
-    PACKER_SOURCE_IMAGE_PATH="<not used>"
-    SOURCE_IMAGE_MODE="existing-prism-image"
-    SOURCE_IMAGE_RUNTIME_ACTION="reuse the existing Prism image by name"
+    set_packer_source_fields "$SOURCE_IMAGE_NAME_OVERRIDE" "<not used>" "<not used>" "<not used>" \
+      "existing-prism-image" "reuse the existing Prism image by name"
   elif [[ "$SOURCE_IMAGE_RESOLUTION_STATUS" == "missing-env" ]]; then
-    PACKER_SOURCE_IMAGE_URI="<unresolved until ${SOURCE_IMAGE_REQUIRED_ENV_VAR} is set>"
-    PACKER_SOURCE_IMAGE_NAME="<not used>"
-    PACKER_SOURCE_IMAGE_UUID="<not used>"
-    PACKER_SOURCE_IMAGE_PATH="<not used>"
-    SOURCE_IMAGE_MODE="unresolved"
-    SOURCE_IMAGE_RUNTIME_ACTION="source image env var required before live build"
+    set_packer_source_fields "<not used>" "<not used>" "<unresolved until ${SOURCE_IMAGE_REQUIRED_ENV_VAR} is set>" "<not used>" \
+      "unresolved" "source image env var required before live build"
   elif [[ "$SOURCE_IMAGE_URI" =~ ^file:// ]]; then
-    PACKER_SOURCE_IMAGE_NAME="<not used>"
-    PACKER_SOURCE_IMAGE_UUID="<not used>"
-    PACKER_SOURCE_IMAGE_URI="<not used>"
-    PACKER_SOURCE_IMAGE_PATH="${SOURCE_IMAGE_URI#file://}"
-    SOURCE_IMAGE_MODE="local-path"
-    SOURCE_IMAGE_RUNTIME_ACTION="use the provided local file path via source_image_path"
+    set_packer_source_fields "<not used>" "<not used>" "<not used>" "${SOURCE_IMAGE_URI#file://}" \
+      "local-path" "use the provided local file path via source_image_path"
   elif [[ -n "$SOURCE_IMAGE_URI" && -f "$SOURCE_IMAGE_URI" ]]; then
-    PACKER_SOURCE_IMAGE_NAME="<not used>"
-    PACKER_SOURCE_IMAGE_UUID="<not used>"
-    PACKER_SOURCE_IMAGE_URI="<not used>"
-    PACKER_SOURCE_IMAGE_PATH="${SOURCE_IMAGE_URI}"
-    SOURCE_IMAGE_MODE="local-path"
-    SOURCE_IMAGE_RUNTIME_ACTION="use the provided local file path via source_image_path"
+    set_packer_source_fields "<not used>" "<not used>" "<not used>" "${SOURCE_IMAGE_URI}" \
+      "local-path" "use the provided local file path via source_image_path"
   elif [[ "$PREFETCH_SOURCE_IMAGE" == "true" ]]; then
-    PACKER_SOURCE_IMAGE_NAME="<not used>"
-    PACKER_SOURCE_IMAGE_UUID="<not used>"
-    PACKER_SOURCE_IMAGE_URI="<not used>"
-    PACKER_SOURCE_IMAGE_PATH="<temporary local file created at runtime>"
-    SOURCE_IMAGE_MODE="prefetched-local-path"
-    SOURCE_IMAGE_RUNTIME_ACTION="download the remote source image to a local temp file and pass it via source_image_path"
+    set_packer_source_fields "<not used>" "<not used>" "<not used>" "<temporary local file created at runtime>" \
+      "prefetched-local-path" "download the remote source image to a local temp file and pass it via source_image_path"
   else
-    PACKER_SOURCE_IMAGE_NAME="<not used>"
-    PACKER_SOURCE_IMAGE_UUID="<not used>"
-    PACKER_SOURCE_IMAGE_URI="$SOURCE_IMAGE_URI"
-    PACKER_SOURCE_IMAGE_PATH="<not used>"
-    SOURCE_IMAGE_MODE="remote-uri"
-    SOURCE_IMAGE_RUNTIME_ACTION="pass the resolved remote URI directly to Packer"
+    set_packer_source_fields "<not used>" "<not used>" "$SOURCE_IMAGE_URI" "<not used>" \
+      "remote-uri" "pass the resolved remote URI directly to Packer"
   fi
 else
   if [[ -n "$SOURCE_IMAGE_UUID_OVERRIDE" ]]; then
-    PACKER_SOURCE_IMAGE_NAME=""
-    PACKER_SOURCE_IMAGE_UUID="$SOURCE_IMAGE_UUID_OVERRIDE"
-    PACKER_SOURCE_IMAGE_URI=""
-    PACKER_SOURCE_IMAGE_PATH=""
-    SOURCE_IMAGE_MODE="existing-prism-image-uuid"
-    SOURCE_IMAGE_RUNTIME_ACTION="reuse the existing Prism image by UUID"
+    set_packer_source_fields "" "$SOURCE_IMAGE_UUID_OVERRIDE" "" "" \
+      "existing-prism-image-uuid" "reuse the existing Prism image by UUID"
   elif [[ -n "$SOURCE_IMAGE_NAME_OVERRIDE" ]]; then
-    PACKER_SOURCE_IMAGE_NAME="$SOURCE_IMAGE_NAME_OVERRIDE"
-    PACKER_SOURCE_IMAGE_UUID=""
-    PACKER_SOURCE_IMAGE_URI=""
-    PACKER_SOURCE_IMAGE_PATH=""
-    SOURCE_IMAGE_MODE="existing-prism-image"
-    SOURCE_IMAGE_RUNTIME_ACTION="reuse the existing Prism image by name"
+    set_packer_source_fields "$SOURCE_IMAGE_NAME_OVERRIDE" "" "" "" \
+      "existing-prism-image" "reuse the existing Prism image by name"
+  elif [[ "$STAGE_SOURCE" == "true" && "$SOURCE_IMAGE_URI" =~ ^https?:// ]]; then
+    set_packer_source_fields "" "" "$SOURCE_IMAGE_URI" "" \
+      "remote-uri" "stage the remote source image in Prism before Packer"
   else
-    PACKER_SOURCE_IMAGE_NAME=""
-    PACKER_SOURCE_IMAGE_UUID=""
-    if [[ "$STAGE_SOURCE" == "true" && "$SOURCE_IMAGE_URI" =~ ^https?:// ]]; then
-      PACKER_SOURCE_IMAGE_URI="$SOURCE_IMAGE_URI"
-      PACKER_SOURCE_IMAGE_PATH=""
-      SOURCE_IMAGE_MODE="remote-uri"
-      SOURCE_IMAGE_RUNTIME_ACTION="stage the remote source image in Prism before Packer"
-    else
-      SOURCE_IMAGE_URI=$(materialize_source_image "$SOURCE_IMAGE_URI" "$PREFETCH_SOURCE_IMAGE")
-      if [[ "$SOURCE_IMAGE_URI" =~ ^file:// ]]; then
-        PACKER_SOURCE_IMAGE_PATH="${SOURCE_IMAGE_URI#file://}"
-        PACKER_SOURCE_IMAGE_URI=""
-        if [[ "$PREFETCH_SOURCE_IMAGE" == "true" ]]; then
-          SOURCE_IMAGE_MODE="prefetched-local-path"
-          SOURCE_IMAGE_RUNTIME_ACTION="downloaded the remote source image to a local temp file for Packer"
-        else
-          SOURCE_IMAGE_MODE="local-path"
-          SOURCE_IMAGE_RUNTIME_ACTION="use the local source image path via source_image_path"
-        fi
+    SOURCE_IMAGE_URI=$(materialize_source_image "$SOURCE_IMAGE_URI" "$PREFETCH_SOURCE_IMAGE")
+    if [[ "$SOURCE_IMAGE_URI" =~ ^file:// ]]; then
+      if [[ "$PREFETCH_SOURCE_IMAGE" == "true" ]]; then
+        set_packer_source_fields "" "" "" "${SOURCE_IMAGE_URI#file://}" \
+          "prefetched-local-path" "downloaded the remote source image to a local temp file for Packer"
       else
-        PACKER_SOURCE_IMAGE_URI="$SOURCE_IMAGE_URI"
-        PACKER_SOURCE_IMAGE_PATH=""
-        SOURCE_IMAGE_MODE="remote-uri"
-        SOURCE_IMAGE_RUNTIME_ACTION="pass the resolved remote URI directly to Packer"
+        set_packer_source_fields "" "" "" "${SOURCE_IMAGE_URI#file://}" \
+          "local-path" "use the local source image path via source_image_path"
       fi
+    else
+      set_packer_source_fields "" "" "$SOURCE_IMAGE_URI" "" \
+        "remote-uri" "pass the resolved remote URI directly to Packer"
     fi
   fi
   ANSIBLE_VARS_FILE=$(write_ansible_vars_file "$ANSIBLE_VARS_JSON")
@@ -1319,8 +1288,6 @@ PACKER_STATUS=0
   -var "os_version=${OS_VERSION}" \
   -var "db_type=${DB_TYPE}" \
   -var "db_version=${DB_VERSION}" \
-  -var "patroni_version=${PATRONI_VERSION}" \
-  -var "etcd_version=${ETCD_VERSION}" \
   -var "source_image_name=${PACKER_SOURCE_IMAGE_NAME}" \
   -var "source_image_uuid=${PACKER_SOURCE_IMAGE_UUID}" \
   -var "source_image_uri=${PACKER_SOURCE_IMAGE_URI}" \
