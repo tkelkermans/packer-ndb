@@ -6,6 +6,11 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+MATRIX_VALIDATE_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/source_images.sh
+source "${MATRIX_VALIDATE_SCRIPT_DIR}/source_images.sh"
+IMAGES_JSON_FILE="${MATRIX_VALIDATE_SCRIPT_DIR}/../images.json"
+
 if (( $# > 0 )); then
   MATRIX_FILES=("$@")
 else
@@ -172,6 +177,28 @@ validate_matrix_file() {
             (
               select(($entry.postgres_package_use_archive // false) == true and (($entry.postgres_package_version_prefix // "") | nonempty_string | not))
               | "\(ctx($idx; $entry)): '\''postgres_package_use_archive'\'' requires '\''postgres_package_version_prefix'\''"
+            ),
+            (
+              $entry
+              | keys[]
+              | select(IN("ndb_version", "engine", "db_type", "os_type", "os_version", "db_version", "provisioning_role", "qualified_extensions", "qualified_extensions_empty_reason", "ha_components", "postgres_qualified_version_range", "postgres_package_version_prefix", "postgres_package_use_archive", "mongodb_edition", "deployment", "notes") | not)
+              | "\(ctx($idx; $entry)): unknown key '\''\(.)'\''; extend the allowlist in scripts/matrix_validate.sh when adding schema fields"
+            ),
+            (
+              select((($entry.provisioning_role // "") | nonempty_string) and (($entry.provisioning_role | IN("postgresql", "mongodb", "metadata")) | not))
+              | "\(ctx($idx; $entry)): provisioning_role must be one of postgresql, mongodb, metadata (got \($entry.provisioning_role | tojson))"
+            ),
+            (
+              select(($entry.postgres_package_version_prefix | type) == "string" and ((($entry.os_type // "") | IN("Debian", "Ubuntu Linux")) | not))
+              | "\(ctx($idx; $entry)): '\''postgres_package_version_prefix'\'' is supported on Debian and Ubuntu Linux rows only; RHEL-family packages are never patch-pinned"
+            ),
+            (
+              select(($entry.provisioning_role // null) == "postgresql" and ((($entry.ha_components | type) != "object") or (($entry.ha_components | length) == 0)))
+              | "\(ctx($idx; $entry)): buildable PostgreSQL rows require non-empty '\''ha_components'\'' (NDB software profile creation checks HA binaries)"
+            ),
+            (
+              select(($entry | has("notes")) and (($entry.notes | nonempty_string) | not))
+              | "\(ctx($idx; $entry)): '\''notes'\'' must be a non-empty string when present"
             )
           end
       ),
@@ -197,9 +224,36 @@ validate_matrix_file() {
     return 1
   fi
 
-  if [[ -n "$errors" ]]; then
+  # Coverage runs in bash (not jq) because it needs the shared
+  # source_image_key_for_os mapping and the repository images.json.
+  local coverage_errors=""
+  local os_type os_version image_key
+  if [[ ! -f "$IMAGES_JSON_FILE" ]]; then
+    coverage_errors="[coverage] images.json not found at ${IMAGES_JSON_FILE}"$'\n'
+  else
+    while IFS=$'\t' read -r os_type os_version; do
+      [[ -n "$os_type" && -n "$os_version" ]] || continue
+      image_key=$(source_image_key_for_os "$os_type" "$os_version")
+      if ! jq -e --arg key "$image_key" 'has($key)' "$IMAGES_JSON_FILE" >/dev/null 2>&1; then
+        coverage_errors+="[coverage] ${os_type} ${os_version}: no images.json entry for derived source-image key '${image_key}'"$'\n'
+      fi
+    done < <(jq -r '
+      if type == "array" then
+        ([.[] | select(type == "object")
+          | select((.provisioning_role // "postgresql") != "metadata")
+          | [(.os_type // ""), (.os_version // "")]]
+         | unique[] | @tsv)
+      else empty end
+    ' "$matrix_file" 2>/dev/null || true)
+  fi
+
+  if [[ -n "$errors" || -n "$coverage_errors" ]]; then
     echo "Matrix validation failed (${matrix_file}):" >&2
-    printf '%s\n' "$errors" | sed 's/^/  - /' >&2
+    {
+      [[ -n "$errors" ]] && printf '%s\n' "$errors"
+      [[ -n "$coverage_errors" ]] && printf '%s' "$coverage_errors"
+      true
+    } | sed 's/^/  - /' >&2
     return 1
   fi
 

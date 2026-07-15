@@ -43,8 +43,8 @@ run_matrix_validator_tests() {
     "ndb_version": "2.99",
     "engine": "PostgreSQL Community Edition",
     "db_type": "pgsql",
-    "os_type": "Rocky Linux",
-    "os_version": "9.9",
+    "os_type": "Debian",
+    "os_version": "12",
     "db_version": "18",
     "postgres_qualified_version_range": "18.0",
     "postgres_package_version_prefix": "18.0",
@@ -95,9 +95,15 @@ JSON
   assert_invalid_matrix "empty PostgreSQL qualified extensions require reason" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","qualified_extensions":[]}]' "qualified_extensions_empty_reason"
   assert_invalid_matrix "legacy extensions rejected" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","extensions":["pgvector"],"qualified_extensions":["pgvector"]}]' "legacy.*extensions"
   assert_invalid_matrix "ha_components type" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","ha_components":[]}]' "ha_components.*object"
-  assert_invalid_matrix "PostgreSQL package pin requires range" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","postgres_package_version_prefix":"18.0","qualified_extensions":["pg_stat_statements"]}]' "postgres_qualified_version_range"
-  assert_invalid_matrix "PostgreSQL package pin major mismatch" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","postgres_qualified_version_range":"18.0","postgres_package_version_prefix":"17.8","qualified_extensions":["pg_stat_statements"]}]' "postgres_package_version_prefix.*db_version"
-  assert_invalid_matrix "PostgreSQL archive flag type" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","postgres_qualified_version_range":"18.0","postgres_package_version_prefix":"18.0","postgres_package_use_archive":"yes","qualified_extensions":["pg_stat_statements"]}]' "postgres_package_use_archive"
+  assert_invalid_matrix "PostgreSQL package pin requires range" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Debian","os_version":"12","db_version":"18","provisioning_role":"postgresql","postgres_package_version_prefix":"18.0","qualified_extensions":["pg_stat_statements"]}]' "postgres_qualified_version_range"
+  assert_invalid_matrix "PostgreSQL package pin major mismatch" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Debian","os_version":"12","db_version":"18","provisioning_role":"postgresql","postgres_qualified_version_range":"18.0","postgres_package_version_prefix":"17.8","qualified_extensions":["pg_stat_statements"]}]' "postgres_package_version_prefix.*db_version"
+  assert_invalid_matrix "PostgreSQL archive flag type" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Debian","os_version":"12","db_version":"18","provisioning_role":"postgresql","postgres_qualified_version_range":"18.0","postgres_package_version_prefix":"18.0","postgres_package_use_archive":"yes","qualified_extensions":["pg_stat_statements"]}]' "postgres_package_use_archive"
+  assert_invalid_matrix "PostgreSQL package pin restricted to Debian and Ubuntu" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","postgres_qualified_version_range":"18.0","postgres_package_version_prefix":"18.0","qualified_extensions":["pg_stat_statements"],"ha_components":{"patroni":["4.0.7"]}}]' "Debian and Ubuntu"
+  assert_invalid_matrix "unknown matrix key" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Debian","os_version":"12","db_version":"18","provisioning_role":"postgresql","qualified_extensions":["pg_stat_statements"],"ha_components":{"patroni":["4.0.7"]},"unexpected_key":"x"}]' "unknown key"
+  assert_invalid_matrix "provisioning_role outside enum" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Debian","os_version":"12","db_version":"18","provisioning_role":"postgres","qualified_extensions":["pg_stat_statements"],"ha_components":{"patroni":["4.0.7"]}}]' "provisioning_role must be one of"
+  assert_invalid_matrix "buildable PostgreSQL rows require ha_components" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Debian","os_version":"12","db_version":"18","provisioning_role":"postgresql","qualified_extensions":["pg_stat_statements"]}]' "non-empty .ha_components."
+  assert_invalid_matrix "buildable PostgreSQL rows reject empty ha_components" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Debian","os_version":"12","db_version":"18","provisioning_role":"postgresql","qualified_extensions":["pg_stat_statements"],"ha_components":{}}]' "non-empty .ha_components."
+  assert_invalid_matrix "buildable rows require images.json coverage" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql","qualified_extensions":["pg_stat_statements"],"ha_components":{"patroni":["4.0.7"]}}]' "no images.json entry"
   assert_invalid_matrix "duplicate combination" '[{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql"},{"ndb_version":"2.99","engine":"PostgreSQL Community Edition","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"18","provisioning_role":"postgresql"}]' "duplicate combination"
   assert_invalid_matrix "mongodb role requires mongodb db type" '[{"ndb_version":"2.99","engine":"MongoDB","db_type":"pgsql","os_type":"Rocky Linux","os_version":"9.9","db_version":"8.0","provisioning_role":"mongodb","mongodb_edition":"community","deployment":["single-instance"]}]' "provisioning_role.*mongodb.*requires db_type"
   assert_invalid_matrix "mongodb edition required" '[{"ndb_version":"2.99","engine":"MongoDB","db_type":"mongodb","os_type":"Rocky Linux","os_version":"9.9","db_version":"8.0","provisioning_role":"mongodb","deployment":["single-instance"]}]' "mongodb_edition"
@@ -117,7 +123,7 @@ JSON
     "engine": "MongoDB",
     "db_type": "mongodb",
     "os_type": "Rocky Linux",
-    "os_version": "9.9",
+    "os_version": "9.7",
     "db_version": "8.0",
     "provisioning_role": "mongodb",
     "mongodb_edition": "community",

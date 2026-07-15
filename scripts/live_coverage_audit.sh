@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=scripts/source_images.sh
+source "$ROOT_DIR/scripts/source_images.sh"
 MANIFEST_DIR="$ROOT_DIR/manifests"
 MATRIX_FILES=()
 SUGGEST_RUNS=false
@@ -30,29 +32,6 @@ Options:
                                   Add --customization-profile to suggested commands.
   --source-image-uuid-map MAP    Add --source-image-uuid to suggested commands for matching image keys.
 EOF
-}
-
-source_image_key() {
-  local os_type=$1 os_version=$2
-  local os_slug
-
-  case "$os_type" in
-    "Red Hat Enterprise Linux (RHEL)"|"RHEL")
-      printf 'rhel-%s' "$os_version"
-      ;;
-    "Rocky Linux")
-      printf 'rocky-linux-%s' "$os_version"
-      ;;
-    "Ubuntu Linux")
-      printf 'ubuntu-linux-%s' "$os_version"
-      ;;
-    *)
-      os_slug=$(printf '%s' "$os_type" \
-        | tr '[:upper:]' '[:lower:]' \
-        | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g')
-      printf '%s-%s' "$os_slug" "$os_version"
-      ;;
-  esac
 }
 
 parse_source_image_uuid_map() {
@@ -97,7 +76,7 @@ print_build_command() {
   local ndb_version=$1 db_type=$2 os_type=$3 os_version=$4 db_version=$5
   local key uuid
 
-  key=$(source_image_key "$os_type" "$os_version")
+  key=$(source_image_key_for_os "$os_type" "$os_version")
   uuid=$(source_image_uuid_for_key "$key" || true)
 
   printf './build.sh --ci --validate --validate-artifact --manifest'
@@ -172,10 +151,15 @@ SUCCESS_ROWS="$TMPDIR/success.tsv"
 COVERED_ROWS="$TMPDIR/covered.tsv"
 MISSING_ROWS="$TMPDIR/missing.tsv"
 
+# Coverage keys include MongoDB edition and deployment so a community
+# manifest cannot cover a row later requalified as enterprise (or with a
+# different deployment set). Manifests carry these in .matrix_row.
 jq -s -r '
   .[][]
   | select((.provisioning_role // "") == "postgresql" or (.provisioning_role // "") == "mongodb")
-  | [.ndb_version, .db_type, .os_type, .os_version, .db_version]
+  | [.ndb_version, .db_type, .os_type, .os_version, .db_version,
+     (.mongodb_edition // ""),
+     ((.deployment // []) | map(tostring) | sort | join("+"))]
   | @tsv
 ' "${MATRIX_FILES[@]}" | sort -u > "$EXPECTED_ROWS"
 
@@ -193,7 +177,9 @@ if [[ ${#MANIFEST_FILES[@]} -gt 0 ]]; then
     | select(.validation.in_guest == "passed")
     | select(.validation.artifact == "passed")
     | select(.cleanup.artifact_validation_vm == "deleted")
-    | [.selection.ndb_version, .selection.db_type, .selection.os_type, .selection.os_version, .selection.db_version]
+    | [.selection.ndb_version, .selection.db_type, .selection.os_type, .selection.os_version, .selection.db_version,
+       (.matrix_row.mongodb_edition // ""),
+       ((.matrix_row.deployment // []) | map(tostring) | sort | join("+"))]
     | @tsv
   ' "${MANIFEST_FILES[@]}" | sort -u > "$SUCCESS_ROWS"
 else
@@ -213,12 +199,12 @@ printf 'Missing live rows: %s\n' "$missing_count"
 
 if [[ "$missing_count" != "0" ]]; then
   printf '\nMissing rows:\n'
-  printf 'ndb_version\tdb_type\tos_type\tos_version\tdb_version\n'
+  printf 'ndb_version\tdb_type\tos_type\tos_version\tdb_version\tmongodb_edition\tdeployment\n'
   cat "$MISSING_ROWS"
 
   if [[ "$SUGGEST_RUNS" == "true" ]]; then
     printf '\nSuggested commands for missing rows:\n'
-    while IFS=$'\t' read -r ndb_version db_type os_type os_version db_version; do
+    while IFS=$'\t' read -r ndb_version db_type os_type os_version db_version _mongodb_edition _deployment; do
       print_build_command "$ndb_version" "$db_type" "$os_type" "$os_version" "$db_version"
     done < "$MISSING_ROWS"
   fi
