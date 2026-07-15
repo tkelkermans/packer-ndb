@@ -10,6 +10,8 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MANIFEST_HELPER="${SCRIPT_DIR}/scripts/manifest.sh"
 # shellcheck source=scripts/source_images.sh
 source "${SCRIPT_DIR}/scripts/source_images.sh"
+# shellcheck source=scripts/args.sh
+source "${SCRIPT_DIR}/scripts/args.sh"
 # shellcheck source=scripts/postgres_extensions.sh
 source "${SCRIPT_DIR}/scripts/postgres_extensions.sh"
 
@@ -87,11 +89,16 @@ function cleanup_failed_builder_vm() {
 
   task_uuid=$(prism_extract_task_uuid <<<"$response" 2>/dev/null || true)
   if [[ -n "$task_uuid" && "$task_uuid" != "null" ]]; then
-    if prism_wait_task "$task_uuid" 600 5 >/dev/null; then
+    local wait_rc=0
+    prism_wait_task "$task_uuid" 600 5 >/dev/null || wait_rc=$?
+    if (( wait_rc == 0 )); then
       manifest_set_if_present ".cleanup.packer_builder_vm" "deleted"
-    else
+    elif (( wait_rc == 124 )); then
       echo "Warning: timed out deleting Packer builder VM ${VM_NAME}" >&2
       manifest_set_if_present ".cleanup.packer_builder_vm" "delete-timeout"
+    else
+      echo "Warning: Prism delete task failed for Packer builder VM ${VM_NAME}" >&2
+      manifest_set_if_present ".cleanup.packer_builder_vm" "delete-task-failed"
     fi
   else
     manifest_set_if_present ".cleanup.packer_builder_vm" "delete-requested"
@@ -833,42 +840,52 @@ while [[ $# -gt 0 ]]; do
       MODE="ci"
       ;;
     --ndb-version)
+      require_option_value "$1" "$#"
       NDB_VERSION="$2"
       shift
       ;;
     --os)
+      require_option_value "$1" "$#"
       OS_TYPE="$2"
       shift
       ;;
     --os-version)
+      require_option_value "$1" "$#"
       OS_VERSION="$2"
       shift
       ;;
     --db-version)
+      require_option_value "$1" "$#"
       DB_VERSION="$2"
       shift
       ;;
     --db-type)
+      require_option_value "$1" "$#"
       DB_TYPE="$2"
       shift
       ;;
     --extensions)
+      require_option_value "$1" "$#"
       POSTGRES_EXTENSIONS_SELECTION="$2"
       shift
       ;;
     --source-image-uri)
+      require_option_value "$1" "$#"
       SOURCE_IMAGE_URI_OVERRIDE="$2"
       shift
       ;;
     --source-image-name)
+      require_option_value "$1" "$#"
       SOURCE_IMAGE_NAME_OVERRIDE="$2"
       shift
       ;;
     --source-image-uuid)
+      require_option_value "$1" "$#"
       SOURCE_IMAGE_UUID_OVERRIDE="$2"
       shift
       ;;
     --customization-profile)
+      require_option_value "$1" "$#"
       CUSTOMIZATION_PROFILE_ARG="$2"
       shift
       ;;

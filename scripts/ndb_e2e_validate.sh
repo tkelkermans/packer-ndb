@@ -9,6 +9,8 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 # shellcheck source=scripts/prism.sh
 source "$ROOT_DIR/scripts/prism.sh"
+# shellcheck source=scripts/args.sh
+source "$ROOT_DIR/scripts/args.sh"
 
 TARGETS_FILE=${NDB_E2E_TARGETS_FILE:-/private/tmp/ndb_e2e_latest_targets.psv}
 STATE_DIR=${NDB_E2E_STATE_DIR:-/private/tmp/ndb_e2e_state}
@@ -88,14 +90,18 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --db-type)
+      require_option_value "$1" "$#"
       DB_TYPE_FILTER=$2
       shift 2
       ;;
     --row-id)
+      require_option_value "$1" "$#"
       ROW_FILTER=$2
       shift 2
       ;;
     --limit)
+      require_option_value "$1" "$#"
+      require_numeric_option_value "$1" "$2"
       LIMIT=$2
       shift 2
       ;;
@@ -237,6 +243,13 @@ expected_target_count() {
 
 generate_targets() {
   mkdir -p "$(dirname "$TARGETS_FILE")"
+  # manifests/ is git-ignored apart from .gitkeep, so a fresh clone has no
+  # manifest JSON: expand the glob defensively or jq dies opening the literal.
+  local -a manifest_files=()
+  local manifest_candidate
+  for manifest_candidate in "$ROOT_DIR"/manifests/*.json; do
+    [[ -e "$manifest_candidate" ]] && manifest_files+=("$manifest_candidate")
+  done
   jq -s -r '
     def buildable:
       (.db_type == "pgsql" and .provisioning_role == "postgresql")
@@ -274,7 +287,7 @@ generate_targets() {
       ]
     | map(tostring)
     | join("|")
-  ' "$ROOT_DIR"/ndb/*/matrix.json "$ROOT_DIR"/manifests/*.json | sort > "$TARGETS_FILE"
+  ' "$ROOT_DIR"/ndb/*/matrix.json ${manifest_files[@]+"${manifest_files[@]}"} | sort > "$TARGETS_FILE"
 }
 
 api_url() {
@@ -1322,13 +1335,6 @@ provision_database() {
   if [[ "$wait_rc" -ne 0 ]]; then
     return "$wait_rc"
   fi
-
-  jq --arg provision_operation_id "$(jq -r '.operationId' "$response_file")" \
-    --arg database_id "$(jq -r '.entityId // empty' "$response_file")" \
-    --arg database_name "$db_name" \
-    --arg provisioned_vm_name "$vm_name" \
-    '. + {provision_operation_id: $provision_operation_id, database_id: $database_id, database_name: $database_name, provisioned_vm_name: $provisioned_vm_name}' "$state_file" > "${state_file}.tmp"
-  mv "${state_file}.tmp" "$state_file"
 }
 
 extract_provisioned_ip() {
@@ -1491,6 +1497,12 @@ selected_targets_include_db() {
     [[ -n "$DB_TYPE_FILTER" && "$db_type" != "$DB_TYPE_FILTER" ]] && continue
     row_id=$(row_id_for "$ndb_version" "$db_type" "$os_type" "$os_version" "$db_version" "$mongodb_edition" "$mongodb_deployments")
     [[ -n "$ROW_FILTER" && "$row_id" != "$ROW_FILTER" ]] && continue
+    # Mirror the main loop's skip of already-passed rows: otherwise --limit
+    # runs demand profile env vars for rows that will not run and can miss
+    # the ones that will.
+    if [[ "$RERUN_PASSED" != "true" ]] && row_already_passed "$row_id"; then
+      continue
+    fi
 
     attempted=$((attempted + 1))
     [[ "$db_type" == "$wanted_db_type" ]] && return 0

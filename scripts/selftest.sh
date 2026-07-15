@@ -2452,6 +2452,7 @@ run_test_harness_tests() {
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
   cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
   cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/args.sh" "$tmpdir/scripts/args.sh"
   cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
@@ -2522,6 +2523,7 @@ run_test_harness_extensions_only_tests() {
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
   cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
   cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/args.sh" "$tmpdir/scripts/args.sh"
   cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
@@ -2594,6 +2596,7 @@ run_test_harness_build_stdin_isolation_tests() {
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
   cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
   cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/args.sh" "$tmpdir/scripts/args.sh"
   cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
@@ -2660,6 +2663,7 @@ run_test_harness_continue_on_error_tests() {
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
   cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
   cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/args.sh" "$tmpdir/scripts/args.sh"
   cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
@@ -2730,6 +2734,7 @@ run_test_harness_source_image_uuid_map_tests() {
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
   cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
   cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/args.sh" "$tmpdir/scripts/args.sh"
   cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
@@ -2802,6 +2807,7 @@ run_test_harness_preflight_tests() {
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
   cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
   cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/args.sh" "$tmpdir/scripts/args.sh"
   cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
@@ -2869,6 +2875,7 @@ run_test_harness_customization_profile_tests() {
   cp "$ROOT_DIR/test.sh" "$tmpdir/test.sh"
   cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
   cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/args.sh" "$tmpdir/scripts/args.sh"
   cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
@@ -3314,10 +3321,39 @@ run_build_cleanup_guard_tests() {
   grep -q -- "--retain-failed-builder" "$ROOT_DIR/build.sh" || fail "build script does not expose non-interactive failed builder retention"
   grep -q "RETAIN_FAILED_BUILDER" "$ROOT_DIR/build.sh" || fail "build script does not track failed builder retention separately from debug mode"
   grep -q "kept-on-failure" "$ROOT_DIR/build.sh" || fail "build script does not record retained failed builder manifests"
+  grep -q "delete-task-failed" "$ROOT_DIR/build.sh" || fail "build script does not distinguish failed delete tasks from timeouts"
   pass "failed builder VM cleanup guard"
 }
 
 run_build_cleanup_guard_tests
+
+run_cli_argument_guard_tests() {
+  local output
+
+  if output=$(cd "$ROOT_DIR" && "$BASH" test.sh --max-parallel 2>&1); then
+    fail "test.sh accepted --max-parallel without a value"
+  fi
+  grep -q "requires a value" <<<"$output" || fail "test.sh missing-value error not reported: $output"
+
+  if output=$(cd "$ROOT_DIR" && "$BASH" build.sh --ndb-version 2>&1); then
+    fail "build.sh accepted --ndb-version without a value"
+  fi
+  grep -q "requires a value" <<<"$output" || fail "build.sh missing-value error not reported: $output"
+
+  if output=$(cd "$ROOT_DIR" && "$BASH" scripts/ndb_e2e_validate.sh --limit abc 2>&1); then
+    fail "ndb_e2e_validate.sh accepted a non-numeric --limit"
+  fi
+  grep -q "non-negative integer" <<<"$output" || fail "ndb_e2e_validate.sh non-numeric --limit error not reported: $output"
+
+  if output=$(cd "$ROOT_DIR" && "$BASH" scripts/ndb_e2e_validate.sh --row-id 2>&1); then
+    fail "ndb_e2e_validate.sh accepted --row-id without a value"
+  fi
+  grep -q "requires a value" <<<"$output" || fail "ndb_e2e_validate.sh missing-value error not reported: $output"
+
+  pass "CLI argument guards"
+}
+
+run_cli_argument_guard_tests
 
 run_readme_mongodb_tests() {
   grep -q "MongoDB" "$ROOT_DIR/README.md" || fail "README does not mention MongoDB"

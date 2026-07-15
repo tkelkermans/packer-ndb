@@ -4,6 +4,8 @@ set -euo pipefail
 
 # shellcheck source=scripts/postgres_extensions.sh
 source "scripts/postgres_extensions.sh"
+# shellcheck source=scripts/args.sh
+source "scripts/args.sh"
 # shellcheck source=scripts/source_images.sh
 source "scripts/source_images.sh"
 
@@ -121,24 +123,28 @@ function source_image_uuid_for_os() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --include-os)
+      require_option_value "$1" "$#"
       while IFS= read -r -d '' value; do
         INCLUDE_OS+=("$value")
       done < <(split_csv "$2")
       shift
       ;;
     --exclude-os)
+      require_option_value "$1" "$#"
       while IFS= read -r -d '' value; do
         EXCLUDE_OS+=("$value")
       done < <(split_csv "$2")
       shift
       ;;
     --include-ndb)
+      require_option_value "$1" "$#"
       while IFS= read -r -d '' value; do
         INCLUDE_NDB+=("$value")
       done < <(split_csv "$2")
       shift
       ;;
     --include-db-type)
+      require_option_value "$1" "$#"
       INCLUDE_DB_TYPES=()
       while IFS= read -r -d '' value; do
         INCLUDE_DB_TYPES+=("$value")
@@ -151,6 +157,7 @@ while [[ $# -gt 0 ]]; do
       INCLUDE_DB_TYPES=()
       ;;
     --max-parallel)
+      require_option_value "$1" "$#"
       MAX_PARALLEL="$2"
       shift
       ;;
@@ -176,10 +183,12 @@ while [[ $# -gt 0 ]]; do
       CONTINUE_ON_ERROR=true
       ;;
     --customization-profile)
+      require_option_value "$1" "$#"
       CUSTOMIZATION_PROFILE="$2"
       shift
       ;;
     --source-image-uuid-map)
+      require_option_value "$1" "$#"
       parse_source_image_uuid_map "$2"
       shift
       ;;
@@ -206,8 +215,10 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+# An unmatched glob stays literal, so the array is never empty; check the
+# first entry actually exists instead of testing the array length.
 MATRIX_FILES=(ndb/*/matrix.json)
-if (( ${#MATRIX_FILES[@]} == 0 )); then
+if (( ${#MATRIX_FILES[@]} == 0 )) || [[ ! -e "${MATRIX_FILES[0]}" ]]; then
   echo "Error: No matrix files found under ndb/." >&2
   exit 1
 fi
