@@ -281,15 +281,22 @@ api_url() {
   printf 'https://%s:8443/era/v0.9%s' "$NDB_SERVER_ADDRESS" "$1"
 }
 
+ndb_curl_config() {
+  # Credentials on stdin via --config, never on argv (visible in ps).
+  printf 'user = "%s:%s"' \
+    "$(prism_curl_config_escape "$NDB_SERVER_USER")" \
+    "$(prism_curl_config_escape "$NDB_SERVER_PASSWORD")"
+}
+
 ndb_get() {
-  curl --max-time "$NDB_API_TIMEOUT" -sSk -u "${NDB_SERVER_USER}:${NDB_SERVER_PASSWORD}" "$(api_url "$1")"
+  curl --max-time "$NDB_API_TIMEOUT" -sSk --config - "$(api_url "$1")" <<<"$(ndb_curl_config)"
 }
 
 ndb_post_file() {
-  curl --max-time "$NDB_API_TIMEOUT" -sSk -u "${NDB_SERVER_USER}:${NDB_SERVER_PASSWORD}" \
+  curl --max-time "$NDB_API_TIMEOUT" -sSk --config - \
     -H "Content-Type: application/json" \
     -X POST "$(api_url "$1")" \
-    -d @"$2"
+    -d @"$2" <<<"$(ndb_curl_config)"
 }
 
 delete_disposable_vm() {
@@ -1344,7 +1351,7 @@ validate_guest_database() {
     validation=$(printf '%s\n' "$db_password" | ssh_as era "$provision_ip" "read -r PGPASSWORD; export PGPASSWORD; '$psql_path' -h 127.0.0.1 -U '$db_user' -d '$db_name' -tAc \"select current_database() || '|' || current_setting('server_version');\"")
     validation=$(printf '%s' "$validation" | tr '\n' '|' | sed 's/|$//')
   else
-    validation=$(printf '%s\n' "$db_password" | ssh_as era "$provision_ip" "read -r DB_PASSWORD; mongosh --quiet --host 127.0.0.1 --port 27017 -u '$db_user' -p \"\$DB_PASSWORD\" --authenticationDatabase admin --eval 'db.adminCommand({ping:1}).ok + \"|\" + db.version()'")
+    validation=$(printf '%s\n' "$db_password" | ssh_as era "$provision_ip" "read -r DB_PASSWORD; export DB_PASSWORD; mongosh --quiet --host 127.0.0.1 --port 27017 --eval 'db.getSiblingDB(\"admin\").auth(\"$db_user\", process.env.DB_PASSWORD); db.adminCommand({ping:1}).ok + \"|\" + db.version()'")
   fi
 
   jq --arg provisioned_vm_ip "$provision_ip" \

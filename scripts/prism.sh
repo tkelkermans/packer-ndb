@@ -34,6 +34,11 @@ prism_endpoint() {
   prism_endpoint_from_host "$PKR_VAR_pc_ip"
 }
 
+prism_curl_config_escape() {
+  local value=${1//\\/\\\\}
+  printf '%s' "${value//\"/\\\"}"
+}
+
 prism_curl() {
   local method=$1
   local path=$2
@@ -42,27 +47,41 @@ prism_curl() {
   local response_file
   local http_status
   local curl_rc
+  local curl_config
+  local -a curl_args
 
   endpoint=$(prism_endpoint) || return 1
   response_file=$(mktemp -t ndb-prism-response.XXXXXX)
 
+  # Credentials travel to curl on stdin via --config so they never appear in
+  # ps output while long task polls run.
+  # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
+  curl_config=$(printf 'user = "%s:%s"' \
+    "$(prism_curl_config_escape "$PKR_VAR_pc_username")" \
+    "$(prism_curl_config_escape "$PKR_VAR_pc_password")")
+
+  curl_args=(
+    -sS
+    --config -
+    --connect-timeout "${PRISM_API_CONNECT_TIMEOUT:-15}"
+    --max-time "${PRISM_API_MAX_TIME:-300}"
+    -H "Content-Type: application/json"
+    -X "$method"
+    -o "$response_file"
+    -w "%{http_code}"
+  )
+  # TLS verification is on by default; set PKR_VAR_nutanix_insecure=true for
+  # labs with self-signed Prism certificates (matches the Packer variable).
+  case "${PKR_VAR_nutanix_insecure:-false}" in
+    [Tt][Rr][Uu][Ee]|1|[Yy][Ee][Ss])
+      curl_args+=(-k)
+      ;;
+  esac
   if [[ -n "$payload" ]]; then
-    # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
-    http_status=$(curl -sS -k -u "${PKR_VAR_pc_username}:${PKR_VAR_pc_password}" \
-      -H "Content-Type: application/json" \
-      -X "$method" \
-      -d "$payload" \
-      -o "$response_file" \
-      -w "%{http_code}" \
-      "${endpoint}${path}") || curl_rc=$?
-  else
-    http_status=$(curl -sS -k -u "${PKR_VAR_pc_username}:${PKR_VAR_pc_password}" \
-      -H "Content-Type: application/json" \
-      -X "$method" \
-      -o "$response_file" \
-      -w "%{http_code}" \
-      "${endpoint}${path}") || curl_rc=$?
+    curl_args+=(-d "$payload")
   fi
+
+  http_status=$(curl "${curl_args[@]}" "${endpoint}${path}" <<<"$curl_config") || curl_rc=$?
 
   if [[ "${curl_rc:-0}" -ne 0 ]]; then
     rm -f "$response_file"
@@ -84,20 +103,60 @@ prism_list_resource() {
   local resource=$1
   local kind=$2
   local length=${3:-500}
+  local offset=${4:-0}
   local payload
 
-  payload=$(jq -nc --arg kind "$kind" --argjson length "$length" '{kind: $kind, length: $length}') || return 1
+  payload=$(jq -nc --arg kind "$kind" --argjson length "$length" --argjson offset "$offset" '{kind: $kind, length: $length, offset: $offset}') || return 1
   prism_curl POST "/api/nutanix/v3/${resource}/list" "$payload"
+}
+
+# Prism v3 list endpoints cap page sizes server-side, so a single large-length
+# request can silently miss entities. Emits one JSON document per page; safe
+# for consumers that stream .entities[]?.
+prism_list_all_entities() {
+  local resource=$1
+  local kind=$2
+  local page_length=${3:-500}
+  local offset=0
+  local page
+  local count
+
+  while :; do
+    page=$(prism_list_resource "$resource" "$kind" "$page_length" "$offset") || return 1
+    printf '%s\n' "$page"
+    count=$(jq -r '.entities | length' <<<"$page") || return 1
+    if (( count < page_length )); then
+      break
+    fi
+    offset=$((offset + page_length))
+  done
 }
 
 prism_find_uuid_by_name() {
   local resource=$1
   local kind=$2
   local name=$3
+  local page_length=500
+  local offset=0
+  local page
+  local count
+  local uuid
 
-  prism_list_resource "$resource" "$kind" 2000 \
-    | jq -r --arg name "$name" '.entities[]? | select((.spec.name // .status.name // "") == $name) | .metadata.uuid' \
-    | head -n 1
+  # Paged loop instead of one capped list call; no cross-page pipeline so an
+  # early match cannot SIGPIPE the producer under pipefail.
+  while :; do
+    page=$(prism_list_resource "$resource" "$kind" "$page_length" "$offset") || return 1
+    uuid=$(jq -r --arg name "$name" 'first(.entities[]? | select((.spec.name // .status.name // "") == $name) | .metadata.uuid) // empty' <<<"$page") || return 1
+    if [[ -n "$uuid" ]]; then
+      printf '%s\n' "$uuid"
+      return 0
+    fi
+    count=$(jq -r '.entities | length' <<<"$page") || return 1
+    if (( count < page_length )); then
+      return 0
+    fi
+    offset=$((offset + page_length))
+  done
 }
 
 prism_image_uuid_by_name() {
