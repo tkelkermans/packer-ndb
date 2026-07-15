@@ -3289,6 +3289,11 @@ run_image_prepare_tests() {
     grep -q -- "- image_prepare" "$ROOT_DIR/ansible/$version/playbooks/site.yml" || fail "playbook $version does not run final image preparation"
     grep -q "/usr/bin/cloud-init clean --logs --machine-id" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not reset cloud-init state"
     grep -q "/etc/netplan/50-cloud-init.yaml" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not remove generated Ubuntu netplan"
+    grep -q "ansible.builtin.assert" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not assert cloud-init availability"
+    grep -q "rm -f /etc/ssh/ssh_host_" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not remove baked SSH host keys"
+    grep -q "userdel --force --remove packer" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not remove the packer build user"
+    grep -q "getent passwd packer" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not verify packer build user removal"
+    grep -q "ndb-ssh-hostkeys-ensure.service" "$ROOT_DIR/ansible/$version/roles/common/tasks/main.yml" || fail "common role $version does not install the SSH host key regeneration guard"
   done
   pass "final image preparation guard"
 }

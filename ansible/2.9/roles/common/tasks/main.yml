@@ -1214,3 +1214,37 @@
     validate: 'visudo -cf %s'
   when: configure_ndb_sudoers | bool
   become: yes
+
+# image_prepare deletes baked SSH host keys at capture. NDB clones can retain
+# cloud-init instance metadata (per-instance key regeneration may not rerun),
+# so key regeneration must not depend on cloud-init.
+- name: Install SSH host key regeneration guard for cloned first boots
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ndb-ssh-hostkeys-ensure.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Regenerate missing SSH host keys before sshd starts
+      Documentation=man:ssh-keygen(1)
+      DefaultDependencies=no
+      After=local-fs.target
+      Before=ssh.service sshd.service sysinit.target
+      ConditionPathExists=!/etc/ssh/ssh_host_ed25519_key
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/ssh-keygen -A
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=sysinit.target
+  become: yes
+
+- name: Enable SSH host key regeneration guard
+  ansible.builtin.systemd:
+    name: ndb-ssh-hostkeys-ensure.service
+    enabled: true
+    daemon_reload: true
+  become: yes
