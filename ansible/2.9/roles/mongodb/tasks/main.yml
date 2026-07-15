@@ -71,7 +71,7 @@
 
 - name: Configure MongoDB repository (Debian family)
   ansible.builtin.apt_repository:
-    repo: "deb [ arch={{ mongodb_debian_arch }} signed-by={{ mongodb_keyring_dir }}/mongodb-server-{{ mongodb_major_version }}.gpg ] https://{{ mongodb_repo_host }}/apt/ubuntu {{ ndb_distribution_release }}/{{ mongodb_package_family }}/{{ mongodb_major_version }} multiverse"
+    repo: "deb [ arch={{ mongodb_debian_arch }} signed-by={{ mongodb_keyring_dir }}/mongodb-server-{{ mongodb_major_version }}.gpg ] https://{{ mongodb_repo_host }}/apt/{{ ansible_facts['distribution'] | lower }} {{ ndb_distribution_release }}/{{ mongodb_package_family }}/{{ mongodb_major_version }} {{ 'multiverse' if ansible_facts['distribution'] == 'Ubuntu' else 'main' }}"
     filename: "{{ mongodb_package_family }}-{{ mongodb_major_version }}"
     state: present
     update_cache: true

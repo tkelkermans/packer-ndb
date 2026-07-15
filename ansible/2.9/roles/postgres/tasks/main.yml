@@ -349,6 +349,16 @@
   when: postgres_etcd_version | length > 0
   become: yes
 
+- name: Remove etcd download artifacts from /tmp
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/etcd-v{{ postgres_etcd_version }}-linux-{{ postgres_etcd_arch }}.tar.gz"
+    - "/tmp/etcd-v{{ postgres_etcd_version }}-linux-{{ postgres_etcd_arch }}"
+  when: postgres_etcd_version | length > 0
+  become: yes
+
 - name: Install HAProxy package when qualified by the matrix
   ansible.builtin.package:
     name: haproxy

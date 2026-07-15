@@ -3029,6 +3029,8 @@ run_mongodb_role_static_tests() {
     grep -q "mongodb_ndb_software_home" "$ROOT_DIR/ansible/$version/roles/mongodb/defaults/main.yml" || fail "mongodb role $version missing NDB-safe software home default"
     grep -q "Link MongoDB binaries into NDB-safe software home" "$ROOT_DIR/ansible/$version/roles/mongodb/tasks/main.yml" || fail "mongodb role $version does not link binaries into NDB-safe software home"
     grep -q "Stop and disable packaged mongod service before image capture" "$ROOT_DIR/ansible/$version/roles/mongodb/tasks/main.yml" || fail "mongodb role $version does not stop mongod before image capture"
+    grep -q "apt/{{ ansible_facts" "$ROOT_DIR/ansible/$version/roles/mongodb/tasks/main.yml" || fail "mongodb role $version apt repository path is not distribution-aware"
+    ! grep -q "apt/ubuntu " "$ROOT_DIR/ansible/$version/roles/mongodb/tasks/main.yml" || fail "mongodb role $version hardcodes the Ubuntu apt repository path for the whole Debian family"
     ! grep -q "^mongodb_user: mongod" "$ROOT_DIR/ansible/$version/roles/mongodb/defaults/main.yml" || fail "mongodb role $version has RedHat-only user default"
     ! grep -q "^mongodb_group: mongod" "$ROOT_DIR/ansible/$version/roles/mongodb/defaults/main.yml" || fail "mongodb role $version has RedHat-only group default"
   done
@@ -3294,6 +3296,10 @@ run_image_prepare_tests() {
     grep -q "userdel --force --remove packer" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not remove the packer build user"
     grep -q "getent passwd packer" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not verify packer build user removal"
     grep -q "ndb-ssh-hostkeys-ensure.service" "$ROOT_DIR/ansible/$version/roles/common/tasks/main.yml" || fail "common role $version does not install the SSH host key regeneration guard"
+    grep -q "Enforce database runtime is disabled before image capture" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not unconditionally enforce the disabled-database invariant"
+    grep -q "image_prepare_guard_port" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not check database port binding"
+    grep -q "/etc/default/grub.bak" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not remove grub backup debris"
+    grep -q "Remove etcd download artifacts" "$ROOT_DIR/ansible/$version/roles/postgres/tasks/main.yml" || fail "postgres role $version leaves etcd download artifacts in /tmp"
   done
   pass "final image preparation guard"
 }

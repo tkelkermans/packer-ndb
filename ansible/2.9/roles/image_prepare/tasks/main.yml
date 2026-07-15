@@ -18,6 +18,36 @@
       first boots rely on it for instance reset. Refusing to capture an image
       without /usr/bin/cloud-init.
 
+- name: Resolve database runtime guard targets
+  ansible.builtin.set_fact:
+    image_prepare_guard_service: "{{ mongodb_service_name | default('mongod') if (provisioning_role | default('postgresql')) == 'mongodb' else postgres_service_name | default('postgresql') }}"
+    image_prepare_guard_port: "{{ '27017' if (provisioning_role | default('postgresql')) == 'mongodb' else '5432' }}"
+
+# Runs on every build, not only --validate ones: an image captured with the
+# packaged database service enabled or its port bound breaks NDB provisioning.
+- name: Enforce database runtime is disabled before image capture
+  ansible.builtin.shell:
+    cmd: |
+      set -eu
+      service="{{ image_prepare_guard_service }}"
+      port="{{ image_prepare_guard_port }}"
+      if systemctl is-enabled "$service" 2>/dev/null | grep -qx enabled; then
+        echo "ERROR: $service is enabled; NDB must own the database runtime" >&2
+        exit 1
+      fi
+      if systemctl is-active "$service" 2>/dev/null | grep -qx active; then
+        echo "ERROR: $service is active before image capture" >&2
+        exit 1
+      fi
+      if command -v ss >/dev/null 2>&1; then
+        if ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]${port}$"; then
+          echo "ERROR: port ${port} is bound before image capture" >&2
+          exit 1
+        fi
+      fi
+  changed_when: false
+  become: yes
+
 - name: Remove generated cloud-init netplan on Debian-family images
   ansible.builtin.file:
     path: /etc/netplan/50-cloud-init.yaml
@@ -72,6 +102,12 @@
   ansible.builtin.shell:
     cmd: rm -f /etc/ssh/ssh_host_*
   changed_when: true
+  become: yes
+
+- name: Remove grub backup debris before image capture
+  ansible.builtin.file:
+    path: /etc/default/grub.bak
+    state: absent
   become: yes
 
 - name: Flush filesystem buffers before image capture
