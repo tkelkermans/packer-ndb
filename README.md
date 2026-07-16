@@ -1,5 +1,18 @@
 # NDB Packer Image Builder
 
+- [What This Tool Does](#what-this-tool-does)
+- [Quick Start](#quick-start)
+- [Common Commands](#common-commands)
+- [What Happens During A Build](#what-happens-during-a-build)
+- [Environment Variables](#environment-variables)
+- [Source Images](#source-images)
+- [Customize The Image](#customize-the-image)
+- [Validation](#validation)
+- [Manifests](#manifests)
+- [Release Onboarding](#release-onboarding)
+- [Troubleshooting](#troubleshooting)
+- [Reference](#reference)
+
 ## What This Tool Does
 
 This repository builds Nutanix Database Service (NDB) image artifacts with Packer, Ansible, Terraform-backed Packer plugins, and shell scripts.
@@ -15,7 +28,7 @@ The normal workflow is:
 
 Today, the build-ready rows are PostgreSQL Community Edition rows with `provisioning_role=postgresql` and MongoDB rows with `provisioning_role=mongodb`. Other database engines can still appear as `provisioning_role=metadata` rows so the support list is documented, but `build.sh` rejects metadata-only rows until matching Packer/Ansible roles exist.
 
-See `VALIDATION.md` for the current public validation status, including the remaining RHEL live-validation gap.
+See `VALIDATION.md` for the current public validation status. Licensing and contribution basics live in `LICENSE`, `CONTRIBUTING.md`, and `SECURITY.md`; operational lessons are tracked in `docs/operational-lessons.md`.
 
 ## Quick Start
 
@@ -280,6 +293,12 @@ export PKR_VAR_cluster_name="<your-cluster-name>"
 export PKR_VAR_subnet_name="<your-subnet-name>"
 export PKR_VAR_nutanix_insecure="true"
 ```
+
+TLS verification to Prism Central is **on by default** (the Packer variable
+defaults to `false`-insecure, and `scripts/prism.sh` only passes `curl -k`
+when opted in). Keep `PKR_VAR_nutanix_insecure="true"` only for labs with
+self-signed Prism certificates; unset it or set `"false"` when Prism has a
+trusted certificate.
 
 Optional build VM sizing overrides:
 
@@ -836,7 +855,7 @@ fail before it creates the builder VM. Use the exact source image UUID instead
 of the URI or name:
 
 ```bash
-./build.sh --ci --source-image-uuid 719eff76-48d7-4e5a-b631-4d5946c0a382 --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 14
+./build.sh --ci --source-image-uuid 11111111-1111-1111-1111-111111111111 --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 14
 ```
 
 Use your environment's UUID. The example above is only a pattern.
@@ -995,6 +1014,27 @@ The goal state is `Missing live rows: 0`. If rows still show as missing, rerun o
 
 ## Reference
 
+### Less Common Flags
+
+Flags that exist but are easy to miss (the common ones appear throughout
+this README):
+
+- `build.sh --no-customizations` — force a build without any customization
+  profile even when one is configured.
+- `test.sh --all-db-types` — clear an earlier `--include-db-type` filter;
+  `test.sh --exclude-os "OS NAME"` — skip an OS across the matrix run.
+- `scripts/live_coverage_audit.sh --manifest-dir DIR` — audit manifests from
+  a different directory.
+- `scripts/prism_image_activate.sh --wait-timeout SECONDS` — cap the Prism
+  task wait when applying image placement.
+- `scripts/source_image_ssh_probe.sh --boot-type uefi|legacy|default`,
+  `--ip-timeout SECONDS`, `--result-file FILE`, `--keep-on-failure`, and
+  `--rhel-repository-packages CSV` (override the representative RHEL
+  package list).
+- `scripts/selftest.sh --filter REGEX` — run only matching self-test suites.
+- Prism API tuning for slow labs: `PRISM_API_CONNECT_TIMEOUT` (default 15s)
+  and `PRISM_API_MAX_TIME` (default 300s) cap every Prism REST call.
+
 ### Project Structure
 
 ```text
@@ -1003,6 +1043,9 @@ The goal state is `Missing live rows: 0`. If rows still show as missing, rerun o
 |   |-- 2.9/
 |   `-- 2.10/
 |-- build.sh
+|-- customizations/
+|-- docs/
+|   `-- operational-lessons.md
 |-- images.json
 |-- manifests/
 |-- ndb/
@@ -1010,17 +1053,27 @@ The goal state is `Missing live rows: 0`. If rows still show as missing, rerun o
 |   `-- 2.10/
 |-- packer/
 |   |-- database.pkr.hcl
-|   |-- http/user-data
+|   |-- http/user-data          (build cloud-init)
+|   |-- http/e2e-user-data      (offline-safe validation cloud-init)
 |   `-- variables.pkr.hcl
 |-- scripts/
+|   |-- args.sh                 (sourced: CLI argument guards)
 |   |-- artifact_validate.sh
 |   |-- build_wizard.sh
+|   |-- live_coverage_audit.sh
 |   |-- manifest.sh
 |   |-- matrix_validate.sh
-|   |-- prism.sh
+|   |-- ndb_e2e_validate.sh
+|   |-- postgres_extensions.sh  (sourced: extensions + image naming)
+|   |-- prism.sh                (sourced: Prism REST layer)
+|   |-- prism_image_activate.sh
 |   |-- release_scaffold.sh
-|   |-- selftest.sh
-|   `-- source_images.sh
+|   |-- rhel_readiness.sh
+|   |-- selftest.sh             (runner; suites in selftests/)
+|   |-- selftests/
+|   |-- source_image_ssh_probe.sh
+|   |-- source_images.sh        (sourced: images.json resolution)
+|   `-- vm_lifecycle.sh         (sourced: disposable-VM plumbing)
 |-- source/
 |-- tasks/
 `-- test.sh
@@ -1045,7 +1098,7 @@ The matrix file is the support contract for one NDB version. Each buildable Post
     "haproxy": ["2.8.9"],
     "keepalived": ["2.2.8"]
   },
-  "qualified_extensions": []
+  "qualified_extensions": ["pg_stat_statements"]
 }
 ```
 
@@ -1062,10 +1115,20 @@ For buildable PostgreSQL rows, an empty qualified extension list must be intenti
   "os_version": "9.7",
   "db_version": "18",
   "provisioning_role": "postgresql",
+  "ha_components": {
+    "patroni": ["4.0.5"],
+    "etcd": ["3.5.12"]
+  },
   "qualified_extensions": [],
   "qualified_extensions_empty_reason": "Nutanix release notes do not list qualified PostgreSQL extensions for this exact OS and PostgreSQL version."
 }
 ```
+
+The validator (`scripts/matrix_validate.sh`) also enforces: a per-row key
+allowlist (typo'd fields fail), `provisioning_role` limited to
+`postgresql`/`mongodb`/`metadata`, `postgres_package_version_prefix` on
+Debian/Ubuntu rows only, non-empty `ha_components` on buildable PostgreSQL
+rows, and an `images.json` entry for every buildable row's OS.
 
 Each buildable MongoDB row should include `mongodb_edition` and `deployment`:
 
