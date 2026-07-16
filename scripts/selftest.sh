@@ -3375,6 +3375,31 @@ run_cli_argument_guard_tests() {
 
 run_cli_argument_guard_tests
 
+run_postgres_suffix_helper_tests() {
+  local ha pin joined
+  # shellcheck source=scripts/postgres_extensions.sh
+  source "$ROOT_DIR/scripts/postgres_extensions.sh"
+
+  ha=$(postgres_ha_image_name_suffix '{"patroni":["4.0.7"]}')
+  [[ "$ha" == "ha" ]] || fail "ha suffix helper returned '$ha'"
+  ha=$(postgres_ha_image_name_suffix '{}')
+  [[ -z "$ha" ]] || fail "empty ha suffix helper returned '$ha'"
+  pin=$(postgres_package_image_name_suffix "16.12")
+  [[ "$pin" == "pg16-12" ]] || fail "package suffix helper returned '$pin'"
+  pin=$(postgres_package_image_name_suffix "")
+  [[ -z "$pin" ]] || fail "empty package suffix helper returned '$pin'"
+  joined=$(postgres_join_image_name_suffixes "ha" "" "pg16-12" "ext-pgvector")
+  [[ "$joined" == "ha-pg16-12-ext-pgvector" ]] || fail "suffix join helper returned '$joined'"
+  joined=$(postgres_join_image_name_suffixes "" "" "")
+  [[ -z "$joined" ]] || fail "empty suffix join helper returned '$joined'"
+  grep -q "postgres_join_image_name_suffixes" "$ROOT_DIR/build.sh" || fail "build.sh does not use the shared suffix helpers"
+  grep -q "postgres_join_image_name_suffixes" "$ROOT_DIR/scripts/build_wizard.sh" || fail "build wizard does not use the shared suffix helpers"
+  grep -q "source_image_key_for_os" "$ROOT_DIR/scripts/build_wizard.sh" || fail "build wizard does not use the shared source-image key mapping"
+  pass "postgres image suffix helpers"
+}
+
+run_postgres_suffix_helper_tests
+
 run_readme_mongodb_tests() {
   grep -q "MongoDB" "$ROOT_DIR/README.md" || fail "README does not mention MongoDB"
   grep -q -- "--include-db-type mongodb" "$ROOT_DIR/README.md" || fail "README missing MongoDB test command"

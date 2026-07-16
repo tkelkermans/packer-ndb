@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=scripts/postgres_extensions.sh
 source "$ROOT_DIR/scripts/postgres_extensions.sh"
+# shellcheck source=scripts/source_images.sh
+source "$ROOT_DIR/scripts/source_images.sh"
 
 REQUIRED_LIVE_COMMANDS=(packer ansible-playbook curl ssh base64)
 LIVE_ENV_KEYS=(
@@ -71,34 +73,17 @@ postgres_ha_components_summary() {
   ' <<<"$row_json"
 }
 
+# Thin wrappers over the shared naming helpers in postgres_extensions.sh so
+# wizard previews always match the names build.sh actually produces.
 postgres_base_image_suffix() {
   local row_json=$1
-  local suffix="" package_pin package_suffix
-  if [[ "$(jq '(.ha_components // {}) | length' <<<"$row_json")" -gt 0 ]]; then
-    suffix="ha"
-  fi
-  package_pin=$(jq -r '.postgres_package_version_prefix // ""' <<<"$row_json")
-  if [[ -n "$package_pin" ]]; then
-    package_suffix="pg${package_pin//./-}"
-    if [[ -n "$suffix" ]]; then
-      suffix+="-${package_suffix}"
-    else
-      suffix="$package_suffix"
-    fi
-  fi
-  printf '%s' "$suffix"
+  postgres_join_image_name_suffixes \
+    "$(postgres_ha_image_name_suffix "$(jq -c '.ha_components // {}' <<<"$row_json")")" \
+    "$(postgres_package_image_name_suffix "$(jq -r '.postgres_package_version_prefix // ""' <<<"$row_json")")"
 }
 
 combine_postgres_image_suffixes() {
-  local base_suffix=$1
-  local extension_suffix=$2
-  if [[ -n "$base_suffix" && -n "$extension_suffix" ]]; then
-    printf '%s-%s' "$base_suffix" "$extension_suffix"
-  elif [[ -n "$base_suffix" ]]; then
-    printf '%s' "$base_suffix"
-  else
-    printf '%s' "$extension_suffix"
-  fi
+  postgres_join_image_name_suffixes "$1" "$2"
 }
 
 prompt_menu() {
@@ -497,34 +482,12 @@ print_selected_recipe() {
   fi
 }
 
-source_image_key() {
-  local os_type=$1
-  local os_version=$2
-
-  case "$os_type" in
-    "Red Hat Enterprise Linux (RHEL)"|"RHEL")
-      printf 'rhel-%s\n' "$os_version"
-      ;;
-    "Rocky Linux")
-      printf 'rocky-linux-%s\n' "$os_version"
-      ;;
-    "Ubuntu Linux")
-      printf 'ubuntu-linux-%s\n' "$os_version"
-      ;;
-    *)
-      printf '%s-%s\n' \
-        "$(printf '%s' "$os_type" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g')" \
-        "$os_version"
-      ;;
-  esac
-}
-
 print_source_image_warning() {
   local row_json=$1
   local os_type os_version key env_var description
   os_type=$(jq -r '.os_type' <<<"$row_json")
   os_version=$(jq -r '.os_version' <<<"$row_json")
-  key=$(source_image_key "$os_type" "$os_version")
+  key=$(source_image_key_for_os "$os_type" "$os_version")
 
   if [[ ! -f "$ROOT_DIR/images.json" ]]; then
     return 0
