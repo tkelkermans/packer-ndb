@@ -11,6 +11,8 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source "$ROOT_DIR/scripts/prism.sh"
 # shellcheck source=scripts/args.sh
 source "$ROOT_DIR/scripts/args.sh"
+# shellcheck source=scripts/vm_lifecycle.sh
+source "$ROOT_DIR/scripts/vm_lifecycle.sh"
 
 TARGETS_FILE=${NDB_E2E_TARGETS_FILE:-/private/tmp/ndb_e2e_latest_targets.psv}
 STATE_DIR=${NDB_E2E_STATE_DIR:-/private/tmp/ndb_e2e_state}
@@ -182,10 +184,6 @@ on_error() {
 }
 
 trap 'on_error "$LINENO"' ERR
-
-base64_no_wrap() {
-  base64 | tr -d '\n'
-}
 
 json_string() {
   jq -Rn --arg value "$1" '$value'
@@ -406,64 +404,18 @@ network_profile_id_for() {
   return 1
 }
 
+vm_lifecycle_set_ssh_args "$PRIVATE_KEY_PATH" 5
+
 ssh_as() {
-  local user=$1 ip=$2
-  shift 2
-  local -a ssh_opts=(
-    -i "$PRIVATE_KEY_PATH"
-    -o StrictHostKeyChecking=no
-    -o UserKnownHostsFile=/dev/null
-    -o IdentitiesOnly=yes
-    -o IdentityAgent=none
-    -o BatchMode=yes
-    -o ConnectTimeout=5
-  )
-  ssh "${ssh_opts[@]}" "${user}@${ip}" "$@"
+  vm_lifecycle_ssh "$@"
 }
 
 wait_ssh() {
-  local user=$1 ip=$2
-  local i
-  for i in $(seq 1 "$SSH_MAX_POLLS"); do
-    if ssh_as "$user" "$ip" true >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 10
-  done
-  ssh_as "$user" "$ip" true >/dev/null
-}
-
-guest_boot_ready_probe() {
-  cat <<'EOF'
-test -S /run/dbus/system_bus_socket || exit 1
-state=$(systemctl is-system-running 2>/dev/null || true)
-case "$state" in
-  running|degraded) ;;
-  *) exit 1 ;;
-esac
-if command -v cloud-init >/dev/null 2>&1; then
-  cloud_state=$(cloud-init status 2>/dev/null || true)
-  case "$cloud_state" in
-    *"status: running"*) exit 1 ;;
-  esac
-fi
-EOF
+  vm_lifecycle_wait_ssh "$1" "$2" "$SSH_MAX_POLLS"
 }
 
 wait_guest_boot_ready() {
-  local user=$1 ip=$2
-  local i
-
-  printf 'Waiting for systemd/D-Bus readiness on %s...\n' "$ip"
-  for i in $(seq 1 "$GUEST_READY_MAX_POLLS"); do
-    if ssh_as "$user" "$ip" "$(guest_boot_ready_probe)" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 10
-  done
-
-  ssh_as "$user" "$ip" "systemctl is-system-running || true; ls -l /run/dbus/system_bus_socket || true; cloud-init status || true" >&2 || true
-  ssh_as "$user" "$ip" "$(guest_boot_ready_probe)" >/dev/null
+  vm_lifecycle_wait_guest_boot_ready "$1" "$2" "$GUEST_READY_MAX_POLLS"
 }
 
 target_observer_operation_ips() {
@@ -724,7 +676,7 @@ resolve_image_uuid() {
 
 create_source_vm() {
   local state_file=$1 row_id=$2 image_name=$3 image_uuid=$4 db_version=$5 db_type=$6
-  local cluster_uuid subnet_uuid timestamp short_key vm_name ssh_public_key user_data_b64 create_payload create_response vm_uuid power_response vm_ip attempt source_ready
+  local cluster_uuid subnet_uuid timestamp short_key vm_name user_data_b64 create_payload create_response vm_uuid power_response vm_ip attempt source_ready
 
   image_uuid=$(resolve_image_uuid "$image_name" "$image_uuid")
   # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
@@ -737,8 +689,7 @@ create_source_vm() {
   fi
 
   short_key=$(short_row_key "$row_id")
-  ssh_public_key=$(tr -d '\n' < "$PUBLIC_KEY_PATH")
-  user_data_b64=$(sed "s|\${ssh_public_key}|${ssh_public_key}|g" "$USER_DATA_TEMPLATE" | base64_no_wrap)
+  user_data_b64=$(vm_lifecycle_render_user_data_b64 "$USER_DATA_TEMPLATE" "$PUBLIC_KEY_PATH")
 
   for attempt in $(seq 1 "$SOURCE_VM_MAX_ATTEMPTS"); do
     timestamp=$(date +%Y%m%d%H%M%S)
@@ -814,11 +765,7 @@ create_source_vm() {
     prism_wait_required_task_from_response "$power_response" "power on VM"
 
     printf 'Waiting for source VM IP...\n'
-    for _ in $(seq 1 90); do
-      vm_ip=$(prism_vm_ip "$vm_uuid")
-      [[ -n "$vm_ip" ]] && break
-      sleep 10
-    done
+    vm_ip=$(vm_lifecycle_wait_vm_ip "$vm_uuid" 90 10) || vm_ip=""
 
     jq -n \
       --arg row_id "$row_id" \

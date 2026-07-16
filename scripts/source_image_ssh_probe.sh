@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=scripts/prism.sh
 source "$ROOT_DIR/scripts/prism.sh"
+# shellcheck source=scripts/vm_lifecycle.sh
+source "$ROOT_DIR/scripts/vm_lifecycle.sh"
 
 SOURCE_IMAGE_NAME=""
 SOURCE_IMAGE_UUID=""
@@ -107,10 +109,6 @@ parse_package_csv() {
   done
 
   RHEL_REPOSITORY_PACKAGES=("${parsed[@]}")
-}
-
-base64_no_wrap() {
-  base64 | tr -d '\n'
 }
 
 write_result() {
@@ -321,8 +319,7 @@ TIMESTAMP=$(date +%Y%m%d%H%M%S)
 VM_NAME="source-probe-${SOURCE_IMAGE_NAME:-image}-${TIMESTAMP}"
 VM_NAME=${VM_NAME:0:64}
 
-SSH_PUBLIC_KEY=$(tr -d '\n' < "$PUBLIC_KEY_PATH")
-USER_DATA_B64=$(sed "s|\${ssh_public_key}|${SSH_PUBLIC_KEY}|g" "$USER_DATA_TEMPLATE" | base64_no_wrap)
+USER_DATA_B64=$(vm_lifecycle_render_user_data_b64 "$USER_DATA_TEMPLATE" "$PUBLIC_KEY_PATH")
 
 CREATE_PAYLOAD=$(jq -n \
   --arg vm_name "$VM_NAME" \
@@ -396,61 +393,15 @@ POWER_RESPONSE=$(prism_power_on_vm "$VM_UUID")
 prism_wait_required_task_from_response "$POWER_RESPONSE" "power on VM"
 
 printf 'Waiting for source image probe VM IP...\n'
-VM_IP=""
-elapsed=0
-while (( elapsed <= IP_TIMEOUT_SECONDS )); do
-  VM_IP=$(prism_vm_ip "$VM_UUID")
-  if [[ -n "$VM_IP" ]]; then
-    break
-  fi
-  sleep 10
-  elapsed=$((elapsed + 10))
-done
+IP_MAX_POLLS=$(( IP_TIMEOUT_SECONDS / 10 + 1 ))
+VM_IP=$(vm_lifecycle_wait_vm_ip "$VM_UUID" "$IP_MAX_POLLS" 10) || VM_IP=""
 if [[ -z "$VM_IP" ]]; then
   printf 'Error: timed out waiting for source image probe VM IP.\n' >&2
   exit 1
 fi
 
 printf 'Waiting for SSH on %s as packer...\n' "$VM_IP"
-SSH_COMMON_ARGS=(
-  -i "$PRIVATE_KEY_PATH"
-  -o StrictHostKeyChecking=no
-  -o UserKnownHostsFile=/dev/null
-  -o IdentitiesOnly=yes
-  -o IdentityAgent=none
-  -o BatchMode=yes
-  -o ConnectTimeout=10
-)
-
-guest_boot_ready_probe() {
-  cat <<'EOF'
-test -S /run/dbus/system_bus_socket || exit 1
-state=$(systemctl is-system-running 2>/dev/null || true)
-case "$state" in
-  running|degraded) ;;
-  *) exit 1 ;;
-esac
-if command -v cloud-init >/dev/null 2>&1; then
-  cloud_state=$(cloud-init status 2>/dev/null || true)
-  case "$cloud_state" in
-    *"status: running"*) exit 1 ;;
-  esac
-fi
-EOF
-}
-
-wait_guest_boot_ready() {
-  printf 'Waiting for systemd/D-Bus readiness on %s...\n' "$VM_IP"
-  for _ in $(seq 1 90); do
-    if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "$(guest_boot_ready_probe)" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 10
-  done
-
-  ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "systemctl is-system-running || true; ls -l /run/dbus/system_bus_socket || true; cloud-init status || true" >&2 || true
-  ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "$(guest_boot_ready_probe)" >/dev/null
-}
+vm_lifecycle_set_ssh_args "$PRIVATE_KEY_PATH" 10
 
 run_rhel_repository_check() {
   local packages
@@ -471,7 +422,7 @@ run_rhel_repository_check() {
 
   # shellcheck disable=SC2087  # client-side expansion is intentional: only the %q-quoted
   # values above are substituted; remote-side variables are escaped with \$ in the heredoc.
-  if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" "sudo -n bash -s" <<EOF
+  if vm_lifecycle_ssh packer "$VM_IP" "sudo -n bash -s" <<EOF
 set -euo pipefail
 
 rhel_org_id=${org_id_quoted}
@@ -525,20 +476,16 @@ EOF
   return 1
 }
 
-elapsed=0
-while (( elapsed <= SSH_TIMEOUT_SECONDS )); do
-  if ssh "${SSH_COMMON_ARGS[@]}" "packer@${VM_IP}" true >/dev/null 2>&1; then
-    wait_guest_boot_ready
-    if [[ "$RHEL_REPOSITORY_CHECK" == "true" ]]; then
-      run_rhel_repository_check
-    fi
-    FINAL_STATUS="passed"
-    printf 'Source image accepted cloud-init SSH for packer@%s.\n' "$VM_IP"
-    exit 0
+SSH_MAX_POLLS=$(( SSH_TIMEOUT_SECONDS / 10 + 1 ))
+if vm_lifecycle_wait_ssh packer "$VM_IP" "$SSH_MAX_POLLS" 10; then
+  vm_lifecycle_wait_guest_boot_ready packer "$VM_IP" 90 10
+  if [[ "$RHEL_REPOSITORY_CHECK" == "true" ]]; then
+    run_rhel_repository_check
   fi
-  sleep 10
-  elapsed=$((elapsed + 10))
-done
+  FINAL_STATUS="passed"
+  printf 'Source image accepted cloud-init SSH for packer@%s.\n' "$VM_IP"
+  exit 0
+fi
 
 printf 'Error: timed out waiting for cloud-init SSH as packer@%s.\n' "$VM_IP" >&2
 exit 1
