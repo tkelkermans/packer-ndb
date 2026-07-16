@@ -43,7 +43,7 @@ jobs:
 
       - name: Shell syntax
         run: |
-          bash -n build.sh test.sh scripts/*.sh
+          bash -n build.sh test.sh scripts/*.sh scripts/selftests/*.sh
           find ansible -path '*/files/*.sh' -type f -print0 | xargs -0 -r -n1 bash -n
 
       - name: ShellCheck
@@ -51,7 +51,7 @@ jobs:
         # shellcheck's variable analysis between scripts (false SC2178/SC2128).
         # Role helper scripts under ansible/*/roles/*/files are covered too.
         run: |
-          printf '%s\n' build.sh test.sh scripts/*.sh | xargs -n1 shellcheck -S warning
+          printf '%s\n' build.sh test.sh scripts/*.sh scripts/selftests/*.sh | xargs -n1 shellcheck -S warning
           find ansible -path '*/files/*.sh' -type f -print0 | xargs -0 -r -n1 shellcheck -S warning
 
       - name: JSON validity
