@@ -7,6 +7,8 @@ set -euo pipefail
 exec </dev/null
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=scripts/args.sh
+source "$ROOT_DIR/scripts/args.sh"
 
 SELFTEST_ANSIBLE_LOCAL_TEMP=""
 if [[ -z "${ANSIBLE_LOCAL_TEMP:-}" ]]; then
@@ -54,10 +56,7 @@ SELFTEST_FILTER=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --filter)
-      if (( $# < 2 )); then
-        printf 'Error: --filter requires a value.\n' >&2
-        exit 1
-      fi
+      require_option_value "$1" "$#"
       SELFTEST_FILTER=$2
       shift
       ;;
@@ -119,7 +118,6 @@ for suite_name in "${SELFTEST_SUITES[@]}"; do
   if [[ -n "$SELFTEST_FILTER" ]] && ! [[ "$suite_name" =~ $SELFTEST_FILTER ]]; then
     continue
   fi
-  declare -F "$suite_name" >/dev/null || fail "suite $suite_name is declared but not defined after sourcing $(selftest_suite_file_for "$suite_name")"
   "$suite_name"
   SELFTEST_RUN_COUNT=$((SELFTEST_RUN_COUNT + 1))
 done

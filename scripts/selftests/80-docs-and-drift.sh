@@ -52,7 +52,7 @@ run_ndb_linux_precheck_guard_tests() {
     grep -Fq '[[ "$kernel" =~ ^dm-[0-9]+$ ]]' "$ROOT_DIR/ansible/$version/roles/common/files/ndb-era-dm-compat.sh" || fail "NDB $version NDB Era device-mapper helper can recursively process generated DM aliases"
     grep -q '/dev/${kernel}..' "$ROOT_DIR/ansible/$version/roles/common/files/ndb-era-dm-compat.sh" || fail "NDB $version NDB Era device-mapper helper does not create malformed DM aliases"
     grep -Fq 'ln -s "$dm_dev" "$alias"' "$ROOT_DIR/ansible/$version/roles/common/files/ndb-era-dm-compat.sh" || fail "NDB $version NDB Era device-mapper helper must create symlink aliases"
-    ! grep -q "mknod -m" "$ROOT_DIR/ansible/$version/roles/common/files/ndb-era-dm-compat.sh" || fail "NDB $version NDB Era device-mapper helper must not create block-device aliases"
+    ! grep -rq "mknod -m" "$ROOT_DIR/ansible/$version/roles/common/" || fail "NDB $version NDB Era device-mapper helper must not create block-device aliases"
     grep -q "99-ndb-era-dm-serial.rules" "$ROOT_DIR/ansible/$version/roles/common/files/ndb-era-dm-compat.sh" || fail "NDB $version NDB Era device-mapper helper does not write udev serial metadata"
     grep -q "Expose Debian-family chrony config at NDB expected path" "$ROOT_DIR/ansible/$version/roles/common/tasks/services.yml" || fail "NDB $version common role does not expose Debian-family /etc/chrony.conf for NDB"
     grep -q "Ensure Debian-family D-Bus service is pulled in during first boot" "$ROOT_DIR/ansible/$version/roles/common/tasks/services.yml" || fail "NDB $version common role does not guarantee Debian-family D-Bus first-boot startup"
@@ -82,6 +82,20 @@ run_readme_customization_tests() {
   grep -q "validate_custom_enterprise" "$ROOT_DIR/README.md" || fail "README missing custom validation role guidance"
   pass "README customization guidance"
 }
+
+run_common_role_fact_contract_tests() {
+  local version fact
+  for version in 2.9 2.10; do
+    # Facts consumed inside the split include files must be normalized by
+    # main.yml: syntax-check does not evaluate when: conditionals, so a
+    # dropped set_fact only surfaces on a live build otherwise.
+    for fact in ndb_os_family ndb_distribution ndb_distribution_version; do
+      grep -q "    ${fact}:" "$ROOT_DIR/ansible/$version/roles/common/tasks/main.yml" || fail "common role $version main.yml does not normalize $fact for its include files"
+    done
+  done
+  pass "common role fact normalization contract"
+}
+
 run_ansible_tree_drift_tests() {
   # The ansible/<ver> trees are deliberately parallel (release_scaffold.sh copies
   # a prior version). Only files listed here may differ between versions, and the

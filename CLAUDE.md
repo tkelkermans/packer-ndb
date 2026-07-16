@@ -51,7 +51,7 @@ Static gates (offline, run before claiming any change works):
 bash -n build.sh test.sh scripts/*.sh scripts/selftests/*.sh
 bash scripts/selftest.sh              # supports --filter REGEX
 scripts/matrix_validate.sh ndb/*/matrix.json
-ANSIBLE_ROLES_PATH=ansible/2.10/roles ansible-lint --profile basic ansible/2.10
+for v in ansible/*/; do ANSIBLE_ROLES_PATH="${v}roles" ansible-lint --profile basic "$v"; done
 git diff --check
 ```
 

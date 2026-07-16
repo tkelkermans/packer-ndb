@@ -53,12 +53,15 @@ function manifest_set_if_present() {
   fi
 }
 
-# Last occurrence wins so redirect chains report the final response.
+# Only the FINAL response of a redirect chain counts: values reset at each
+# HTTP status line so an interstitial 302's headers (e.g. a CDN ETag for the
+# redirect body) cannot masquerade as the image's provenance.
 function source_image_response_header() {
   local headers=$1
   local name=$2
 
   printf '%s\n' "$headers" | tr -d '\r' | awk -v wanted="$name" '
+    /^HTTP\// { value = "" ; next }
     {
       line = $0
       header = line

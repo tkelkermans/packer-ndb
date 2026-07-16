@@ -262,13 +262,10 @@
   changed_when: false
   when: validate_postgres_haproxy_versions | length > 0
 
-- name: Assert HAProxy version matches matrix selection
-  ansible.builtin.assert:
-    that:
-      - validate_postgres_haproxy_versions | select('in', (validate_haproxy_version.stdout | default('')) ~ '\n' ~ (validate_haproxy_version.stderr | default(''))) | list | length > 0
-    fail_msg: "Expected HAProxy version from {{ validate_postgres_haproxy_versions }}, got {{ (validate_haproxy_version.stdout | default(validate_haproxy_version.stderr | default(''))) | trim }}"
-  when: validate_postgres_haproxy_versions | length > 0
-
+# No version assert for HAProxy/Keepalived: unlike Patroni/etcd (installed
+# at the matrix-pinned version), these come from the distro repositories at
+# whatever version the distro ships, so the matrix ha_components entries
+# document NDB qualification rather than the installed version.
 - name: Check Keepalived is installed
   ansible.builtin.command:
     argv:
@@ -276,14 +273,6 @@
       - --version
   register: validate_keepalived_version
   changed_when: false
-  when: validate_postgres_keepalived_versions | length > 0
-
-# keepalived --version prints to stderr, so match against both streams.
-- name: Assert Keepalived version matches matrix selection
-  ansible.builtin.assert:
-    that:
-      - validate_postgres_keepalived_versions | select('in', (validate_keepalived_version.stdout | default('')) ~ '\n' ~ (validate_keepalived_version.stderr | default(''))) | list | length > 0
-    fail_msg: "Expected Keepalived version from {{ validate_postgres_keepalived_versions }}, got {{ ((validate_keepalived_version.stdout | default('')) ~ ' ' ~ (validate_keepalived_version.stderr | default(''))) | trim }}"
   when: validate_postgres_keepalived_versions | length > 0
 
 - name: Initialize PostgreSQL extension validation planning

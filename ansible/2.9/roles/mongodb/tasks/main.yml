@@ -88,6 +88,10 @@
   ansible.builtin.apt:
     update_cache: true
     lock_timeout: 600
+  register: mongodb_apt_refresh_result
+  retries: 6
+  delay: 10
+  until: mongodb_apt_refresh_result is succeeded
   when: ndb_os_family == "Debian"
   become: true
 

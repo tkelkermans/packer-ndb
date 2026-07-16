@@ -481,7 +481,7 @@ fi
 
 printf 'Waiting for SSH on %s...\n' "$VM_IP"
 vm_lifecycle_set_ssh_args "$PRIVATE_KEY_PATH" 10
-if ! vm_lifecycle_wait_ssh packer "$VM_IP" "$SSH_MAX_POLLS" "$SSH_POLL_SECONDS" progress; then
+if ! vm_lifecycle_wait_ssh packer "$VM_IP" "$SSH_MAX_POLLS" "$SSH_POLL_SECONDS"; then
   printf 'Error: timed out waiting for SSH on validation VM %s after %s attempts.\n' "$VM_IP" "$SSH_MAX_POLLS" >&2
   exit 1
 fi

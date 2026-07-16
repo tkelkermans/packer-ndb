@@ -21,6 +21,7 @@
 - name: Resolve database runtime guard targets
   ansible.builtin.set_fact:
     image_prepare_guard_service: "{{ mongodb_service_name | default('mongod') if (provisioning_role | default('postgresql')) == 'mongodb' else postgres_service_name | default('postgresql') }}"
+    image_prepare_guard_service_glob: "{{ 'mongod*' if (provisioning_role | default('postgresql')) == 'mongodb' else 'postgresql*' }}"
     image_prepare_guard_port: "{{ '27017' if (provisioning_role | default('postgresql')) == 'mongodb' else '5432' }}"
 
 # Runs on every build, not only --validate ones: an image captured with the
@@ -44,6 +45,15 @@
           echo "ERROR: port ${port} is bound before image capture" >&2
           exit 1
         fi
+      fi
+      # Family-wide sweep: catches an enabled unit even when the resolved
+      # service name is wrong (e.g. RedHat postgresql-<major> vs a fallback
+      # of plain postgresql), where the named checks pass vacuously.
+      service_glob="{{ image_prepare_guard_service_glob }}"
+      enabled_units=$(systemctl list-unit-files --type service --state enabled --no-legend "$service_glob" 2>/dev/null | awk '{print $1}')
+      if [[ -n "$enabled_units" ]]; then
+        echo "ERROR: enabled database service unit(s) before image capture: $enabled_units" >&2
+        exit 1
       fi
   changed_when: false
   become: true
@@ -125,12 +135,9 @@
       set -eu
       rm -f /etc/sudoers.d/90-cloud-init-users
       if getent passwd packer >/dev/null 2>&1; then
-        rc=0
-        userdel --force --remove packer || rc=$?
-        case "$rc" in
-          0|12) ;;
-          *) exit "$rc" ;;
-        esac
+        # Tolerate userdel's ancillary-cleanup exit codes; the getent
+        # assertion below is the real check that the account is gone.
+        userdel --force --remove packer || true
       fi
       rm -rf /home/packer
       if getent passwd packer >/dev/null 2>&1; then

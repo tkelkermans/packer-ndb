@@ -39,6 +39,17 @@ prism_curl_config_escape() {
   printf '%s' "${value//\"/\\\"}"
 }
 
+# curl --config document carrying basic-auth credentials on stdin (never on
+# argv, where they would be visible in ps). Shared by prism_curl and the NDB
+# API helpers in ndb_e2e_validate.sh so the config grammar lives once.
+prism_curl_user_config() {
+  local username=$1
+  local password=$2
+  printf 'user = "%s:%s"' \
+    "$(prism_curl_config_escape "$username")" \
+    "$(prism_curl_config_escape "$password")"
+}
+
 prism_curl() {
   local method=$1
   local path=$2
@@ -53,12 +64,8 @@ prism_curl() {
   endpoint=$(prism_endpoint) || return 1
   response_file=$(mktemp -t ndb-prism-response.XXXXXX)
 
-  # Credentials travel to curl on stdin via --config so they never appear in
-  # ps output while long task polls run.
   # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
-  curl_config=$(printf 'user = "%s:%s"' \
-    "$(prism_curl_config_escape "$PKR_VAR_pc_username")" \
-    "$(prism_curl_config_escape "$PKR_VAR_pc_password")")
+  curl_config=$(prism_curl_user_config "$PKR_VAR_pc_username" "$PKR_VAR_pc_password")
 
   curl_args=(
     -sS
@@ -110,6 +117,28 @@ prism_list_resource() {
   prism_curl POST "/api/nutanix/v3/${resource}/list" "$payload"
 }
 
+# Shared pagination termination: sets PRISM_PAGE_DONE=true when the page just
+# processed was the last one. Prefers the server's metadata.total_matches
+# (robust even when the server caps pages below the requested length); falls
+# back to count-based checks when total_matches is absent.
+prism_page_is_last() {
+  local page=$1
+  local offset=$2
+  local count=$3
+  local page_length=$4
+  local total
+
+  if (( count == 0 )); then
+    return 0
+  fi
+  total=$(jq -r '.metadata.total_matches // -1' <<<"$page") || return 1
+  if (( total >= 0 )); then
+    (( offset + count >= total ))
+  else
+    (( count < page_length ))
+  fi
+}
+
 # Prism v3 list endpoints cap page sizes server-side, so a single large-length
 # request can silently miss entities. Emits one JSON document per page; safe
 # for consumers that stream .entities[]?.
@@ -123,12 +152,14 @@ prism_list_all_entities() {
 
   while :; do
     page=$(prism_list_resource "$resource" "$kind" "$page_length" "$offset") || return 1
-    printf '%s\n' "$page"
     count=$(jq -r '.entities | length' <<<"$page") || return 1
-    if (( count < page_length )); then
+    if (( count > 0 )); then
+      printf '%s\n' "$page"
+    fi
+    if prism_page_is_last "$page" "$offset" "$count" "$page_length"; then
       break
     fi
-    offset=$((offset + page_length))
+    offset=$((offset + count))
   done
 }
 
@@ -146,16 +177,16 @@ prism_find_uuid_by_name() {
   # early match cannot SIGPIPE the producer under pipefail.
   while :; do
     page=$(prism_list_resource "$resource" "$kind" "$page_length" "$offset") || return 1
+    count=$(jq -r '.entities | length' <<<"$page") || return 1
     uuid=$(jq -r --arg name "$name" 'first(.entities[]? | select((.spec.name // .status.name // "") == $name) | .metadata.uuid) // empty' <<<"$page") || return 1
     if [[ -n "$uuid" ]]; then
       printf '%s\n' "$uuid"
       return 0
     fi
-    count=$(jq -r '.entities | length' <<<"$page") || return 1
-    if (( count < page_length )); then
+    if prism_page_is_last "$page" "$offset" "$count" "$page_length"; then
       return 0
     fi
-    offset=$((offset + page_length))
+    offset=$((offset + count))
   done
 }
 

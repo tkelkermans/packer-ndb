@@ -101,7 +101,7 @@ scan_prism_images() {
   records_file=$(mktemp -t ndb-rhel-image-records.XXXXXX)
   : > "$records_file"
 
-  response=$(prism_list_resource images image 2000)
+  response=$(prism_list_all_entities images image)
   jq -c '
     .entities[]?
     | {

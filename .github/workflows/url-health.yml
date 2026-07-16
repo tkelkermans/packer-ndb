@@ -20,15 +20,23 @@ jobs:
       - name: HEAD-check every direct image URL
         run: |
           set -u
+          jq empty images.json
           failures=0
+          checked=0
           while IFS=$'\t' read -r key url; do
             printf 'Checking %s -> %s\n' "$key" "$url"
+            checked=$((checked + 1))
             if ! curl -sIfL --retry 3 --retry-delay 5 --max-time 60 -o /dev/null "$url"; then
               printf '::error::images.json URL for %s is unreachable: %s\n' "$key" "$url"
               failures=$((failures + 1))
             fi
           done < <(jq -r 'to_entries[] | select(.value | type == "string") | [.key, .value] | @tsv' images.json)
+          if (( checked == 0 )); then
+            printf '::error::url-health checked zero URLs - images.json schema drift or extraction bug; a green run would be meaningless.\n'
+            exit 1
+          fi
           if (( failures > 0 )); then
             printf '%s images.json URL(s) failed HEAD checks. Fix images.json: an ImageCreate 404 during a build means source URL rot, not an Ansible problem.\n' "$failures"
             exit 1
           fi
+          printf 'All %s direct image URLs healthy.\n' "$checked"

@@ -42,16 +42,16 @@ vm_lifecycle_ssh() {
 
 # Polls SSH reachability; on exhaustion re-runs the probe without silencing
 # stderr so the caller sees the underlying SSH error (existing behavior in
-# all three consumers).
+# all three consumers). Prints a progress line every sixth attempt.
 vm_lifecycle_wait_ssh() {
-  local user=$1 ip=$2 max_polls=$3 poll_seconds=${4:-10} progress_label=${5:-}
+  local user=$1 ip=$2 max_polls=$3 poll_seconds=${4:-10}
   local attempt
 
   for attempt in $(seq 1 "$max_polls"); do
     if vm_lifecycle_ssh "$user" "$ip" true >/dev/null 2>&1; then
       return 0
     fi
-    if [[ -n "$progress_label" ]] && (( attempt % 6 == 0 || attempt == max_polls )); then
+    if (( attempt % 6 == 0 || attempt == max_polls )); then
       printf 'Still waiting for SSH on %s (attempt %s/%s)...\n' "$ip" "$attempt" "$max_polls"
     fi
     sleep "$poll_seconds"
@@ -94,12 +94,15 @@ vm_lifecycle_wait_guest_boot_ready() {
 }
 
 # Prints the VM IP once Prism reports one; empty output + rc 1 on timeout.
+# A failing Prism API call aborts immediately (rc 2) instead of being
+# silently retried for the full poll budget - the inline loops this
+# replaced ran under the callers' set -e and failed fast on API errors.
 vm_lifecycle_wait_vm_ip() {
   local vm_uuid=$1 max_polls=$2 poll_seconds=${3:-10}
   local ip=""
 
   for _ in $(seq 1 "$max_polls"); do
-    ip=$(prism_vm_ip "$vm_uuid")
+    ip=$(prism_vm_ip "$vm_uuid") || return 2
     if [[ -n "$ip" ]]; then
       printf '%s\n' "$ip"
       return 0

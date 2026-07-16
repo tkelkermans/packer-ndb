@@ -294,9 +294,7 @@ api_url() {
 
 ndb_curl_config() {
   # Credentials on stdin via --config, never on argv (visible in ps).
-  printf 'user = "%s:%s"' \
-    "$(prism_curl_config_escape "$NDB_SERVER_USER")" \
-    "$(prism_curl_config_escape "$NDB_SERVER_PASSWORD")"
+  prism_curl_user_config "$NDB_SERVER_USER" "$NDB_SERVER_PASSWORD"
 }
 
 ndb_get() {
@@ -1304,7 +1302,7 @@ validate_guest_database() {
     validation=$(printf '%s\n' "$db_password" | ssh_as era "$provision_ip" "read -r PGPASSWORD; export PGPASSWORD; '$psql_path' -h 127.0.0.1 -U '$db_user' -d '$db_name' -tAc \"select current_database() || '|' || current_setting('server_version');\"")
     validation=$(printf '%s' "$validation" | tr '\n' '|' | sed 's/|$//')
   else
-    validation=$(printf '%s\n' "$db_password" | ssh_as era "$provision_ip" "read -r DB_PASSWORD; export DB_PASSWORD; mongosh --quiet --host 127.0.0.1 --port 27017 --eval 'db.getSiblingDB(\"admin\").auth(\"$db_user\", process.env.DB_PASSWORD); db.adminCommand({ping:1}).ok + \"|\" + db.version()'")
+    validation=$(printf '%s\n' "$db_password" | ssh_as era "$provision_ip" "read -r DB_PASSWORD; export DB_PASSWORD; export DB_USER='$db_user'; mongosh --quiet --host 127.0.0.1 --port 27017 --eval 'db.getSiblingDB(\"admin\").auth(process.env.DB_USER, process.env.DB_PASSWORD); db.adminCommand({ping:1}).ok + \"|\" + db.version()'")
   fi
 
   jq --arg provisioned_vm_ip "$provision_ip" \
@@ -1383,7 +1381,7 @@ preflight_target_images() {
   local images_file ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid
   local row_id selected=0 missing=0
   images_file=$(mktemp -t ndb-e2e-images.XXXXXX)
-  prism_list_resource images image 5000 > "$images_file"
+  prism_list_all_entities images image > "$images_file"
 
   while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid _; do
     [[ -n "$DB_TYPE_FILTER" && "$db_type" != "$DB_TYPE_FILTER" ]] && continue

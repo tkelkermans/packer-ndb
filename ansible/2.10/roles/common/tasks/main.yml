@@ -4,6 +4,8 @@
 - name: Normalize OS facts
   ansible.builtin.set_fact:
     ndb_os_family: "{{ ansible_facts['os_family'] }}"
+    ndb_distribution: "{{ ansible_facts['distribution'] }}"
+    ndb_distribution_version: "{{ ansible_facts['distribution_version'] }}"
 
 - name: Install baseline packages and repositories
   ansible.builtin.include_tasks: packages.yml
