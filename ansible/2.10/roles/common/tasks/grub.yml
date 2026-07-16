@@ -33,7 +33,7 @@
     executable: /bin/bash
   register: ndb_grub_kernel_args_result
   changed_when: ndb_grub_kernel_args_result.stdout == "changed"
-  become: yes
+  become: true
 
 - name: Apply NDB kernel arguments to Red Hat boot entries
   ansible.builtin.command:
@@ -44,7 +44,7 @@
   when:
     - ndb_os_family == "RedHat"
     - ndb_grub_kernel_args_result.changed
-  become: yes
+  become: true
 
 - name: Force Debian GRUB to use device paths for root disk mapping
   ansible.builtin.lineinfile:
@@ -58,7 +58,7 @@
       value: "true"
   register: ndb_debian_grub_device_path_result
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Ensure Debian GRUB defaults override directory exists
   ansible.builtin.file:
@@ -68,7 +68,7 @@
     group: root
     mode: "0755"
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Write late Debian GRUB root-device override
   ansible.builtin.copy:
@@ -84,14 +84,14 @@
       GRUB_FORCE_PARTUUID=
   register: ndb_debian_grub_late_root_device_result
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Check Ubuntu cloud-image forced PARTUUID GRUB setting
   ansible.builtin.stat:
     path: /etc/default/grub.d/40-force-partuuid.cfg
   register: ndb_debian_grub_force_partuuid_stat
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Disable Ubuntu cloud-image forced PARTUUID root
   ansible.builtin.lineinfile:
@@ -102,7 +102,7 @@
   when:
     - ndb_os_family == "Debian"
     - ndb_debian_grub_force_partuuid_stat.stat.exists
-  become: yes
+  become: true
 
 - name: Refresh Debian GRUB configuration
   ansible.builtin.command:
@@ -111,4 +111,4 @@
   when:
     - ndb_os_family == "Debian"
     - ndb_grub_kernel_args_result.changed or ndb_debian_grub_device_path_result.changed or ndb_debian_grub_late_root_device_result.changed or (ndb_debian_grub_force_partuuid_result.changed | default(false))
-  become: yes
+  become: true

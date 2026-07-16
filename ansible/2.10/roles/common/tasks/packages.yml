@@ -9,7 +9,7 @@
   delay: 10
   until: dnf_plugins_core_result is succeeded
   when: ndb_os_family == "RedHat"
-  become: yes
+  become: true
 
 - name: Enable CRB repository (Rocky Linux)
   ansible.builtin.command:
@@ -23,18 +23,18 @@
   delay: 10
   until: enable_crb_result.rc == 0
   when: ndb_distribution == 'Rocky'
-  become: yes
+  become: true
 
 - name: Update apt cache
   ansible.builtin.apt:
-    update_cache: yes
+    update_cache: true
     lock_timeout: 600
   register: apt_cache_update_result
   retries: 6
   delay: 10
   until: apt_cache_update_result is succeeded
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Select Debian libaio runtime package
   ansible.builtin.set_fact:
@@ -53,7 +53,7 @@
   until: dnf_clean_result.rc == 0
   changed_when: false
   when: ndb_os_family == "RedHat"
-  become: yes
+  become: true
 
 - name: Refresh dnf metadata (RedHat family)
   ansible.builtin.command:
@@ -67,7 +67,7 @@
   until: dnf_makecache_result.rc == 0
   changed_when: false
   when: ndb_os_family == "RedHat"
-  become: yes
+  become: true
 
 - name: Ensure OpenSSL stack is up to date (RedHat family)
   ansible.builtin.dnf:
@@ -80,7 +80,7 @@
   delay: 10
   until: dnf_openssl_result is succeeded
   when: ndb_os_family == "RedHat"
-  become: yes
+  become: true
 
 - name: Ensure OpenSSL stack is up to date (Debian family)
   ansible.builtin.apt:
@@ -94,7 +94,7 @@
   delay: 10
   until: apt_openssl_result is succeeded
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Install common packages (RedHat family)
   ansible.builtin.package:
@@ -105,7 +105,7 @@
   delay: 10
   until: redhat_common_packages_result is succeeded
   when: ndb_os_family == "RedHat"
-  become: yes
+  become: true
 
 - name: Install common packages (Debian family)
   ansible.builtin.apt:
@@ -117,7 +117,7 @@
   delay: 10
   until: apt_common_packages_result is succeeded
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Install Red Hat specific packages
   ansible.builtin.package:
@@ -128,7 +128,7 @@
   delay: 10
   until: redhat_specific_packages_result is succeeded
   when: ndb_os_family == "RedHat"
-  become: yes
+  become: true
 
 - name: Install Debian specific packages
   ansible.builtin.apt:
@@ -140,7 +140,7 @@
   delay: 10
   until: apt_debian_packages_result is succeeded
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Remove UFW on Debian systems
   ansible.builtin.apt:
@@ -152,4 +152,4 @@
   delay: 10
   until: apt_remove_ufw_result is succeeded
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true

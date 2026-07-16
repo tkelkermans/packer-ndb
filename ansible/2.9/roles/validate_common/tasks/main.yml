@@ -16,7 +16,7 @@
   changed_when: false
   failed_when: false
   when: ndb_os_family in ["RedHat", "Debian"]
-  become: yes
+  become: true
 
 - name: Assert firewalld allows SSH
   ansible.builtin.assert:
@@ -31,7 +31,7 @@
     follow: true
   register: validate_ndb_chrony_conf
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Assert Debian-family NDB chrony config path exists
   ansible.builtin.assert:
@@ -48,7 +48,7 @@
       - "test -S /run/dbus/system_bus_socket && systemctl is-active dbus.service | grep -Fx active && test -L /etc/systemd/system/sockets.target.wants/dbus.socket && test -L /etc/systemd/system/basic.target.wants/dbus.service && test \"$(readlink /etc/systemd/system/sockets.target.wants/dbus.socket)\" = /lib/systemd/system/dbus.socket && test \"$(readlink /etc/systemd/system/basic.target.wants/dbus.service)\" = /lib/systemd/system/dbus.service"
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Validate Debian-family captured image has no stale NDB reset script
   ansible.builtin.command:
@@ -58,7 +58,7 @@
       - "test ! -e /bin/reset_password.sh"
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Validate Debian-family rc.local has no stale NDB reset hook
   ansible.builtin.command:
@@ -68,7 +68,7 @@
       - "! grep -q '/bin/reset_password.sh' /etc/rc.local 2>/dev/null"
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Validate Debian-family NDB reset helper wait mode
   ansible.builtin.command:
@@ -78,7 +78,7 @@
       - "1"
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Validate Debian-family SSH reset port gate helper
   ansible.builtin.command:
@@ -88,7 +88,7 @@
       - "command -v nft >/dev/null && test -x /usr/local/sbin/ndb-ssh-reset-gate && grep -F 'block)' /usr/local/sbin/ndb-ssh-reset-gate && grep -F 'NDB PAM auth waiting for late injected reset script' /usr/local/sbin/ndb-run-reset-password && /usr/local/sbin/ndb-ssh-reset-gate validate-block-rule && /usr/local/sbin/ndb-ssh-reset-gate block-if-reset-intent && ! nft list table inet ndb_ssh_reset_gate >/dev/null 2>&1"
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Validate Debian-family SSH reset port gate service
   ansible.builtin.command:
@@ -98,7 +98,7 @@
       - "systemctl is-enabled ndb-ssh-reset-gate.service | grep -Fx enabled && systemctl cat ndb-ssh-reset-gate.service | grep -F 'Type=oneshot' && systemctl cat ndb-ssh-reset-gate.service | grep -F 'ExecStart=/usr/local/sbin/ndb-ssh-reset-gate block-if-reset-intent' && ! systemctl cat ndb-ssh-reset-gate.service | grep -F 'watch-reset-intent' && systemctl cat ndb-ssh-reset-gate.service | grep -F 'Before=sysinit.target basic.target' && ! systemctl cat ndb-ssh-reset-gate.service | grep -E 'Before=.*firewalld.service' && test -L /etc/systemd/system/sysinit.target.wants/ndb-ssh-reset-gate.service"
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Validate Debian-family SSH PAM reset gate
   ansible.builtin.command:
@@ -110,7 +110,7 @@
       - /etc/pam.d/sshd
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Validate Debian-family SSH PAM nologin bypass for NDB drive user
   ansible.builtin.command:
@@ -122,7 +122,7 @@
       - /etc/pam.d/sshd
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Validate Debian-family SSH PAM account normalization gate
   ansible.builtin.command:
@@ -134,7 +134,7 @@
       - /etc/pam.d/sshd
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Validate Debian-family reset helper normalizes PAM account state
   ansible.builtin.command:
@@ -144,7 +144,7 @@
       - "grep -F 'pam_account_user=' /usr/local/sbin/ndb-run-reset-password && grep -F 'usermod --unlock' /usr/local/sbin/ndb-run-reset-password && grep -F 'chage -E -1 -I -1 -m 0 -M 99999' /usr/local/sbin/ndb-run-reset-password && grep -F 'NDB PAM account normalization completed' /usr/local/sbin/ndb-run-reset-password && grep -F 'NDB injected password reset completed during PAM account check' /usr/local/sbin/ndb-run-reset-password"
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Validate Debian-family SSH reset gate drop-ins
   ansible.builtin.command:
@@ -160,7 +160,7 @@
     - /etc/systemd/system/sshd.service.d/10-ndb-reset-password.conf
   when: ndb_os_family == "Debian"
   changed_when: false
-  become: yes
+  become: true
 
 - name: Check Debian-family SSH socket activation state
   ansible.builtin.command:
@@ -172,7 +172,7 @@
   failed_when: false
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Assert Debian-family SSH socket activation cannot bypass reset gate
   ansible.builtin.assert:
@@ -191,7 +191,7 @@
   failed_when: false
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Assert Debian-family SSH service is enabled after socket activation disablement
   ansible.builtin.assert:
@@ -205,7 +205,7 @@
   ansible.builtin.slurp:
     src: /etc/default/grub
   register: validate_ndb_grub_defaults
-  become: yes
+  become: true
 
 - name: Assert GRUB defaults include NDB kernel arguments
   ansible.builtin.assert:
@@ -219,7 +219,7 @@
     src: /boot/grub/grub.cfg
   register: validate_ndb_grub_cfg
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Assert Debian GRUB uses device paths for NDB root disk mapping
   ansible.builtin.assert:
@@ -236,7 +236,7 @@
       - -lc
       - "command -v parted && command -v lsblk && command -v lsscsi"
   changed_when: false
-  become: yes
+  become: true
 
 - name: Validate Debian-family NDB Era device-mapper helper
   ansible.builtin.command:
@@ -246,7 +246,7 @@
       - "test -x /usr/local/sbin/ndb-era-dm-compat && grep -F 'ntnx_era_agent_vg_*' /usr/local/sbin/ndb-era-dm-compat && grep -F '/dev/${kernel}..' /usr/local/sbin/ndb-era-dm-compat && grep -F 'ln -s \"$dm_dev\" \"$alias\"' /usr/local/sbin/ndb-era-dm-compat && ! grep -F 'mknod ' /usr/local/sbin/ndb-era-dm-compat && grep -F '99-ndb-era-dm-serial.rules' /usr/local/sbin/ndb-era-dm-compat && /usr/local/sbin/ndb-era-dm-compat"
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Validate Debian-family NDB Era device-mapper timer
   ansible.builtin.command:
@@ -256,4 +256,4 @@
       - "systemctl is-enabled ndb-era-dm-compat.timer | grep -Fx enabled && systemctl cat ndb-era-dm-compat.service | grep -F 'ExecStart=/usr/local/sbin/ndb-era-dm-compat' && systemctl cat ndb-era-dm-compat.timer | grep -F 'OnBootSec=30s' && systemctl cat ndb-era-dm-compat.timer | grep -F 'OnUnitActiveSec=10s' && systemctl cat ndb-era-dm-compat.timer | grep -F 'WantedBy=timers.target'"
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true

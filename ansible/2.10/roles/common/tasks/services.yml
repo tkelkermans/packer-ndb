@@ -9,7 +9,7 @@
     group: root
     mode: "0755"
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Ensure Debian-family D-Bus service wants directory exists
   ansible.builtin.file:
@@ -19,7 +19,7 @@
     group: root
     mode: "0755"
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Ensure Debian-family D-Bus socket is pulled in during first boot
   ansible.builtin.file:
@@ -28,7 +28,7 @@
     state: link
     force: true
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Ensure Debian-family D-Bus service is pulled in during first boot
   ansible.builtin.file:
@@ -37,7 +37,7 @@
     state: link
     force: true
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Ensure Debian-family D-Bus service is running
   ansible.builtin.systemd:
@@ -45,7 +45,7 @@
     state: started
     daemon_reload: true
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Ensure AppArmor disable directory exists (Ubuntu 24.04 workaround)
   ansible.builtin.file:
@@ -55,7 +55,7 @@
     group: root
     mode: "0755"
   when: ndb_distribution == "Ubuntu" and ndb_distribution_version == "24.04"
-  become: yes
+  become: true
 
 - name: Disable rsyslogd AppArmor profile for Ubuntu 24.04
   ansible.builtin.file:
@@ -64,7 +64,7 @@
     state: link
     force: true
   when: ndb_distribution == "Ubuntu" and ndb_distribution_version == "24.04"
-  become: yes
+  become: true
 
 - name: Ensure firewalld service is enabled
   ansible.builtin.service:
@@ -72,7 +72,7 @@
     state: started
     enabled: true
   when: ndb_os_family in ["RedHat", "Debian"]
-  become: yes
+  become: true
 
 - name: Check firewalld SSH service rule
   ansible.builtin.command:
@@ -84,7 +84,7 @@
   changed_when: false
   failed_when: false
   when: ndb_os_family in ["RedHat", "Debian"]
-  become: yes
+  become: true
 
 - name: Allow SSH through firewalld
   ansible.builtin.command:
@@ -97,7 +97,7 @@
   when:
     - ndb_os_family in ["RedHat", "Debian"]
     - ndb_firewalld_ssh_rule.rc != 0
-  become: yes
+  become: true
 
 - name: Reload firewalld after allowing SSH
   ansible.builtin.command:
@@ -108,14 +108,14 @@
   when:
     - ndb_os_family in ["RedHat", "Debian"]
     - ndb_firewalld_allow_ssh is changed
-  become: yes
+  become: true
 
 - name: Ensure chrony service is enabled
   ansible.builtin.service:
     name: "{{ 'chronyd' if ndb_os_family == 'RedHat' else 'chrony' }}"
     state: started
     enabled: true
-  become: yes
+  become: true
 
 - name: Expose Debian-family chrony config at NDB expected path
   ansible.builtin.file:
@@ -124,14 +124,14 @@
     state: link
     force: true
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Ensure cron service is running
   ansible.builtin.service:
     name: "{{ 'crond' if ndb_os_family == 'RedHat' else 'cron' }}"
     state: started
     enabled: true
-  become: yes
+  become: true
 
 - name: Ensure secure_path is present in /etc/sudoers
   ansible.builtin.lineinfile:
@@ -139,7 +139,7 @@
     line: "Defaults    secure_path = /sbin:/bin:/usr/sbin:/usr/bin"
     regexp: '^Defaults\s+secure_path\s*='
     validate: 'visudo -cf %s'
-  become: yes
+  become: true
 
 - name: Disable requiretty in /etc/sudoers
   ansible.builtin.lineinfile:
@@ -147,7 +147,7 @@
     regexp: '^Defaults    requiretty'
     state: absent
     validate: 'visudo -cf %s'
-  become: yes
+  become: true
 
 - name: Ensure NDB drive user exists
   ansible.builtin.user:
@@ -155,14 +155,14 @@
     shell: /bin/bash
     create_home: true
     state: present
-  become: yes
+  become: true
 
 - name: Ensure /tmp has correct permissions (1777 with sticky bit)
   ansible.builtin.file:
     path: /tmp
     mode: '1777'
     state: directory
-  become: yes
+  become: true
 
 - name: Configure NDB sudoers policy
   ansible.builtin.template:
@@ -173,7 +173,7 @@
     mode: '0440'
     validate: 'visudo -cf %s'
   when: configure_ndb_sudoers | bool
-  become: yes
+  become: true
 
 # image_prepare deletes baked SSH host keys at capture. NDB clones can retain
 # cloud-init instance metadata (per-instance key regeneration may not rerun),
@@ -200,11 +200,11 @@
 
       [Install]
       WantedBy=sysinit.target
-  become: yes
+  become: true
 
 - name: Enable SSH host key regeneration guard
   ansible.builtin.systemd:
     name: ndb-ssh-hostkeys-ensure.service
     enabled: true
     daemon_reload: true
-  become: yes
+  become: true

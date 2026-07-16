@@ -35,7 +35,7 @@
   until: validate_service_active_result.stdout == "active"
   changed_when: false
   failed_when: false
-  become: yes
+  become: true
 
 - name: Assert required services are active
   ansible.builtin.assert:
@@ -58,7 +58,7 @@
   register: validate_service_enabled_results
   changed_when: false
   failed_when: false
-  become: yes
+  become: true
 
 - name: Assert required services are enabled
   ansible.builtin.assert:
@@ -82,7 +82,7 @@
   register: validate_postgres_service_active
   changed_when: false
   failed_when: false
-  become: yes
+  become: true
 
 - name: Assert packaged PostgreSQL service is inactive
   ansible.builtin.assert:
@@ -99,7 +99,7 @@
   register: validate_postgres_service_enabled
   changed_when: false
   failed_when: false
-  become: yes
+  become: true
 
 - name: Assert packaged PostgreSQL service is disabled
   ansible.builtin.assert:
@@ -115,7 +115,7 @@
     executable: /bin/bash
   register: validate_postgres_listener_check
   changed_when: false
-  become: yes
+  become: true
 
 - name: Assert PostgreSQL listener port is free
   ansible.builtin.assert:
@@ -128,7 +128,7 @@
     path: "{{ validate_sudoers_path }}"
   register: validate_ndb_sudoers_stat
   when: configure_ndb_sudoers | default(false) | bool
-  become: yes
+  become: true
 
 - name: Assert NDB sudoers drop-in exists
   ansible.builtin.assert:
@@ -147,7 +147,7 @@
   register: validate_sudoers_check
   changed_when: false
   when: configure_ndb_sudoers | default(false) | bool
-  become: yes
+  become: true
 
 - name: Check PostgreSQL client version
   ansible.builtin.command:
@@ -156,7 +156,7 @@
       - --version
   register: validate_psql_version
   changed_when: false
-  become: yes
+  become: true
 
 - name: Assert PostgreSQL client version matches matrix selection
   ansible.builtin.assert:
@@ -171,7 +171,7 @@
       - --version
   register: validate_postgres_server_version
   changed_when: false
-  become: yes
+  become: true
   become_user: postgres
 
 - name: Assert PostgreSQL server version matches matrix selection
@@ -194,7 +194,7 @@
       - --version
   register: validate_postgres_pg_config_version
   changed_when: false
-  become: yes
+  become: true
 
 - name: Assert PostgreSQL pg_config version matches matrix selection
   ansible.builtin.assert:
@@ -311,7 +311,7 @@
     extension_metadata: "{{ extension_metadata_family.get(extension_name, {}) }}"
     unsupported_versions: "{{ extension_metadata.get('unsupported_versions', []) }}"
     supported_versions: "{{ extension_metadata.get('supported_versions', []) }}"
-    version_supported: "{{ (supported_versions | length == 0 or validate_postgres_major_version in supported_versions) and (validate_postgres_major_version not in unsupported_versions) }}"
+    version_supported: "{{ (supported_versions | length == 0 or validate_postgres_major_version in supported_versions) and (validate_postgres_major_version not in unsupported_versions) }}"  # noqa: jinja[invalid] - extension_name/extension_metadata are loop vars the linter cannot statically render
     sql_extension_name: "{{ extension_metadata.get('sql_name', extension_name) }}"
     skip_reason: "{{ extension_metadata.get('reason', 'unsupported on PostgreSQL ' ~ validate_postgres_major_version) }}"
   when:

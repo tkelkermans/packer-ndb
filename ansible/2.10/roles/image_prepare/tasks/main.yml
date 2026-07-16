@@ -46,17 +46,17 @@
         fi
       fi
   changed_when: false
-  become: yes
+  become: true
 
 - name: Remove generated cloud-init netplan on Debian-family images
   ansible.builtin.file:
     path: /etc/netplan/50-cloud-init.yaml
     state: absent
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Check subscription-manager availability
-  ansible.builtin.shell:
+  ansible.builtin.shell:  # noqa: command-instead-of-shell - command -v is a shell builtin
     cmd: command -v subscription-manager
   register: image_prepare_subscription_manager
   changed_when: false
@@ -70,7 +70,7 @@
   changed_when: false
   failed_when: false
   no_log: true
-  become: yes
+  become: true
   when:
     - ndb_os_family == "RedHat"
     - rhel_subscription_enabled | default(false) | bool
@@ -82,7 +82,7 @@
   changed_when: false
   failed_when: false
   no_log: true
-  become: yes
+  become: true
   when:
     - ndb_os_family == "RedHat"
     - rhel_subscription_enabled | default(false) | bool
@@ -93,7 +93,7 @@
     cmd: /usr/bin/cloud-init clean --logs --machine-id
   when: image_prepare_cloud_init.stat.exists
   changed_when: true
-  become: yes
+  become: true
 
 # Regeneration on first boot is guaranteed by ndb-ssh-hostkeys-ensure.service
 # (installed by the common role) even when a clone retains cloud-init
@@ -102,19 +102,19 @@
   ansible.builtin.shell:
     cmd: rm -f /etc/ssh/ssh_host_*
   changed_when: true
-  become: yes
+  become: true
 
 - name: Remove grub backup debris before image capture
   ansible.builtin.file:
     path: /etc/default/grub.bak
     state: absent
-  become: yes
+  become: true
 
 - name: Flush filesystem buffers before image capture
   ansible.builtin.command:
     cmd: sync
   changed_when: false
-  become: yes
+  become: true
 
 # Must remain the last task in the play: it deletes the SSH build user this
 # connection authenticated as. The in-flight session survives, but any later
@@ -139,4 +139,4 @@
       fi
       sync
   changed_when: true
-  become: yes
+  become: true

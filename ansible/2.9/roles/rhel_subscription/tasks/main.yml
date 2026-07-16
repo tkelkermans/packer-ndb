@@ -15,7 +15,7 @@
     - rhel_subscription_enabled | default(false) | bool
 
 - name: Check current RHEL subscription identity
-  become: yes
+  become: true
   ansible.builtin.command:
     cmd: subscription-manager identity
   register: rhel_subscription_identity
@@ -26,7 +26,7 @@
     - rhel_subscription_enabled | default(false) | bool
 
 - name: Register RHEL with activation key
-  become: yes
+  become: true
   no_log: true
   ansible.builtin.command:
     argv:
@@ -41,7 +41,7 @@
     - rhel_subscription_identity.rc | default(1) != 0
 
 - name: Refresh RHEL subscription metadata
-  become: yes
+  become: true
   ansible.builtin.command:
     cmd: subscription-manager refresh
   changed_when: false
@@ -50,7 +50,7 @@
     - rhel_subscription_enabled | default(false) | bool
 
 - name: Enable RHEL CodeReady Builder repository
-  become: yes
+  become: true
   ansible.builtin.command:
     argv:
       - subscription-manager
@@ -62,7 +62,7 @@
     - rhel_subscription_enabled | default(false) | bool
 
 - name: Enable activation-key configured RHEL repositories
-  become: yes
+  become: true
   ansible.builtin.command:
     argv:
       - subscription-manager

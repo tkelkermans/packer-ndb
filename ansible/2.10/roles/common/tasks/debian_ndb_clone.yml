@@ -8,7 +8,7 @@
     line: 'PasswordAuthentication yes'
   register: ndb_debian_sshd_main_password_auth_result
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Allow NDB password SSH for Debian-family clones
   ansible.builtin.copy:
@@ -22,7 +22,7 @@
       PasswordAuthentication yes
   register: ndb_debian_sshd_password_auth_result
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Validate Debian-family SSH configuration
   ansible.builtin.command:
@@ -33,7 +33,7 @@
   when:
     - ndb_os_family == "Debian"
     - (ndb_debian_sshd_main_password_auth_result.changed | default(false)) or (ndb_debian_sshd_password_auth_result.changed | default(false))
-  become: yes
+  become: true
 
 - name: Check Debian-family effective SSH configuration
   ansible.builtin.command:
@@ -43,7 +43,7 @@
   register: ndb_debian_sshd_effective_config
   changed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Assert Debian-family SSH password auth is effective
   ansible.builtin.assert:
@@ -51,7 +51,7 @@
       - "'passwordauthentication yes' in ndb_debian_sshd_effective_config.stdout"
     fail_msg: "Expected effective OpenSSH PasswordAuthentication yes for NDB clone password injection."
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Install Debian-family passwd --stdin compatibility helper for NDB
   ansible.builtin.copy:
@@ -61,14 +61,14 @@
     mode: "0755"
     src: ndb-passwd-stdin.sh
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Check Debian-family rc.local before NDB reset sanitation
   ansible.builtin.stat:
     path: /etc/rc.local
   register: ndb_debian_rc_local
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Remove stale NDB reset hook from Debian-family rc.local
   ansible.builtin.lineinfile:
@@ -78,14 +78,14 @@
   when:
     - ndb_os_family == "Debian"
     - ndb_debian_rc_local.stat.exists | default(false)
-  become: yes
+  become: true
 
 - name: Remove stale NDB reset script from Debian-family source image
   ansible.builtin.file:
     path: /bin/reset_password.sh
     state: absent
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Install Debian-family NDB SSH reset gate
   ansible.builtin.copy:
@@ -95,7 +95,7 @@
     mode: "0755"
     src: ndb-ssh-reset-gate.sh
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Install Debian-family NDB password reset runner
   ansible.builtin.copy:
@@ -105,7 +105,7 @@
     mode: "0755"
     src: ndb-run-reset-password.sh
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Run NDB injected password reset before Debian-family SSH password authentication
   ansible.builtin.lineinfile:
@@ -114,7 +114,7 @@
     line: 'auth required pam_exec.so quiet seteuid expose_authtok /usr/local/sbin/ndb-run-reset-password --pam-auth-token {{ ndb_drive_user }}'
     insertbefore: '^@include\s+common-auth'
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Bypass Debian-family boot nologin for NDB drive user
   ansible.builtin.lineinfile:
@@ -123,7 +123,7 @@
     line: 'account [success=1 default=ignore] pam_succeed_if.so quiet user = {{ ndb_drive_user }}'
     insertbefore: '^\s*account\s+required\s+pam_nologin\.so'
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Normalize NDB drive user before Debian-family SSH account checks
   ansible.builtin.lineinfile:
@@ -132,7 +132,7 @@
     line: 'account required pam_exec.so quiet seteuid /usr/local/sbin/ndb-run-reset-password --pam-account {{ ndb_drive_user }}'
     insertbefore: '^@include\s+common-account'
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Ensure SSH service is enabled on Debian family
   ansible.builtin.service:
@@ -140,7 +140,7 @@
     state: started
     enabled: true
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Check Debian-family SSH socket activation unit
   ansible.builtin.command:
@@ -153,7 +153,7 @@
   changed_when: false
   failed_when: false
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Disable Debian-family SSH socket activation for NDB target clones
   ansible.builtin.systemd:
@@ -165,7 +165,7 @@
   when:
     - ndb_os_family == "Debian"
     - ndb_debian_ssh_socket_unit.stdout | trim | length > 0
-  become: yes
+  become: true
 
 - name: Ensure Debian-family SSH service remains enabled after socket activation disablement
   ansible.builtin.systemd:
@@ -174,7 +174,7 @@
     enabled: true
     daemon_reload: true
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Install NDB SSH reset gate service (Debian family)
   ansible.builtin.copy:
@@ -198,7 +198,7 @@
       [Install]
       WantedBy=sysinit.target
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Enable NDB SSH reset gate service (Debian family)
   ansible.builtin.systemd:
@@ -206,7 +206,7 @@
     enabled: true
     daemon_reload: true
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Ensure Debian-family networking service drop-in directory exists
   ansible.builtin.file:
@@ -216,7 +216,7 @@
     group: root
     mode: "0755"
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Run NDB injected password reset before networking starts (Debian family)
   ansible.builtin.copy:
@@ -228,7 +228,7 @@
       [Service]
       ExecStartPre=/usr/local/sbin/ndb-run-reset-password
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Ensure Debian-family SSH service drop-in directory exists
   ansible.builtin.file:
@@ -238,7 +238,7 @@
     group: root
     mode: "0755"
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Run NDB injected password reset before SSH starts (Debian family)
   ansible.builtin.copy:
@@ -254,7 +254,7 @@
       [Service]
       ExecStartPre=/usr/local/sbin/ndb-run-reset-password --wait-for-script 150
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Ensure Debian-family SSH alias drop-in directory exists
   ansible.builtin.file:
@@ -264,7 +264,7 @@
     group: root
     mode: "0755"
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Run NDB injected password reset before SSH alias starts (Debian family)
   ansible.builtin.copy:
@@ -280,7 +280,7 @@
       [Service]
       ExecStartPre=/usr/local/sbin/ndb-run-reset-password --wait-for-script 150
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Install NDB password reset compatibility service (Debian family)
   ansible.builtin.copy:
@@ -304,7 +304,7 @@
       [Install]
       WantedBy=multi-user.target
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Enable NDB password reset compatibility service (Debian family)
   ansible.builtin.systemd:
@@ -312,4 +312,4 @@
     enabled: true
     daemon_reload: true
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
