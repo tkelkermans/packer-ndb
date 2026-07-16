@@ -1,0 +1,155 @@
+---
+# Baseline packages and repositories (included by common/tasks/main.yml).
+- name: Install dnf config-manager support (RedHat family)
+  ansible.builtin.package:
+    name: dnf-plugins-core
+    state: present
+  register: dnf_plugins_core_result
+  retries: 6
+  delay: 10
+  until: dnf_plugins_core_result is succeeded
+  when: ndb_os_family == "RedHat"
+  become: yes
+
+- name: Enable CRB repository (Rocky Linux)
+  ansible.builtin.command:
+    argv:
+      - dnf
+      - config-manager
+      - --set-enabled
+      - crb
+  register: enable_crb_result
+  retries: 6
+  delay: 10
+  until: enable_crb_result.rc == 0
+  when: ndb_distribution == 'Rocky'
+  become: yes
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+    lock_timeout: 600
+  register: apt_cache_update_result
+  retries: 6
+  delay: 10
+  until: apt_cache_update_result is succeeded
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Select Debian libaio runtime package
+  ansible.builtin.set_fact:
+    debian_libaio_package: "{{ 'libaio1t64' if (ndb_distribution == 'Ubuntu' and ndb_distribution_version is version('24.04', '>=')) else 'libaio1' }}"
+  when: ndb_os_family == "Debian"
+
+- name: Clean dnf metadata cache (RedHat family)
+  ansible.builtin.command:
+    argv:
+      - dnf
+      - clean
+      - all
+  register: dnf_clean_result
+  retries: 5
+  delay: 5
+  until: dnf_clean_result.rc == 0
+  changed_when: false
+  when: ndb_os_family == "RedHat"
+  become: yes
+
+- name: Refresh dnf metadata (RedHat family)
+  ansible.builtin.command:
+    argv:
+      - dnf
+      - -y
+      - makecache
+  register: dnf_makecache_result
+  retries: 6
+  delay: 15
+  until: dnf_makecache_result.rc == 0
+  changed_when: false
+  when: ndb_os_family == "RedHat"
+  become: yes
+
+- name: Ensure OpenSSL stack is up to date (RedHat family)
+  ansible.builtin.dnf:
+    name:
+      - openssl
+      - openssl-libs
+    state: latest
+  register: dnf_openssl_result
+  retries: 6
+  delay: 10
+  until: dnf_openssl_result is succeeded
+  when: ndb_os_family == "RedHat"
+  become: yes
+
+- name: Ensure OpenSSL stack is up to date (Debian family)
+  ansible.builtin.apt:
+    name:
+      - openssl
+      - libssl3
+    state: latest
+    lock_timeout: 600
+  register: apt_openssl_result
+  retries: 6
+  delay: 10
+  until: apt_openssl_result is succeeded
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Install common packages (RedHat family)
+  ansible.builtin.package:
+    name: "{{ common_packages }}"
+    state: present
+  register: redhat_common_packages_result
+  retries: 6
+  delay: 10
+  until: redhat_common_packages_result is succeeded
+  when: ndb_os_family == "RedHat"
+  become: yes
+
+- name: Install common packages (Debian family)
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    lock_timeout: 600
+  register: apt_common_packages_result
+  retries: 6
+  delay: 10
+  until: apt_common_packages_result is succeeded
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Install Red Hat specific packages
+  ansible.builtin.package:
+    name: "{{ redhat_packages }}"
+    state: present
+  register: redhat_specific_packages_result
+  retries: 6
+  delay: 10
+  until: redhat_specific_packages_result is succeeded
+  when: ndb_os_family == "RedHat"
+  become: yes
+
+- name: Install Debian specific packages
+  ansible.builtin.apt:
+    name: "{{ debian_packages }}"
+    state: present
+    lock_timeout: 600
+  register: apt_debian_packages_result
+  retries: 6
+  delay: 10
+  until: apt_debian_packages_result is succeeded
+  when: ndb_os_family == "Debian"
+  become: yes
+
+- name: Remove UFW on Debian systems
+  ansible.builtin.apt:
+    name: ufw
+    state: absent
+    lock_timeout: 600
+  register: apt_remove_ufw_result
+  retries: 6
+  delay: 10
+  until: apt_remove_ufw_result is succeeded
+  when: ndb_os_family == "Debian"
+  become: yes
