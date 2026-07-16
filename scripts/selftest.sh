@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# The suite is strictly non-interactive. Detach stdin so sandboxed fakes
+# that read it (e.g. ssh payload capture) get EOF instead of blocking when
+# the suite runs with a long-lived stdin (background runners, some CI).
+exec </dev/null
+
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 SELFTEST_ANSIBLE_LOCAL_TEMP=""
@@ -1545,6 +1550,14 @@ run_manifest_tests() {
 
   jq -e '.image_name == "ndb-test" and .status == "running" and .selection.provisioning_role == "postgresql" and .matrix_row.ndb_version == "2.10"' "$manifest" >/dev/null || fail "manifest init JSON"
   jq -e '.validation.in_guest == "not-requested" and .validation.artifact == "not-requested" and .validation.artifact_vm_ip == null and (.cleanup | type) == "object"' "$manifest" >/dev/null || fail "manifest default status JSON"
+  jq -e '.source_image.head == null' "$manifest" >/dev/null || fail "manifest init missing source_image.head"
+
+  "$ROOT_DIR/scripts/manifest.sh" set-json \
+    --file "$manifest" \
+    --key ".source_image.head" \
+    --json-value '{"etag":"\"abc123\"","content_length":662110208,"last_modified":"Sun, 23 Nov 2025 00:00:00 GMT"}'
+  jq -e '.source_image.head.content_length == 662110208 and .source_image.head.etag == "\"abc123\""' "$manifest" >/dev/null || fail "manifest source_image.head set-json"
+  grep -q "record_source_image_provenance" "$ROOT_DIR/build.sh" || fail "build script does not record source image provenance"
 
   "$ROOT_DIR/scripts/manifest.sh" set \
     --file "$manifest" \
