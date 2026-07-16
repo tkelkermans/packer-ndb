@@ -2212,6 +2212,8 @@ run_build_wizard_tests() {
   mkdir -p "$tmpdir/ndb/9.99" "$tmpdir/scripts" "$tmpdir/customizations/profiles" "$tmpdir/packer" "$stubbin"
   cp "$ROOT_DIR/scripts/build_wizard.sh" "$wizard"
   cp "$ROOT_DIR/scripts/postgres_extensions.sh" "$tmpdir/scripts/postgres_extensions.sh"
+  cp "$ROOT_DIR/scripts/source_images.sh" "$tmpdir/scripts/source_images.sh"
+  cp "$ROOT_DIR/scripts/prism.sh" "$tmpdir/scripts/prism.sh"
   chmod +x "$wizard"
 
   cat > "$tmpdir/ndb/9.99/matrix.json" <<'JSON'
