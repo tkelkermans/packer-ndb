@@ -34,14 +34,24 @@ jobs:
 
       - name: Setup Packer
         uses: hashicorp/setup-packer@v3
+        with:
+          # Pinned for the same reason as shellcheck: a floating Packer can
+          # change validate behavior with no code change. Matches the version
+          # the static gate is developed against.
+          version: "1.15.4"
 
       - name: Shell syntax
-        run: bash -n build.sh test.sh scripts/*.sh
+        run: |
+          bash -n build.sh test.sh scripts/*.sh
+          find ansible -path '*/files/*.sh' -type f -print0 | xargs -0 -r -n1 bash -n
 
       - name: ShellCheck
         # Per-file invocation: a single multi-file run cross-contaminates
         # shellcheck's variable analysis between scripts (false SC2178/SC2128).
-        run: printf '%s\n' build.sh test.sh scripts/*.sh | xargs -n1 shellcheck -S warning
+        # Role helper scripts under ansible/*/roles/*/files are covered too.
+        run: |
+          printf '%s\n' build.sh test.sh scripts/*.sh | xargs -n1 shellcheck -S warning
+          find ansible -path '*/files/*.sh' -type f -print0 | xargs -0 -r -n1 shellcheck -S warning
 
       - name: JSON validity
         run: jq empty images.json ndb/*/matrix.json
@@ -80,8 +90,11 @@ jobs:
             packer/
 
       - name: Ansible syntax check
+        # Glob-derived so a release scaffolded with release_scaffold.sh gets
+        # CI coverage without editing this workflow.
         run: |
-          for ver in 2.9 2.10; do
+          for ver_dir in ansible/*/; do
+            ver=$(basename "$ver_dir")
             ANSIBLE_CONFIG="ansible/${ver}/ansible.cfg" ansible-playbook \
               -i "ansible/${ver}/inventory/hosts" \
               --syntax-check "ansible/${ver}/playbooks/site.yml"
