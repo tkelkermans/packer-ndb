@@ -51,6 +51,7 @@ __pycache__/
 # Logs
 *.log
 packer.log
+logs/
 
 # Secrets
 .env
@@ -71,3 +72,6 @@ customizations/local/**
 
 # Local planning scratchpads
 /tasks/
+
+# Per-machine Claude Code settings
+.claude/settings.local.json

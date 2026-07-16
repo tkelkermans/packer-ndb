@@ -34,6 +34,15 @@ Missing live rows: 19
 
 All 19 missing rows are Red Hat Enterprise Linux rows.
 
+> **Update (2026-07-16):** the RHEL rows have since been validated; the audit
+> now reports `Buildable rows: 54 / Successful live rows: 54 / Missing live
+> rows: 0` against the local manifests. Coverage keys now also include
+> MongoDB edition and deployment. Note that a July 2026 refactor pass
+> (packer-user removal at capture, deb822 repositories, validate_common)
+> changed live-path behavior after those manifests were recorded — rerun a
+> representative build per family before treating coverage as current; see
+> tasks/todo.md for the live-verification checklist.
+
 ## Remaining Gap
 
 Full live validation is not complete until the RHEL rows have successful
