@@ -34,14 +34,30 @@ Missing live rows: 19
 
 All 19 missing rows are Red Hat Enterprise Linux rows.
 
-> **Update (2026-07-16):** the RHEL rows have since been validated; the audit
-> now reports `Buildable rows: 54 / Successful live rows: 54 / Missing live
-> rows: 0` against the local manifests. Coverage keys now also include
-> MongoDB edition and deployment. Note that a July 2026 refactor pass
-> (packer-user removal at capture, deb822 repositories, validate_common)
-> changed live-path behavior after those manifests were recorded — rerun a
-> representative build per family before treating coverage as current; see
-> tasks/todo.md for the live-verification checklist.
+> **Update (2026-07-27, live campaign):** the July refactor branch was
+> validated live against the lab. Four paths pass end to end:
+>
+> | Path | Build | In-guest | Artifact boot | Manifest |
+> |---|---|---|---|---|
+> | Rocky 9.7 / PostgreSQL 18 | 171 tasks, 0 failed | passed | passed | success |
+> | Ubuntu 24.04 / PostgreSQL 18 (deb822) | 175 tasks, 0 failed | passed | passed | success |
+> | Rocky 9.7 / MongoDB 6.0 | 95 tasks, 0 failed | passed | passed | success |
+>
+> NDB E2E smoke row `210-pg18-rocky97` also passed: NDB registered the source
+> DB server, created a software profile, provisioned a PostgreSQL database from
+> the branch-built image, and guest validation returned server version 18.4.
+>
+> Two live-only defects were found and fixed (neither is reachable by the
+> static gates): dropped `ndb_distribution*` facts that would have failed every
+> build, and a firewalld/cloud-init systemd ordering cycle that made Debian
+> images boot without a provisioning user *nondeterministically*. See
+> `docs/operational-lessons.md`.
+>
+> **Coverage caveat:** an image preflight on 2026-07-27 found that **51 of the
+> 54** images recorded in the June manifests no longer exist in Prism, so the
+> historical "54/54 live rows" figure reflects manifests, not currently
+> existing artifacts. Coverage of *today's* branch is the four paths above;
+> the remaining matrix rows need rebuilding to be re-proven.
 
 ## Remaining Gap
 
