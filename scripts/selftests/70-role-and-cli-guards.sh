@@ -370,7 +370,8 @@ run_image_prepare_tests() {
     # Before=network-pre.target; with Ubuntu's cloud-init.service
     # (Before=sysinit.target) that closes an ordering cycle and systemd
     # deletes the cloud-init job, producing images with no provisioning user.
-    grep -q "firewalld.service.d/10-ndb-cloud-init-ordering.conf" "$ROOT_DIR/ansible/$version/roles/common/tasks/services.yml" || fail "common role $version does not break the firewalld/cloud-init ordering cycle on Debian family"
+    grep -q "Generate firewalld unit override without pre-network ordering" "$ROOT_DIR/ansible/$version/roles/common/tasks/services.yml" || fail "common role $version does not break the firewalld/cloud-init ordering cycle on Debian family"
+    grep -q "Fail when firewalld is still ordered before network-pre.target" "$ROOT_DIR/ansible/$version/roles/common/tasks/services.yml" || fail "common role $version does not verify the firewalld ordering override at build time"
     grep -q "Enforce database runtime is disabled before image capture" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not unconditionally enforce the disabled-database invariant"
     grep -q "image_prepare_guard_port" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not check database port binding"
     grep -q "/etc/default/grub.bak" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not remove grub backup debris"

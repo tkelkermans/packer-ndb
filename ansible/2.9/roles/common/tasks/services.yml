@@ -91,52 +91,57 @@
     - ndb_firewalld_allow_ssh is changed
   become: true
 
-# firewalld declares Before=network-pre.target but, unlike Ubuntu's own
-# ufw.service, keeps default dependencies - so it is also ordered
-# After=basic.target -> sockets.target -> sysinit.target. Ubuntu's
-# cloud-init.service is Before=sysinit.target and After=
-# systemd-networkd-wait-online -> systemd-networkd -> network-pre.target,
-# which closes an ordering cycle. systemd breaks a cycle by DELETING a job:
-# when it picks cloud-init.service, the captured image boots with no
-# provisioning user and no SSH keys. It is nondeterministic - the same image
-# can boot correctly on another attempt - so the cycle must be removed, not
-# worked around (2026-07-27 live regression; see docs/operational-lessons.md).
-- name: Ensure firewalld drop-in directory exists (Debian family)
-  ansible.builtin.file:
-    path: /etc/systemd/system/firewalld.service.d
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
+# Ubuntu 24.04 + firewalld + ifupdown's networking.service close a systemd
+# ordering loop that has no innocent victim:
+#   firewalld -> dbus.service -> basic.target -> sysinit.target
+#             -> cloud-init.service -> networking.service -> network-pre.target
+#             -> firewalld
+# systemd breaks it by DELETING a job, alternating between cloud-init.service
+# (image boots with no user or SSH keys) and firewalld.service (image boots
+# with its firewall down). Both outcomes are unacceptable and which one occurs
+# is nondeterministic. A drop-in resetting Before= does NOT reliably remove the
+# edge, so shadow the vendor unit with a generated copy that simply does not
+# declare the pre-network ordering. Generated from the installed unit at build
+# time so it cannot go stale against a future firewalld release.
+- name: Generate firewalld unit override without pre-network ordering (Debian family)
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      vendor=/usr/lib/systemd/system/firewalld.service
+      [ -f "$vendor" ] || vendor=/lib/systemd/system/firewalld.service
+      sed -e '/^Before=network-pre\.target/d' \
+          -e '/^Wants=network-pre\.target/d' \
+          -e '0,/^\[Unit\]/s//[Unit]\nBefore=ssh.service sshd.service/' \
+          "$vendor" > /etc/systemd/system/firewalld.service
+      chmod 0644 /etc/systemd/system/firewalld.service
+    creates: /etc/systemd/system/firewalld.service
   when: ndb_os_family == "Debian"
   become: true
+  notify: []
 
-- name: Remove firewalld pre-network ordering to break the cloud-init cycle (Debian family)
-  ansible.builtin.copy:
-    dest: /etc/systemd/system/firewalld.service.d/10-ndb-cloud-init-ordering.conf
-    owner: root
-    group: root
-    mode: "0644"
-    content: |
-      [Unit]
-      # Reset the inherited Wants=/Before=network-pre.target ordering (the half
-      # of the cycle we must cut), then re-add the orderings that matter:
-      # firewalld must be up before sshd accepts connections, so the guest is
-      # never reachable without its firewall, and before shutdown.
-      Wants=
-      Before=
-      Before=ssh.service sshd.service shutdown.target
-  register: ndb_firewalld_ordering_dropin
-  when: ndb_os_family == "Debian"
-  become: true
-
-- name: Reload systemd after firewalld ordering drop-in (Debian family)
+- name: Reload systemd after firewalld override (Debian family)
   ansible.builtin.systemd:
     daemon_reload: true
-  when:
-    - ndb_os_family == "Debian"
-    - ndb_firewalld_ordering_dropin is changed
+  when: ndb_os_family == "Debian"
   become: true
+
+- name: Assert the firewalld override dropped the pre-network ordering (Debian family)
+  ansible.builtin.command:
+    argv: [systemctl, show, firewalld.service, --property=Before]
+  register: ndb_firewalld_before
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Fail when firewalld is still ordered before network-pre.target (Debian family)
+  ansible.builtin.assert:
+    that:
+      - "'network-pre.target' not in ndb_firewalld_before.stdout"
+    fail_msg: >-
+      firewalld is still ordered Before=network-pre.target
+      ({{ ndb_firewalld_before.stdout }}); the cloud-init ordering cycle would
+      persist and randomly delete cloud-init.service or firewalld.service.
+  when: ndb_os_family == "Debian"
 
 - name: Ensure chrony service is enabled
   ansible.builtin.service:
