@@ -169,9 +169,15 @@
       [Unit]
       Description=Regenerate missing SSH host keys before sshd starts
       Documentation=man:ssh-keygen(1)
-      DefaultDependencies=no
-      After=local-fs.target
-      Before=ssh.service sshd.service sysinit.target
+      # Deliberately a NORMAL unit (default dependencies, multi-user):
+      # an early DefaultDependencies=no unit ordered Before=sysinit.target
+      # perturbs the pre-network dependency graph that cloud-init's Network
+      # Stage lives in, and systemd resolved that by dropping
+      # cloud-init.service - which silently skipped user/SSH-key creation on
+      # Debian-family clones. Ordering Before=ssh.service is sufficient to
+      # guarantee host keys exist before sshd serves.
+      After=systemd-random-seed.service
+      Before=ssh.service sshd.service
 
       [Service]
       Type=oneshot
@@ -179,7 +185,7 @@
       RemainAfterExit=yes
 
       [Install]
-      WantedBy=sysinit.target
+      WantedBy=multi-user.target
   become: true
 
 - name: Enable SSH host key regeneration guard

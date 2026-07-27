@@ -355,6 +355,17 @@ run_image_prepare_tests() {
     grep -q "userdel --force --remove packer" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not remove the packer build user"
     grep -q "getent passwd packer" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not verify packer build user removal"
     grep -q "ndb-ssh-hostkeys-ensure.service" "$ROOT_DIR/ansible/$version/roles/common/tasks/services.yml" || fail "common role $version does not install the SSH host key regeneration guard"
+    # The host-key unit must stay a NORMAL unit. Shipped first as an early
+    # DefaultDependencies=no unit ordered Before=sysinit.target, it perturbed
+    # the pre-network dependency graph and systemd dropped cloud-init's
+    # Network Stage - silently skipping user and SSH-key creation on
+    # Debian-family clones (2026-07-27 live regression).
+    # Directive lines only - comments in the unit body legitimately mention
+    # the very settings this guard forbids.
+    hostkey_unit=$(awk '/dest: \/etc\/systemd\/system\/ndb-ssh-hostkeys-ensure.service/,/^- name: Enable SSH host key/' "$ROOT_DIR/ansible/$version/roles/common/tasks/services.yml" | grep -v "^[[:space:]]*#")
+    ! grep -q "DefaultDependencies=no" <<<"$hostkey_unit" || fail "common role $version host key guard must not use DefaultDependencies=no (breaks cloud-init ordering)"
+    ! grep -qE "Before=.*sysinit\.target" <<<"$hostkey_unit" || fail "common role $version host key guard must not order itself before sysinit.target"
+    grep -q "WantedBy=multi-user.target" <<<"$hostkey_unit" || fail "common role $version host key guard must be wanted by multi-user.target"
     grep -q "Enforce database runtime is disabled before image capture" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not unconditionally enforce the disabled-database invariant"
     grep -q "image_prepare_guard_port" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not check database port binding"
     grep -q "/etc/default/grub.bak" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not remove grub backup debris"
