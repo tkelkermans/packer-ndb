@@ -119,12 +119,13 @@
     mode: "0644"
     content: |
       [Unit]
-      # Reset the inherited Wants=/Before=network-pre.target ordering; keep the
-      # shutdown ordering firewalld relies on. firewalld still starts on every
-      # boot, in its normal multi-user slot.
+      # Reset the inherited Wants=/Before=network-pre.target ordering (the half
+      # of the cycle we must cut), then re-add the orderings that matter:
+      # firewalld must be up before sshd accepts connections, so the guest is
+      # never reachable without its firewall, and before shutdown.
       Wants=
       Before=
-      Before=shutdown.target
+      Before=ssh.service sshd.service shutdown.target
   register: ndb_firewalld_ordering_dropin
   when: ndb_os_family == "Debian"
   become: true
