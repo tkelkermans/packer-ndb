@@ -134,6 +134,8 @@
           "$vendor" > /etc/systemd/system/firewalld.service
       chmod 0644 /etc/systemd/system/firewalld.service
     creates: /etc/systemd/system/firewalld.service
+  args:
+    executable: /bin/bash
   when: ndb_os_family == "Debian"
   become: true
   notify: []
