@@ -366,6 +366,11 @@ run_image_prepare_tests() {
     ! grep -q "DefaultDependencies=no" <<<"$hostkey_unit" || fail "common role $version host key guard must not use DefaultDependencies=no (breaks cloud-init ordering)"
     ! grep -qE "Before=.*sysinit\.target" <<<"$hostkey_unit" || fail "common role $version host key guard must not order itself before sysinit.target"
     grep -q "WantedBy=multi-user.target" <<<"$hostkey_unit" || fail "common role $version host key guard must be wanted by multi-user.target"
+    # firewalld keeps default dependencies while declaring
+    # Before=network-pre.target; with Ubuntu's cloud-init.service
+    # (Before=sysinit.target) that closes an ordering cycle and systemd
+    # deletes the cloud-init job, producing images with no provisioning user.
+    grep -q "firewalld.service.d/10-ndb-cloud-init-ordering.conf" "$ROOT_DIR/ansible/$version/roles/common/tasks/services.yml" || fail "common role $version does not break the firewalld/cloud-init ordering cycle on Debian family"
     grep -q "Enforce database runtime is disabled before image capture" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not unconditionally enforce the disabled-database invariant"
     grep -q "image_prepare_guard_port" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not check database port binding"
     grep -q "/etc/default/grub.bak" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not remove grub backup debris"

@@ -91,6 +91,52 @@
     - ndb_firewalld_allow_ssh is changed
   become: true
 
+# firewalld declares Before=network-pre.target but, unlike Ubuntu's own
+# ufw.service, keeps default dependencies - so it is also ordered
+# After=basic.target -> sockets.target -> sysinit.target. Ubuntu's
+# cloud-init.service is Before=sysinit.target and After=
+# systemd-networkd-wait-online -> systemd-networkd -> network-pre.target,
+# which closes an ordering cycle. systemd breaks a cycle by DELETING a job:
+# when it picks cloud-init.service, the captured image boots with no
+# provisioning user and no SSH keys. It is nondeterministic - the same image
+# can boot correctly on another attempt - so the cycle must be removed, not
+# worked around (2026-07-27 live regression; see docs/operational-lessons.md).
+- name: Ensure firewalld drop-in directory exists (Debian family)
+  ansible.builtin.file:
+    path: /etc/systemd/system/firewalld.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Remove firewalld pre-network ordering to break the cloud-init cycle (Debian family)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/firewalld.service.d/10-ndb-cloud-init-ordering.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      # Reset the inherited Wants=/Before=network-pre.target ordering; keep the
+      # shutdown ordering firewalld relies on. firewalld still starts on every
+      # boot, in its normal multi-user slot.
+      Wants=
+      Before=
+      Before=shutdown.target
+  register: ndb_firewalld_ordering_dropin
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Reload systemd after firewalld ordering drop-in (Debian family)
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when:
+    - ndb_os_family == "Debian"
+    - ndb_firewalld_ordering_dropin is changed
+  become: true
+
 - name: Ensure chrony service is enabled
   ansible.builtin.service:
     name: "{{ 'chronyd' if ndb_os_family == 'RedHat' else 'chrony' }}"
