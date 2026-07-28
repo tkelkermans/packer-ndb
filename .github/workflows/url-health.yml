@@ -1,0 +1,42 @@
+name: Source image URL health
+
+# Public cloud-image URLs rot (a Rocky 9.7 URL 404'd in June 2026 and only
+# surfaced as a live Prism ImageCreate failure). Catch rot on a schedule
+# instead. env_var-indirected entries (licensed RHEL) are objects in
+# images.json and are skipped.
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  head-check:
+    name: HEAD-check images.json source URLs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: HEAD-check every direct image URL
+        run: |
+          set -u
+          jq empty images.json
+          failures=0
+          checked=0
+          while IFS=$'\t' read -r key url; do
+            printf 'Checking %s -> %s\n' "$key" "$url"
+            checked=$((checked + 1))
+            if ! curl -sIfL --retry 3 --retry-delay 5 --max-time 60 -o /dev/null "$url"; then
+              printf '::error::images.json URL for %s is unreachable: %s\n' "$key" "$url"
+              failures=$((failures + 1))
+            fi
+          done < <(jq -r 'to_entries[] | select(.value | type == "string") | [.key, .value] | @tsv' images.json)
+          if (( checked == 0 )); then
+            printf '::error::url-health checked zero URLs - images.json schema drift or extraction bug; a green run would be meaningless.\n'
+            exit 1
+          fi
+          if (( failures > 0 )); then
+            printf '%s images.json URL(s) failed HEAD checks. Fix images.json: an ImageCreate 404 during a build means source URL rot, not an Ansible problem.\n' "$failures"
+            exit 1
+          fi
+          printf 'All %s direct image URLs healthy.\n' "$checked"

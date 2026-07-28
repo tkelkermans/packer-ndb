@@ -27,21 +27,32 @@ jobs:
           curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" | tar -xJ
           sudo install "shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
           shellcheck --version
-          # Pin the major line: the postgres/mongodb roles still use
-          # ansible.builtin.apt_repository, removed in ansible-core 2.25, so an
-          # unpinned install would break the syntax-check with no code change.
-          pipx install 'ansible-core>=2.16,<2.25'
+          # Floor only: the roles migrated from apt_repository (removed in
+          # ansible-core 2.25) to deb822_repository (added in 2.15), so the
+          # former <2.25 ceiling is no longer needed.
+          pipx install 'ansible-core>=2.16'
+          pipx install 'ansible-lint==26.6.0'
 
       - name: Setup Packer
         uses: hashicorp/setup-packer@v3
+        with:
+          # Pinned for the same reason as shellcheck: a floating Packer can
+          # change validate behavior with no code change. Matches the version
+          # the static gate is developed against.
+          version: "1.15.4"
 
       - name: Shell syntax
-        run: bash -n build.sh test.sh scripts/*.sh
+        run: |
+          bash -n build.sh test.sh scripts/*.sh scripts/selftests/*.sh
+          find ansible -path '*/files/*.sh' -type f -print0 | xargs -0 -r -n1 bash -n
 
       - name: ShellCheck
         # Per-file invocation: a single multi-file run cross-contaminates
         # shellcheck's variable analysis between scripts (false SC2178/SC2128).
-        run: printf '%s\n' build.sh test.sh scripts/*.sh | xargs -n1 shellcheck -S warning
+        # Role helper scripts under ansible/*/roles/*/files are covered too.
+        run: |
+          printf '%s\n' build.sh test.sh scripts/*.sh scripts/selftests/*.sh | xargs -n1 shellcheck -S warning
+          find ansible -path '*/files/*.sh' -type f -print0 | xargs -0 -r -n1 shellcheck -S warning
 
       - name: JSON validity
         run: jq empty images.json ndb/*/matrix.json
@@ -80,11 +91,22 @@ jobs:
             packer/
 
       - name: Ansible syntax check
+        # Glob-derived so a release scaffolded with release_scaffold.sh gets
+        # CI coverage without editing this workflow.
         run: |
-          for ver in 2.9 2.10; do
+          for ver_dir in ansible/*/; do
+            ver=$(basename "$ver_dir")
             ANSIBLE_CONFIG="ansible/${ver}/ansible.cfg" ansible-playbook \
               -i "ansible/${ver}/inventory/hosts" \
               --syntax-check "ansible/${ver}/playbooks/site.yml"
+          done
+
+      - name: Ansible lint
+        # Per-tree so role resolution works; config in .ansible-lint.
+        run: |
+          for ver_dir in ansible/*/; do
+            ver=$(basename "$ver_dir")
+            ANSIBLE_ROLES_PATH="ansible/${ver}/roles" ansible-lint --profile basic "ansible/${ver}"
           done
 
       - name: Whitespace check

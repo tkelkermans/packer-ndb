@@ -112,7 +112,7 @@ variable "ssh_timeout" {
 
 variable "nutanix_insecure" {
   type    = bool
-  default = true
+  default = false
 }
 
 variable "ansible_site_playbook" {

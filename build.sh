@@ -10,6 +10,8 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MANIFEST_HELPER="${SCRIPT_DIR}/scripts/manifest.sh"
 # shellcheck source=scripts/source_images.sh
 source "${SCRIPT_DIR}/scripts/source_images.sh"
+# shellcheck source=scripts/args.sh
+source "${SCRIPT_DIR}/scripts/args.sh"
 # shellcheck source=scripts/postgres_extensions.sh
 source "${SCRIPT_DIR}/scripts/postgres_extensions.sh"
 
@@ -51,6 +53,62 @@ function manifest_set_if_present() {
   fi
 }
 
+# Only the FINAL response of a redirect chain counts: values reset at each
+# HTTP status line so an interstitial 302's headers (e.g. a CDN ETag for the
+# redirect body) cannot masquerade as the image's provenance.
+function source_image_response_header() {
+  local headers=$1
+  local name=$2
+
+  printf '%s\n' "$headers" | tr -d '\r' | awk -v wanted="$name" '
+    /^HTTP\// { value = "" ; next }
+    {
+      line = $0
+      header = line
+      sub(/:.*/, "", header)
+      if (tolower(header) == wanted) {
+        sub(/^[^:]*:[ \t]*/, "", line)
+        value = line
+      }
+    }
+    END { if (value != "") print value }
+  '
+}
+
+# Best-effort provenance for direct-URI sources: record what the mirror
+# served at build time (Ubuntu/Debian "current" URLs mutate in place) so
+# silent content drift between builds is detectable from manifests.
+# HEAD failure only warns: a truly dead URL fails the build later with
+# clearer Prism-side evidence (ImageCreate 404 = URL rot).
+function record_source_image_provenance() {
+  local uri=$1
+  local headers etag content_length last_modified head_json
+
+  [[ -n "$uri" ]] || return 0
+  command -v curl >/dev/null 2>&1 || return 0
+
+  if ! headers=$(curl -sIL --max-time 30 "$uri" 2>/dev/null); then
+    echo "Warning: source image HEAD request failed; manifest records no source provenance" >&2
+    return 0
+  fi
+
+  etag=$(source_image_response_header "$headers" "etag")
+  content_length=$(source_image_response_header "$headers" "content-length")
+  last_modified=$(source_image_response_header "$headers" "last-modified")
+
+  head_json=$(jq -nc \
+    --arg etag "$etag" \
+    --arg content_length "$content_length" \
+    --arg last_modified "$last_modified" \
+    '{
+      etag: (if $etag == "" then null else $etag end),
+      content_length: (if $content_length == "" then null else ($content_length | tonumber? // $content_length) end),
+      last_modified: (if $last_modified == "" then null else $last_modified end)
+    }')
+  "$MANIFEST_HELPER" set-json --file "$MANIFEST_FILE" --key ".source_image.head" --json-value "$head_json" >/dev/null 2>&1 \
+    || echo "Warning: failed to record source image provenance in manifest" >&2
+}
+
 function cleanup_failed_builder_vm() {
   local vm_uuid response task_uuid
 
@@ -87,11 +145,16 @@ function cleanup_failed_builder_vm() {
 
   task_uuid=$(prism_extract_task_uuid <<<"$response" 2>/dev/null || true)
   if [[ -n "$task_uuid" && "$task_uuid" != "null" ]]; then
-    if prism_wait_task "$task_uuid" 600 5 >/dev/null; then
+    local wait_rc=0
+    prism_wait_task "$task_uuid" 600 5 >/dev/null || wait_rc=$?
+    if (( wait_rc == 0 )); then
       manifest_set_if_present ".cleanup.packer_builder_vm" "deleted"
-    else
+    elif (( wait_rc == 124 )); then
       echo "Warning: timed out deleting Packer builder VM ${VM_NAME}" >&2
       manifest_set_if_present ".cleanup.packer_builder_vm" "delete-timeout"
+    else
+      echo "Warning: Prism delete task failed for Packer builder VM ${VM_NAME}" >&2
+      manifest_set_if_present ".cleanup.packer_builder_vm" "delete-task-failed"
     fi
   else
     manifest_set_if_present ".cleanup.packer_builder_vm" "delete-requested"
@@ -833,42 +896,52 @@ while [[ $# -gt 0 ]]; do
       MODE="ci"
       ;;
     --ndb-version)
+      require_option_value "$1" "$#"
       NDB_VERSION="$2"
       shift
       ;;
     --os)
+      require_option_value "$1" "$#"
       OS_TYPE="$2"
       shift
       ;;
     --os-version)
+      require_option_value "$1" "$#"
       OS_VERSION="$2"
       shift
       ;;
     --db-version)
+      require_option_value "$1" "$#"
       DB_VERSION="$2"
       shift
       ;;
     --db-type)
+      require_option_value "$1" "$#"
       DB_TYPE="$2"
       shift
       ;;
     --extensions)
+      require_option_value "$1" "$#"
       POSTGRES_EXTENSIONS_SELECTION="$2"
       shift
       ;;
     --source-image-uri)
+      require_option_value "$1" "$#"
       SOURCE_IMAGE_URI_OVERRIDE="$2"
       shift
       ;;
     --source-image-name)
+      require_option_value "$1" "$#"
       SOURCE_IMAGE_NAME_OVERRIDE="$2"
       shift
       ;;
     --source-image-uuid)
+      require_option_value "$1" "$#"
       SOURCE_IMAGE_UUID_OVERRIDE="$2"
       shift
       ;;
     --customization-profile)
+      require_option_value "$1" "$#"
       CUSTOMIZATION_PROFILE_ARG="$2"
       shift
       ;;
@@ -1138,30 +1211,14 @@ IMAGE_VARIANT_SUFFIX=""
 POSTGRES_HA_IMAGE_NAME_SUFFIX=""
 POSTGRES_PACKAGE_IMAGE_NAME_SUFFIX=""
 POSTGRES_EXTENSIONS_IMAGE_NAME_SUFFIX=$(postgres_extensions_image_name_suffix_json "$POSTGRES_SELECTED_EXTENSIONS_JSON")
-POSTGRES_IMAGE_NAME_SUFFIX=""
-if [[ "$PROVISIONING_ROLE" == "postgresql" && "$(jq 'length' <<<"$POSTGRES_HA_COMPONENTS_JSON")" -gt 0 ]]; then
-  POSTGRES_HA_IMAGE_NAME_SUFFIX="ha"
+if [[ "$PROVISIONING_ROLE" == "postgresql" ]]; then
+  POSTGRES_HA_IMAGE_NAME_SUFFIX=$(postgres_ha_image_name_suffix "$POSTGRES_HA_COMPONENTS_JSON")
+  POSTGRES_PACKAGE_IMAGE_NAME_SUFFIX=$(postgres_package_image_name_suffix "$POSTGRES_PACKAGE_VERSION_PREFIX")
 fi
-if [[ "$PROVISIONING_ROLE" == "postgresql" && -n "$POSTGRES_PACKAGE_VERSION_PREFIX" ]]; then
-  POSTGRES_PACKAGE_IMAGE_NAME_SUFFIX="pg${POSTGRES_PACKAGE_VERSION_PREFIX//./-}"
-fi
-if [[ -n "$POSTGRES_HA_IMAGE_NAME_SUFFIX" ]]; then
-  POSTGRES_IMAGE_NAME_SUFFIX="$POSTGRES_HA_IMAGE_NAME_SUFFIX"
-fi
-if [[ -n "$POSTGRES_PACKAGE_IMAGE_NAME_SUFFIX" ]]; then
-  if [[ -n "$POSTGRES_IMAGE_NAME_SUFFIX" ]]; then
-    POSTGRES_IMAGE_NAME_SUFFIX+="-${POSTGRES_PACKAGE_IMAGE_NAME_SUFFIX}"
-  else
-    POSTGRES_IMAGE_NAME_SUFFIX="$POSTGRES_PACKAGE_IMAGE_NAME_SUFFIX"
-  fi
-fi
-if [[ -n "$POSTGRES_EXTENSIONS_IMAGE_NAME_SUFFIX" ]]; then
-  if [[ -n "$POSTGRES_IMAGE_NAME_SUFFIX" ]]; then
-    POSTGRES_IMAGE_NAME_SUFFIX+="-${POSTGRES_EXTENSIONS_IMAGE_NAME_SUFFIX}"
-  else
-    POSTGRES_IMAGE_NAME_SUFFIX="$POSTGRES_EXTENSIONS_IMAGE_NAME_SUFFIX"
-  fi
-fi
+POSTGRES_IMAGE_NAME_SUFFIX=$(postgres_join_image_name_suffixes \
+  "$POSTGRES_HA_IMAGE_NAME_SUFFIX" \
+  "$POSTGRES_PACKAGE_IMAGE_NAME_SUFFIX" \
+  "$POSTGRES_EXTENSIONS_IMAGE_NAME_SUFFIX")
 if [[ -n "$POSTGRES_IMAGE_NAME_SUFFIX" ]]; then
   IMAGE_VARIANT_SUFFIX="-${POSTGRES_IMAGE_NAME_SUFFIX}"
 fi
@@ -1239,6 +1296,7 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.path" --value "$PACKER_SOURCE_IMAGE_PATH"
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.uuid" --value "$SOURCE_IMAGE_UUID"
   "$MANIFEST_HELPER" set --file "$MANIFEST_FILE" --key ".source_image.runtime_action" --value "$SOURCE_IMAGE_RUNTIME_ACTION"
+  record_source_image_provenance "$PACKER_SOURCE_IMAGE_URI"
 fi
 
 if [[ "$DRY_RUN" == "true" && "$CUSTOMIZATION_ENABLED" == "true" ]] && ! command_is_available ansible-playbook; then

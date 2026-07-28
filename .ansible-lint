@@ -1,0 +1,14 @@
+---
+# Run per NDB version tree with the tree's roles path, matching CI:
+#   ANSIBLE_ROLES_PATH=ansible/<ver>/roles ansible-lint --profile basic ansible/<ver>
+profile: basic
+
+skip_list:
+  # Role variables are a shared interface: build.sh extra-vars, the
+  # artifact-validation vars file, and cross-role facts (ndb_os_family,
+  # postgres_service_name) all use these names. Prefixing them per-role
+  # would be a breaking rename with no behavior benefit.
+  - var-naming[no-role-prefix]
+  # Long assert regexes and command strings (PAM lines, systemd greps) are
+  # clearer unwrapped; wrapping them risks changing what they match.
+  - yaml[line-length]

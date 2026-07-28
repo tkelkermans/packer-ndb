@@ -149,11 +149,19 @@ cat > "$STAGING_DIR/ndb/${NEW_VERSION}/REVIEW.md" <<EOF
 Review these items before building this release:
 
 - Confirm every PostgreSQL row against the NDB ${NEW_VERSION} release notes.
+- Confirm every MongoDB row (edition, deployment list, version ranges)
+  against the NDB ${NEW_VERSION} release notes.
 - Confirm OS versions and source image entries exist in images.json.
 - Confirm PostgreSQL extensions are available for each OS and DB version.
 - Confirm HA metadata versions for Patroni and etcd.
 - Run scripts/matrix_validate.sh ndb/${NEW_VERSION}/matrix.json.
 - Run Ansible syntax check for ansible/${NEW_VERSION}/playbooks/site.yml.
+- Update the ansible tree drift allowlist in
+  scripts/selftests/80-docs-and-drift.sh (run_ansible_tree_drift_tests) if
+  this release intentionally diverges from ${FROM_VERSION}.
+
+CI note: the ansible syntax-check loop in .github/workflows/ci.yml is
+glob-derived from ansible/*/ and covers this release automatically.
 EOF
 
 scripts/matrix_validate.sh "$STAGING_DIR/ndb/${NEW_VERSION}/matrix.json"

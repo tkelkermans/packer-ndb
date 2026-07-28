@@ -64,6 +64,7 @@ debian_packages:
   - libsystemd-dev
   - network-manager
   - nftables
+  - python3-debian
   - python3-dev
   - python3-selinux
   - systemd

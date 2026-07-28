@@ -160,7 +160,8 @@ cmd_init() {
         uri: null,
         path: null,
         uuid: null,
-        runtime_action: null
+        runtime_action: null,
+        head: null
       },
       packer: {
         started_at: null,

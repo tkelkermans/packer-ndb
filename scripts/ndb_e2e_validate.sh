@@ -9,6 +9,10 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 # shellcheck source=scripts/prism.sh
 source "$ROOT_DIR/scripts/prism.sh"
+# shellcheck source=scripts/args.sh
+source "$ROOT_DIR/scripts/args.sh"
+# shellcheck source=scripts/vm_lifecycle.sh
+source "$ROOT_DIR/scripts/vm_lifecycle.sh"
 
 TARGETS_FILE=${NDB_E2E_TARGETS_FILE:-/private/tmp/ndb_e2e_latest_targets.psv}
 STATE_DIR=${NDB_E2E_STATE_DIR:-/private/tmp/ndb_e2e_state}
@@ -88,14 +92,18 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --db-type)
+      require_option_value "$1" "$#"
       DB_TYPE_FILTER=$2
       shift 2
       ;;
     --row-id)
+      require_option_value "$1" "$#"
       ROW_FILTER=$2
       shift 2
       ;;
     --limit)
+      require_option_value "$1" "$#"
+      require_numeric_option_value "$1" "$2"
       LIMIT=$2
       shift 2
       ;;
@@ -177,10 +185,6 @@ on_error() {
 
 trap 'on_error "$LINENO"' ERR
 
-base64_no_wrap() {
-  base64 | tr -d '\n'
-}
-
 json_string() {
   jq -Rn --arg value "$1" '$value'
 }
@@ -237,6 +241,13 @@ expected_target_count() {
 
 generate_targets() {
   mkdir -p "$(dirname "$TARGETS_FILE")"
+  # manifests/ is git-ignored apart from .gitkeep, so a fresh clone has no
+  # manifest JSON: expand the glob defensively or jq dies opening the literal.
+  local -a manifest_files=()
+  local manifest_candidate
+  for manifest_candidate in "$ROOT_DIR"/manifests/*.json; do
+    [[ -e "$manifest_candidate" ]] && manifest_files+=("$manifest_candidate")
+  done
   jq -s -r '
     def buildable:
       (.db_type == "pgsql" and .provisioning_role == "postgresql")
@@ -274,22 +285,27 @@ generate_targets() {
       ]
     | map(tostring)
     | join("|")
-  ' "$ROOT_DIR"/ndb/*/matrix.json "$ROOT_DIR"/manifests/*.json | sort > "$TARGETS_FILE"
+  ' "$ROOT_DIR"/ndb/*/matrix.json ${manifest_files[@]+"${manifest_files[@]}"} | sort > "$TARGETS_FILE"
 }
 
 api_url() {
   printf 'https://%s:8443/era/v0.9%s' "$NDB_SERVER_ADDRESS" "$1"
 }
 
+ndb_curl_config() {
+  # Credentials on stdin via --config, never on argv (visible in ps).
+  prism_curl_user_config "$NDB_SERVER_USER" "$NDB_SERVER_PASSWORD"
+}
+
 ndb_get() {
-  curl --max-time "$NDB_API_TIMEOUT" -sSk -u "${NDB_SERVER_USER}:${NDB_SERVER_PASSWORD}" "$(api_url "$1")"
+  curl --max-time "$NDB_API_TIMEOUT" -sSk --config - "$(api_url "$1")" <<<"$(ndb_curl_config)"
 }
 
 ndb_post_file() {
-  curl --max-time "$NDB_API_TIMEOUT" -sSk -u "${NDB_SERVER_USER}:${NDB_SERVER_PASSWORD}" \
+  curl --max-time "$NDB_API_TIMEOUT" -sSk --config - \
     -H "Content-Type: application/json" \
     -X POST "$(api_url "$1")" \
-    -d @"$2"
+    -d @"$2" <<<"$(ndb_curl_config)"
 }
 
 delete_disposable_vm() {
@@ -386,64 +402,18 @@ network_profile_id_for() {
   return 1
 }
 
+vm_lifecycle_set_ssh_args "$PRIVATE_KEY_PATH" 5
+
 ssh_as() {
-  local user=$1 ip=$2
-  shift 2
-  local -a ssh_opts=(
-    -i "$PRIVATE_KEY_PATH"
-    -o StrictHostKeyChecking=no
-    -o UserKnownHostsFile=/dev/null
-    -o IdentitiesOnly=yes
-    -o IdentityAgent=none
-    -o BatchMode=yes
-    -o ConnectTimeout=5
-  )
-  ssh "${ssh_opts[@]}" "${user}@${ip}" "$@"
+  vm_lifecycle_ssh "$@"
 }
 
 wait_ssh() {
-  local user=$1 ip=$2
-  local i
-  for i in $(seq 1 "$SSH_MAX_POLLS"); do
-    if ssh_as "$user" "$ip" true >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 10
-  done
-  ssh_as "$user" "$ip" true >/dev/null
-}
-
-guest_boot_ready_probe() {
-  cat <<'EOF'
-test -S /run/dbus/system_bus_socket || exit 1
-state=$(systemctl is-system-running 2>/dev/null || true)
-case "$state" in
-  running|degraded) ;;
-  *) exit 1 ;;
-esac
-if command -v cloud-init >/dev/null 2>&1; then
-  cloud_state=$(cloud-init status 2>/dev/null || true)
-  case "$cloud_state" in
-    *"status: running"*) exit 1 ;;
-  esac
-fi
-EOF
+  vm_lifecycle_wait_ssh "$1" "$2" "$SSH_MAX_POLLS"
 }
 
 wait_guest_boot_ready() {
-  local user=$1 ip=$2
-  local i
-
-  printf 'Waiting for systemd/D-Bus readiness on %s...\n' "$ip"
-  for i in $(seq 1 "$GUEST_READY_MAX_POLLS"); do
-    if ssh_as "$user" "$ip" "$(guest_boot_ready_probe)" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 10
-  done
-
-  ssh_as "$user" "$ip" "systemctl is-system-running || true; ls -l /run/dbus/system_bus_socket || true; cloud-init status || true" >&2 || true
-  ssh_as "$user" "$ip" "$(guest_boot_ready_probe)" >/dev/null
+  vm_lifecycle_wait_guest_boot_ready "$1" "$2" "$GUEST_READY_MAX_POLLS"
 }
 
 target_observer_operation_ips() {
@@ -704,7 +674,7 @@ resolve_image_uuid() {
 
 create_source_vm() {
   local state_file=$1 row_id=$2 image_name=$3 image_uuid=$4 db_version=$5 db_type=$6
-  local cluster_uuid subnet_uuid timestamp short_key vm_name ssh_public_key user_data_b64 create_payload create_response vm_uuid power_response vm_ip attempt source_ready
+  local cluster_uuid subnet_uuid timestamp short_key vm_name user_data_b64 create_payload create_response vm_uuid power_response vm_ip attempt source_ready
 
   image_uuid=$(resolve_image_uuid "$image_name" "$image_uuid")
   # shellcheck disable=SC2154  # PKR_VAR_* are provided via the environment (.env / op run)
@@ -717,8 +687,7 @@ create_source_vm() {
   fi
 
   short_key=$(short_row_key "$row_id")
-  ssh_public_key=$(tr -d '\n' < "$PUBLIC_KEY_PATH")
-  user_data_b64=$(sed "s|\${ssh_public_key}|${ssh_public_key}|g" "$USER_DATA_TEMPLATE" | base64_no_wrap)
+  user_data_b64=$(vm_lifecycle_render_user_data_b64 "$USER_DATA_TEMPLATE" "$PUBLIC_KEY_PATH")
 
   for attempt in $(seq 1 "$SOURCE_VM_MAX_ATTEMPTS"); do
     timestamp=$(date +%Y%m%d%H%M%S)
@@ -794,11 +763,7 @@ create_source_vm() {
     prism_wait_required_task_from_response "$power_response" "power on VM"
 
     printf 'Waiting for source VM IP...\n'
-    for _ in $(seq 1 90); do
-      vm_ip=$(prism_vm_ip "$vm_uuid")
-      [[ -n "$vm_ip" ]] && break
-      sleep 10
-    done
+    vm_ip=$(vm_lifecycle_wait_vm_ip "$vm_uuid" 90 10) || vm_ip=""
 
     jq -n \
       --arg row_id "$row_id" \
@@ -1315,13 +1280,6 @@ provision_database() {
   if [[ "$wait_rc" -ne 0 ]]; then
     return "$wait_rc"
   fi
-
-  jq --arg provision_operation_id "$(jq -r '.operationId' "$response_file")" \
-    --arg database_id "$(jq -r '.entityId // empty' "$response_file")" \
-    --arg database_name "$db_name" \
-    --arg provisioned_vm_name "$vm_name" \
-    '. + {provision_operation_id: $provision_operation_id, database_id: $database_id, database_name: $database_name, provisioned_vm_name: $provisioned_vm_name}' "$state_file" > "${state_file}.tmp"
-  mv "${state_file}.tmp" "$state_file"
 }
 
 extract_provisioned_ip() {
@@ -1344,7 +1302,7 @@ validate_guest_database() {
     validation=$(printf '%s\n' "$db_password" | ssh_as era "$provision_ip" "read -r PGPASSWORD; export PGPASSWORD; '$psql_path' -h 127.0.0.1 -U '$db_user' -d '$db_name' -tAc \"select current_database() || '|' || current_setting('server_version');\"")
     validation=$(printf '%s' "$validation" | tr '\n' '|' | sed 's/|$//')
   else
-    validation=$(printf '%s\n' "$db_password" | ssh_as era "$provision_ip" "read -r DB_PASSWORD; mongosh --quiet --host 127.0.0.1 --port 27017 -u '$db_user' -p \"\$DB_PASSWORD\" --authenticationDatabase admin --eval 'db.adminCommand({ping:1}).ok + \"|\" + db.version()'")
+    validation=$(printf '%s\n' "$db_password" | ssh_as era "$provision_ip" "read -r DB_PASSWORD; export DB_PASSWORD; export DB_USER='$db_user'; mongosh --quiet --host 127.0.0.1 --port 27017 --eval 'db.getSiblingDB(\"admin\").auth(process.env.DB_USER, process.env.DB_PASSWORD); db.adminCommand({ping:1}).ok + \"|\" + db.version()'")
   fi
 
   jq --arg provisioned_vm_ip "$provision_ip" \
@@ -1423,7 +1381,7 @@ preflight_target_images() {
   local images_file ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid
   local row_id selected=0 missing=0
   images_file=$(mktemp -t ndb-e2e-images.XXXXXX)
-  prism_list_resource images image 5000 > "$images_file"
+  prism_list_all_entities images image > "$images_file"
 
   while IFS='|' read -r ndb_version db_type os_type os_version db_version mongodb_edition mongodb_deployments image_name image_uuid _; do
     [[ -n "$DB_TYPE_FILTER" && "$db_type" != "$DB_TYPE_FILTER" ]] && continue
@@ -1484,6 +1442,12 @@ selected_targets_include_db() {
     [[ -n "$DB_TYPE_FILTER" && "$db_type" != "$DB_TYPE_FILTER" ]] && continue
     row_id=$(row_id_for "$ndb_version" "$db_type" "$os_type" "$os_version" "$db_version" "$mongodb_edition" "$mongodb_deployments")
     [[ -n "$ROW_FILTER" && "$row_id" != "$ROW_FILTER" ]] && continue
+    # Mirror the main loop's skip of already-passed rows: otherwise --limit
+    # runs demand profile env vars for rows that will not run and can miss
+    # the ones that will.
+    if [[ "$RERUN_PASSED" != "true" ]] && row_already_passed "$row_id"; then
+      continue
+    fi
 
     attempted=$((attempted + 1))
     [[ "$db_type" == "$wanted_db_type" ]] && return 0

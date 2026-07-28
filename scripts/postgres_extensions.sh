@@ -139,3 +139,33 @@ postgres_extensions_image_name_suffix_json() {
   short_hash=${checksum:0:8}
   printf 'ext-%s-plus-%s-%s\n' "$prefix" "$remaining" "$short_hash"
 }
+
+# Canonical PostgreSQL image-name suffix pieces. build.sh composes real
+# image names from these; the wizard uses the same helpers so its previews
+# cannot drift from actual build names.
+postgres_ha_image_name_suffix() {
+  local ha_components_json=${1:-"{}"}
+  if [[ "$(jq 'length' <<<"$ha_components_json")" -gt 0 ]]; then
+    printf 'ha'
+  fi
+}
+
+postgres_package_image_name_suffix() {
+  local package_version_prefix=$1
+  if [[ -n "$package_version_prefix" ]]; then
+    printf 'pg%s' "${package_version_prefix//./-}"
+  fi
+}
+
+postgres_join_image_name_suffixes() {
+  local joined="" part
+  for part in "$@"; do
+    [[ -n "$part" ]] || continue
+    if [[ -n "$joined" ]]; then
+      joined+="-${part}"
+    else
+      joined="$part"
+    fi
+  done
+  printf '%s' "$joined"
+}

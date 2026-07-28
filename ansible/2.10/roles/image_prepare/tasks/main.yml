@@ -8,15 +8,65 @@
     path: /usr/bin/cloud-init
   register: image_prepare_cloud_init
 
+- name: Assert cloud-init is present for cloned image first boot
+  ansible.builtin.assert:
+    that:
+      - image_prepare_cloud_init.stat.exists
+    fail_msg: >-
+      cloud-init is required in NDB gold images: validation and E2E VMs rely
+      on first-boot cloud-init to re-create the provisioning user, and cloned
+      first boots rely on it for instance reset. Refusing to capture an image
+      without /usr/bin/cloud-init.
+
+- name: Resolve database runtime guard targets
+  ansible.builtin.set_fact:
+    image_prepare_guard_service: "{{ mongodb_service_name | default('mongod') if (provisioning_role | default('postgresql')) == 'mongodb' else postgres_service_name | default('postgresql') }}"
+    image_prepare_guard_service_glob: "{{ 'mongod*' if (provisioning_role | default('postgresql')) == 'mongodb' else 'postgresql*' }}"
+    image_prepare_guard_port: "{{ '27017' if (provisioning_role | default('postgresql')) == 'mongodb' else '5432' }}"
+
+# Runs on every build, not only --validate ones: an image captured with the
+# packaged database service enabled or its port bound breaks NDB provisioning.
+- name: Enforce database runtime is disabled before image capture
+  ansible.builtin.shell:
+    cmd: |
+      set -eu
+      service="{{ image_prepare_guard_service }}"
+      port="{{ image_prepare_guard_port }}"
+      if systemctl is-enabled "$service" 2>/dev/null | grep -qx enabled; then
+        echo "ERROR: $service is enabled; NDB must own the database runtime" >&2
+        exit 1
+      fi
+      if systemctl is-active "$service" 2>/dev/null | grep -qx active; then
+        echo "ERROR: $service is active before image capture" >&2
+        exit 1
+      fi
+      if command -v ss >/dev/null 2>&1; then
+        if ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]${port}$"; then
+          echo "ERROR: port ${port} is bound before image capture" >&2
+          exit 1
+        fi
+      fi
+      # Family-wide sweep: catches an enabled unit even when the resolved
+      # service name is wrong (e.g. RedHat postgresql-<major> vs a fallback
+      # of plain postgresql), where the named checks pass vacuously.
+      service_glob="{{ image_prepare_guard_service_glob }}"
+      enabled_units=$(systemctl list-unit-files --type service --state enabled --no-legend "$service_glob" 2>/dev/null | awk '{print $1}')
+      if [[ -n "$enabled_units" ]]; then
+        echo "ERROR: enabled database service unit(s) before image capture: $enabled_units" >&2
+        exit 1
+      fi
+  changed_when: false
+  become: true
+
 - name: Remove generated cloud-init netplan on Debian-family images
   ansible.builtin.file:
     path: /etc/netplan/50-cloud-init.yaml
     state: absent
   when: ndb_os_family == "Debian"
-  become: yes
+  become: true
 
 - name: Check subscription-manager availability
-  ansible.builtin.shell:
+  ansible.builtin.shell:  # noqa: command-instead-of-shell - command -v is a shell builtin
     cmd: command -v subscription-manager
   register: image_prepare_subscription_manager
   changed_when: false
@@ -30,7 +80,7 @@
   changed_when: false
   failed_when: false
   no_log: true
-  become: yes
+  become: true
   when:
     - ndb_os_family == "RedHat"
     - rhel_subscription_enabled | default(false) | bool
@@ -42,7 +92,7 @@
   changed_when: false
   failed_when: false
   no_log: true
-  become: yes
+  become: true
   when:
     - ndb_os_family == "RedHat"
     - rhel_subscription_enabled | default(false) | bool
@@ -53,10 +103,47 @@
     cmd: /usr/bin/cloud-init clean --logs --machine-id
   when: image_prepare_cloud_init.stat.exists
   changed_when: true
-  become: yes
+  become: true
+
+# Regeneration on first boot is guaranteed by ndb-ssh-hostkeys-ensure.service
+# (installed by the common role) even when a clone retains cloud-init
+# instance metadata and per-instance modules do not rerun.
+- name: Remove baked SSH host keys before image capture
+  ansible.builtin.shell:
+    cmd: rm -f /etc/ssh/ssh_host_*
+  changed_when: true
+  become: true
+
+- name: Remove grub backup debris before image capture
+  ansible.builtin.file:
+    path: /etc/default/grub.bak
+    state: absent
+  become: true
 
 - name: Flush filesystem buffers before image capture
   ansible.builtin.command:
     cmd: sync
   changed_when: false
-  become: yes
+  become: true
+
+# Must remain the last task in the play: it deletes the SSH build user this
+# connection authenticated as. The in-flight session survives, but any later
+# become task would fail because sudo can no longer resolve the invoking user.
+- name: Remove packer build user and access before image capture
+  ansible.builtin.shell:
+    cmd: |
+      set -eu
+      rm -f /etc/sudoers.d/90-cloud-init-users
+      if getent passwd packer >/dev/null 2>&1; then
+        # Tolerate userdel's ancillary-cleanup exit codes; the getent
+        # assertion below is the real check that the account is gone.
+        userdel --force --remove packer || true
+      fi
+      rm -rf /home/packer
+      if getent passwd packer >/dev/null 2>&1; then
+        echo "ERROR: packer build user still present before image capture" >&2
+        exit 1
+      fi
+      sync
+  changed_when: true
+  become: true
