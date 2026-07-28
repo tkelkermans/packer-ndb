@@ -1,0 +1,10 @@
+customization_enabled: false
+customization_profile_file: ""
+customization_profile_name: ""
+customization_phase: preflight
+customization_preflight_only: false
+customization_allowed_phases:
+  - pre_common
+  - post_common
+  - post_database
+  - validate

@@ -1,0 +1,23 @@
+---
+# The common role is split by concern. ndb_os_family is normalized here and
+# used by every included file.
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+    ndb_distribution: "{{ ansible_facts['distribution'] }}"
+    ndb_distribution_version: "{{ ansible_facts['distribution_version'] }}"
+
+- name: Install baseline packages and repositories
+  ansible.builtin.include_tasks: packages.yml
+
+- name: Configure storage and NDB device-mapper compatibility
+  ansible.builtin.include_tasks: storage.yml
+
+- name: Configure GRUB for NDB
+  ansible.builtin.include_tasks: grub.yml
+
+- name: Prepare Debian-family NDB target-clone integration
+  ansible.builtin.include_tasks: debian_ndb_clone.yml
+
+- name: Configure base services and access policy
+  ansible.builtin.include_tasks: services.yml

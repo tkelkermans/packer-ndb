@@ -1,0 +1,8 @@
+# This map translates the db_version variable to the PostgreSQL package version.
+postgres_version_map:
+  "18": "18"
+  "17": "17"
+  "16": "16"
+  "15": "15"
+  "14": "14"
+  "13": "13"

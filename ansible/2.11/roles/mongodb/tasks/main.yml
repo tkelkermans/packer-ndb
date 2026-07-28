@@ -1,0 +1,238 @@
+---
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+    ndb_distribution_major_version: "{{ ansible_facts['distribution_major_version'] }}"
+    ndb_distribution_release: "{{ ansible_facts['distribution_release'] }}"
+
+- name: Validate MongoDB role inputs
+  ansible.builtin.assert:
+    that:
+      - db_version in mongodb_supported_versions
+      - mongodb_edition in ["community", "enterprise"]
+      - mongodb_deployments | type_debug == "list"
+      - mongodb_deployments | length > 0
+    fail_msg: "Unsupported MongoDB selection: version={{ db_version }}, edition={{ mongodb_edition }}, deployments={{ mongodb_deployments }}"
+
+- name: Set MongoDB package facts
+  ansible.builtin.set_fact:
+    mongodb_major_version: "{{ db_version }}"
+    mongodb_package_family: "{{ 'mongodb-enterprise' if mongodb_edition == 'enterprise' else 'mongodb-org' }}"
+    mongodb_repo_host: "{{ 'repo.mongodb.com' if mongodb_edition == 'enterprise' else 'repo.mongodb.org' }}"
+    mongodb_gpg_key_url: "https://pgp.mongodb.com/server-{{ db_version }}.asc"
+
+- name: Configure MongoDB repository (RedHat family)
+  ansible.builtin.yum_repository:
+    name: "{{ mongodb_package_family }}-{{ mongodb_major_version }}"
+    description: "MongoDB {{ mongodb_edition }} Repository {{ mongodb_major_version }}"
+    baseurl: "https://{{ mongodb_repo_host }}/yum/redhat/{{ ndb_distribution_major_version }}/{{ mongodb_package_family }}/{{ mongodb_major_version }}/{{ mongodb_redhat_arch }}/"
+    gpgcheck: true
+    enabled: true
+    gpgkey: "{{ mongodb_gpg_key_url }}"
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Ensure MongoDB keyring directory exists (Debian family)
+  ansible.builtin.file:
+    path: "{{ mongodb_keyring_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Download MongoDB GPG key (Debian family)
+  ansible.builtin.get_url:
+    url: "{{ mongodb_gpg_key_url }}"
+    dest: "{{ mongodb_keyring_dir }}/mongodb-server-{{ mongodb_major_version }}.asc"
+    owner: root
+    group: root
+    mode: "0644"
+  register: mongodb_gpg_key_download_result
+  retries: 6
+  delay: 10
+  until: mongodb_gpg_key_download_result is succeeded
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Install MongoDB GPG keyring (Debian family)
+  ansible.builtin.command:
+    argv:
+      - gpg
+      - --dearmor
+      - --yes
+      - --output
+      - "{{ mongodb_keyring_dir }}/mongodb-server-{{ mongodb_major_version }}.gpg"
+      - "{{ mongodb_keyring_dir }}/mongodb-server-{{ mongodb_major_version }}.asc"
+    creates: "{{ mongodb_keyring_dir }}/mongodb-server-{{ mongodb_major_version }}.gpg"
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Configure MongoDB repository (Debian family)
+  ansible.builtin.deb822_repository:
+    name: "{{ mongodb_package_family }}-{{ mongodb_major_version }}"
+    types: deb
+    architectures: "{{ mongodb_debian_arch }}"
+    uris: "https://{{ mongodb_repo_host }}/apt/{{ ansible_facts['distribution'] | lower }}"
+    suites: "{{ ndb_distribution_release }}/{{ mongodb_package_family }}/{{ mongodb_major_version }}"
+    components: "{{ 'multiverse' if ansible_facts['distribution'] == 'Ubuntu' else 'main' }}"
+    signed_by: "{{ mongodb_keyring_dir }}/mongodb-server-{{ mongodb_major_version }}.gpg"
+    state: present
+  when: ndb_os_family == "Debian"
+  become: true
+
+# deb822_repository does not refresh the apt cache the way apt_repository's
+# update_cache did; refresh explicitly before MongoDB packages install.
+- name: Refresh apt cache after MongoDB repository change (Debian family)
+  ansible.builtin.apt:
+    update_cache: true
+    lock_timeout: 600
+  register: mongodb_apt_refresh_result
+  retries: 6
+  delay: 10
+  until: mongodb_apt_refresh_result is succeeded
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Refresh dnf metadata after MongoDB repository change (RedHat family)
+  ansible.builtin.command:
+    argv:
+      - dnf
+      - -y
+      - makecache
+  register: mongodb_dnf_makecache_result
+  retries: 5
+  delay: 10
+  until: mongodb_dnf_makecache_result.rc == 0
+  changed_when: false
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Install MongoDB packages (RedHat family)
+  ansible.builtin.package:
+    name: "{{ mongodb_package_names[mongodb_edition].RedHat }}"
+    state: present
+  register: mongodb_redhat_install_result
+  retries: 6
+  delay: 10
+  until: mongodb_redhat_install_result is succeeded
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Install MongoDB packages (Debian family)
+  ansible.builtin.apt:
+    name: "{{ mongodb_package_names[mongodb_edition].Debian }}"
+    state: present
+    lock_timeout: 600
+  register: mongodb_apt_install_result
+  retries: 6
+  delay: 10
+  until: mongodb_apt_install_result is succeeded
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Install MongoDB SELinux policy build dependencies (RedHat family)
+  ansible.builtin.package:
+    name:
+      - git
+      - make
+      - checkpolicy
+      - policycoreutils
+      - selinux-policy-devel
+    state: present
+  register: mongodb_selinux_deps_result
+  retries: 6
+  delay: 10
+  until: mongodb_selinux_deps_result is succeeded
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Clone MongoDB SELinux policy repository (RedHat family)
+  ansible.builtin.git:
+    repo: "{{ mongodb_selinux_policy_repo }}"
+    dest: "{{ mongodb_selinux_policy_dest }}"
+    version: "{{ mongodb_selinux_policy_version }}"
+    update: false
+  register: mongodb_selinux_policy_clone_result
+  retries: 6
+  delay: 10
+  until: mongodb_selinux_policy_clone_result is succeeded
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Build MongoDB SELinux policy (RedHat family)
+  ansible.builtin.command:
+    argv:
+      - make
+    chdir: "{{ mongodb_selinux_policy_dest }}"
+  changed_when: false
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Install MongoDB SELinux policy (RedHat family)
+  ansible.builtin.command:
+    argv:
+      - make
+      - install
+    chdir: "{{ mongodb_selinux_policy_dest }}"
+  changed_when: false
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Persist SELinux permissive mode for MongoDB NDB provisioning (RedHat family)
+  ansible.builtin.lineinfile:
+    path: /etc/selinux/config
+    regexp: '^SELINUX='
+    line: "SELINUX={{ mongodb_redhat_selinux_state }}"
+  when:
+    - ndb_os_family == "RedHat"
+    - mongodb_redhat_selinux_state == "permissive"
+  become: true
+
+- name: Apply SELinux permissive mode immediately for MongoDB NDB provisioning (RedHat family)
+  ansible.builtin.command:
+    argv:
+      - setenforce
+      - "0"
+  register: mongodb_setenforce_result
+  changed_when: mongodb_setenforce_result.rc == 0
+  failed_when: mongodb_setenforce_result.rc not in [0, 1]
+  when:
+    - ndb_os_family == "RedHat"
+    - mongodb_redhat_selinux_state == "permissive"
+    - ansible_facts.get('selinux', {}).get('status', 'disabled') == "enabled"
+    - ansible_facts.get('selinux', {}).get('mode', 'permissive') == "enforcing"
+  become: true
+
+- name: Ensure systemd has loaded MongoDB units
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
+- name: Ensure MongoDB NDB software home exists
+  ansible.builtin.file:
+    path: "{{ mongodb_ndb_software_bin_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Link MongoDB binaries into NDB-safe software home
+  ansible.builtin.file:
+    src: "/usr/bin/{{ item }}"
+    dest: "{{ mongodb_ndb_software_bin_dir }}/{{ item }}"
+    state: link
+    owner: root
+    group: root
+    force: true
+  loop: "{{ mongodb_ndb_software_binaries }}"
+  become: true
+
+- name: Stop and disable packaged mongod service before image capture
+  ansible.builtin.service:
+    name: "{{ mongodb_service_name }}"
+    state: stopped
+    enabled: false
+  become: true

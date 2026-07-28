@@ -1,0 +1,294 @@
+---
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+
+- name: Build MongoDB validation service list
+  ansible.builtin.set_fact:
+    validate_mongodb_services:
+      - label: firewalld
+        unit: firewalld.service
+      - label: chrony
+        unit: "{{ 'chronyd.service' if ndb_os_family == 'RedHat' else 'chrony.service' }}"
+      - label: cron
+        unit: "{{ 'crond.service' if ndb_os_family == 'RedHat' else 'cron.service' }}"
+    validate_mongodb_enabled_status_values:
+      - enabled
+      - enabled-runtime
+      - static
+      - indirect
+      - generated
+
+- name: Check required MongoDB image services are active
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ item.unit }}"
+  loop: "{{ validate_mongodb_services }}"
+  loop_control:
+    label: "{{ item.label }}"
+  register: validate_mongodb_service_active_result
+  retries: "{{ validate_mongodb_service_active_retries }}"
+  delay: "{{ validate_mongodb_service_active_delay }}"
+  until: validate_mongodb_service_active_result.stdout == "active"
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Assert required MongoDB image services are active
+  ansible.builtin.assert:
+    that:
+      - item.stdout == "active"
+    fail_msg: "Expected service {{ item.item.unit }} to be active, got {{ item.stdout | default('') | trim }}"
+  loop: "{{ validate_mongodb_service_active_result.results }}"
+  loop_control:
+    label: "{{ item.item.label }}"
+
+- name: Check required MongoDB image services are enabled
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - "{{ item.unit }}"
+  loop: "{{ validate_mongodb_services }}"
+  loop_control:
+    label: "{{ item.label }}"
+  register: validate_mongodb_service_enabled_results
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Assert required MongoDB image services are enabled
+  ansible.builtin.assert:
+    that:
+      - item.stdout in validate_mongodb_enabled_status_values
+    fail_msg: "Expected service {{ item.item.unit }} to be enabled, got {{ item.stdout | default('') | trim }}"
+  loop: "{{ validate_mongodb_service_enabled_results.results }}"
+  loop_control:
+    label: "{{ item.item.label }}"
+
+- name: Run shared NDB image validation checks
+  ansible.builtin.include_role:
+    name: validate_common
+
+- name: Derive expected MongoDB DB OS user
+  ansible.builtin.set_fact:
+    validate_mongodb_db_os_user: "{{ 'mongod' if ndb_os_family == 'RedHat' else 'mongodb' }}"
+
+- name: Check MongoDB DB OS user exists
+  ansible.builtin.command:
+    argv:
+      - getent
+      - passwd
+      - "{{ validate_mongodb_db_os_user }}"
+  register: validate_mongodb_db_os_user_result
+  changed_when: false
+  become: true
+
+- name: Check mongod --version
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_mongodb_mongod_binary }}"
+      - --version
+  register: validate_mongodb_mongod_version
+  changed_when: false
+  become: true
+
+- name: Assert mongod binary major version
+  ansible.builtin.assert:
+    that:
+      - validate_mongodb_mongod_version.stdout is regex("db version v" ~ validate_mongodb_major_version ~ "\\.")
+    fail_msg: "Expected mongod major version {{ validate_mongodb_major_version }}, got {{ validate_mongodb_mongod_version.stdout | default('') | trim }}"
+
+- name: Check NDB-safe MongoDB software home required binaries
+  ansible.builtin.command:
+    argv:
+      - test
+      - -x
+      - "{{ validate_mongodb_ndb_software_home }}/bin/{{ item }}"
+  loop: "{{ validate_mongodb_ndb_required_binaries }}"
+  changed_when: false
+  become: true
+
+- name: Check NDB-safe MongoDB software home binary
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_mongodb_ndb_mongod_binary }}"
+      - --version
+  register: validate_mongodb_ndb_mongod_version
+  changed_when: false
+  become: true
+
+- name: Assert NDB-safe MongoDB software home binary major version
+  ansible.builtin.assert:
+    that:
+      - validate_mongodb_ndb_mongod_version.stdout is regex("db version v" ~ validate_mongodb_major_version ~ "\\.")
+    fail_msg: "Expected NDB-safe mongod major version {{ validate_mongodb_major_version }}, got {{ validate_mongodb_ndb_mongod_version.stdout | default('') | trim }}"
+
+- name: Check SELinux runtime mode for MongoDB NDB provisioning (RedHat family)
+  ansible.builtin.command:
+    argv:
+      - getenforce
+  register: validate_mongodb_selinux_mode_result
+  changed_when: false
+  failed_when: false
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Assert SELinux is not enforcing for MongoDB NDB provisioning (RedHat family)
+  ansible.builtin.assert:
+    that:
+      - validate_mongodb_selinux_mode_result.stdout | default('Disabled') | trim != "Enforcing"
+    fail_msg: "Expected SELinux permissive or disabled for MongoDB NDB provisioning, got {{ validate_mongodb_selinux_mode_result.stdout | default('unknown') | trim }}"
+  when: ndb_os_family == "RedHat"
+
+- name: Start packaged mongod temporarily for validation
+  ansible.builtin.service:
+    name: "{{ mongodb_service_name | default('mongod') }}"
+    state: started
+    enabled: false
+  become: true
+
+- name: Check packaged mongod service is active for validation
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ mongodb_service_name | default('mongod') }}.service"
+  register: validate_mongodb_mongod_active_result
+  retries: "{{ validate_mongodb_service_active_retries }}"
+  delay: "{{ validate_mongodb_service_active_delay }}"
+  until: validate_mongodb_mongod_active_result.stdout == "active"
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Assert packaged mongod service started for validation
+  ansible.builtin.assert:
+    that:
+      - validate_mongodb_mongod_active_result.stdout == "active"
+    fail_msg: "Expected mongod.service active for validation, got {{ validate_mongodb_mongod_active_result.stdout | default('') | trim }}"
+
+- name: Check MongoDB server version with mongosh
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_mongodb_mongosh_binary }}"
+      - --quiet
+      - --eval
+      - "db.version()"
+  register: validate_mongodb_server_version
+  changed_when: false
+  become: true
+
+- name: Assert MongoDB server major version
+  ansible.builtin.assert:
+    that:
+      - validate_mongodb_server_version.stdout is regex("^" ~ validate_mongodb_major_version ~ "\\.")
+    fail_msg: "Expected MongoDB server major version {{ validate_mongodb_major_version }}, got {{ validate_mongodb_server_version.stdout | default('') | trim }}"
+
+- name: Check MongoDB edition with buildInfo
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_mongodb_mongosh_binary }}"
+      - --quiet
+      - --eval
+      - 'const modules = db.runCommand({buildInfo:1}).modules || []; print(modules.includes("enterprise") ? "enterprise" : "community")'
+  register: validate_mongodb_edition_result
+  changed_when: false
+  become: true
+
+- name: Assert MongoDB edition matches matrix selection
+  ansible.builtin.assert:
+    that:
+      - (validate_mongodb_edition_result.stdout | trim) == (mongodb_edition | default('community'))
+    fail_msg: "Expected MongoDB edition {{ mongodb_edition | default('community') }}, got {{ validate_mongodb_edition_result.stdout | default('') | trim }}"
+
+- name: Install replica-set validation script
+  ansible.builtin.copy:
+    src: validate_mongodb_replica_set.sh
+    dest: "{{ validate_mongodb_replica_set_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  when: "'replica-set' in validate_mongodb_deployments"
+  become: true
+
+- name: Run local MongoDB replica-set smoke validation
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_mongodb_replica_set_script_path }}"
+  changed_when: false
+  when: "'replica-set' in validate_mongodb_deployments"
+  become: true
+
+- name: Install sharded validation script
+  ansible.builtin.copy:
+    src: validate_mongodb_sharded.sh
+    dest: "{{ validate_mongodb_sharded_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  when: "'sharded-cluster' in validate_mongodb_deployments"
+  become: true
+
+- name: Run local MongoDB sharded topology smoke validation
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_mongodb_sharded_script_path }}"
+  changed_when: false
+  when: "'sharded-cluster' in validate_mongodb_deployments"
+  become: true
+
+- name: Stop and disable packaged mongod after validation
+  ansible.builtin.service:
+    name: "{{ mongodb_service_name | default('mongod') }}"
+    state: stopped
+    enabled: false
+  become: true
+
+- name: Check packaged mongod service is inactive
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ mongodb_service_name | default('mongod') }}.service"
+  register: validate_mongodb_mongod_inactive_result
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Assert packaged mongod service is inactive
+  ansible.builtin.assert:
+    that:
+      - validate_mongodb_mongod_inactive_result.stdout == "inactive"
+    fail_msg: "Expected mongod.service inactive before image capture, got {{ validate_mongodb_mongod_inactive_result.stdout | default('') | trim }}"
+
+- name: Check packaged mongod service is disabled
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - "{{ mongodb_service_name | default('mongod') }}.service"
+  register: validate_mongodb_mongod_disabled_result
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Assert packaged mongod service is disabled
+  ansible.builtin.assert:
+    that:
+      - validate_mongodb_mongod_disabled_result.stdout == "disabled"
+    fail_msg: "Expected mongod.service disabled before image capture, got {{ validate_mongodb_mongod_disabled_result.stdout | default('') | trim }}"
+
+- name: Check MongoDB listener port is free
+  ansible.builtin.shell: "ss -ltn '( sport = :{{ validate_mongodb_listener_port }} )' | awk 'NR > 1 {count++} END {print count + 0}'"
+  register: validate_mongodb_listener_port_result
+  changed_when: false
+  become: true
+
+- name: Assert MongoDB listener port is free
+  ansible.builtin.assert:
+    that:
+      - (validate_mongodb_listener_port_result.stdout | int) == 0
+    fail_msg: "Expected port {{ validate_mongodb_listener_port }} to be free before image capture, got {{ validate_mongodb_listener_port_result.stdout | default('') | trim }} listener(s)"

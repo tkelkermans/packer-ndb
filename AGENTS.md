@@ -1,10 +1,10 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## What this is
 
-A matrix-driven Packer + Ansible image factory that builds Nutanix Database Service (NDB) gold images on Nutanix AHV via Prism Central. Buildable engines: PostgreSQL Community Edition and MongoDB (community/enterprise) across Rocky Linux, Ubuntu, Debian, and RHEL, for NDB 2.9, 2.10 and 2.11. Matrix rows with `provisioning_role=metadata` (Oracle, SQL Server, MySQL, MariaDB) document future support and are rejected by `build.sh`.
+A matrix-driven Packer + Ansible image factory that builds Nutanix Database Service (NDB) gold images on Nutanix AHV via Prism Central. Buildable engines: PostgreSQL Community Edition and MongoDB (community/enterprise) across Rocky Linux, Ubuntu, Debian, and RHEL, for NDB 2.9 and 2.10. Matrix rows with `provisioning_role=metadata` (Oracle, SQL Server, MySQL, MariaDB) document future support and are rejected by `build.sh`.
 
 ## CRITICAL: .env is a 1Password FIFO
 
@@ -87,7 +87,7 @@ ndb/<ver>/matrix.json row  →  build.sh (selection + ansible-vars JSON in /tmp)
   →  manifests/<image_name>.json (git-ignored; source of truth for what was built)
 ```
 
-- **Matrix rows** (`ndb/2.9/matrix.json`, `ndb/2.10/matrix.json`, `ndb/2.11/matrix.json`): keyed by `db_type` + `os_type` + `os_version` + `db_version`. `ha_components` (Patroni/etcd/HAProxy/Keepalived versions) is an **install list, not documentation** — components are installed, validated, and reflected in the image name (`-ha` suffix) because NDB profile creation checks HA binaries even for single-instance databases. PostgreSQL rows carry `qualified_extensions` (empty requires `qualified_extensions_empty_reason`) and optional `postgres_package_version_prefix` patch pin (Debian/Ubuntu only — RHEL-family is never patch-pinned). MongoDB rows carry `mongodb_edition` and `deployment`.
+- **Matrix rows** (`ndb/2.9/matrix.json`, `ndb/2.10/matrix.json`): keyed by `db_type` + `os_type` + `os_version` + `db_version`. `ha_components` (Patroni/etcd/HAProxy/Keepalived versions) is an **install list, not documentation** — components are installed, validated, and reflected in the image name (`-ha` suffix) because NDB profile creation checks HA binaries even for single-instance databases. PostgreSQL rows carry `qualified_extensions` (empty requires `qualified_extensions_empty_reason`) and optional `postgres_package_version_prefix` patch pin (Debian/Ubuntu only — RHEL-family is never patch-pinned). MongoDB rows carry `mongodb_edition` and `deployment`.
 - **NDB versions** are parallel trees (`ndb/<ver>/` + `ansible/<ver>/`), structurally identical; new versions are scaffolded with `release_scaffold.sh`, never hand-copied.
 - **Source images** resolve via `images.json` (URL, or `env_var` indirection for licensed RHEL: `NDB_RHEL_9_6_IMAGE_URI`/`NDB_RHEL_9_7_IMAGE_URI`), overridable by UUID/name/URI flags. Public URLs rot: HEAD-check before trusting or editing `images.json` — Prism `ImageCreate ... 404` means bad source URL, not an Ansible problem.
 - **Customization profiles** (`customizations/profiles/*.yml`; secrets-bearing ones in git-ignored `customizations/local/`) inject extra Ansible roles at the four hook phases above.

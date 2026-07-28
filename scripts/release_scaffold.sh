@@ -141,7 +141,20 @@ if [[ -f "$STAGING_DIR/ndb/${NEW_VERSION}/matrix.json" ]]; then
   tmp=$(mktemp)
   jq --arg version "$NEW_VERSION" 'map(.ndb_version = $version)' "$STAGING_DIR/ndb/${NEW_VERSION}/matrix.json" > "$tmp"
   mv "$tmp" "$STAGING_DIR/ndb/${NEW_VERSION}/matrix.json"
+  # mktemp honours a restrictive umask; matrices are world-readable repo data.
+  chmod 0644 "$STAGING_DIR/ndb/${NEW_VERSION}/matrix.json"
 fi
+
+# Version-named companion docs (e.g. ndb-<ver>-pgsql.md) would otherwise land in
+# the new tree still carrying the previous version in both name and content.
+for doc in "$STAGING_DIR/ndb/${NEW_VERSION}/ndb-${FROM_VERSION}-"*.md; do
+  [[ -e "$doc" ]] || continue
+  renamed=${doc/ndb-${FROM_VERSION}-/ndb-${NEW_VERSION}-}
+  mv "$doc" "$renamed"
+  printf '> **Unreviewed copy from NDB %s.** Every statement below still describes\n> %s and must be rewritten against the NDB %s release notes.\n\n' \
+    "$FROM_VERSION" "$FROM_VERSION" "$NEW_VERSION" | cat - "$renamed" > "${renamed}.tmp"
+  mv "${renamed}.tmp" "$renamed"
+done
 
 cat > "$STAGING_DIR/ndb/${NEW_VERSION}/REVIEW.md" <<EOF
 # NDB ${NEW_VERSION} Release Review

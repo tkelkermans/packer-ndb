@@ -31,7 +31,7 @@ run_rhel_activation_key_guard_tests() {
   grep -q "NDB_RHEL_ACTIVATIONKEY" "$ROOT_DIR/build.sh" || fail "build.sh does not pass NDB_RHEL_ACTIVATIONKEY to Ansible"
   grep -q "RHEL subscription activation:" "$ROOT_DIR/build.sh" || fail "build.sh dry-run missing non-secret RHEL activation readiness"
 
-  for version in 2.9 2.10; do
+  for version in $(selftest_ndb_versions); do
     playbook_file="$ROOT_DIR/ansible/$version/playbooks/site.yml"
     role_file="$ROOT_DIR/ansible/$version/roles/rhel_subscription/tasks/main.yml"
     image_prepare_file="$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml"
@@ -103,7 +103,7 @@ run_customization_profile_cli_tests() {
   pass "customization profile CLI guards"
 }
 run_customization_profile_ansible_tests() {
-  for version in 2.9 2.10; do
+  for version in $(selftest_ndb_versions); do
     [[ -f "$ROOT_DIR/ansible/$version/playbooks/customization_preflight.yml" ]] || fail "missing customization preflight playbook $version"
     [[ -f "$ROOT_DIR/ansible/$version/roles/customization_profile/tasks/main.yml" ]] || fail "missing customization_profile role $version"
     grep -q "include_vars" "$ROOT_DIR/ansible/$version/roles/customization_profile/tasks/main.yml" || fail "customization_profile $version does not load profile YAML"

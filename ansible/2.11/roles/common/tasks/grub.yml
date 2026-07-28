@@ -1,0 +1,114 @@
+---
+# GRUB kernel arguments and Debian/Ubuntu root-device mapping for NDB.
+- name: Persist NDB kernel arguments in GRUB defaults
+  ansible.builtin.shell: |
+    set -euo pipefail
+    grub_file=/etc/default/grub
+    touch "$grub_file"
+    current=$(grep -E '^GRUB_CMDLINE_LINUX=' "$grub_file" | tail -n1 || true)
+    if [[ -z "$current" ]]; then
+      printf 'GRUB_CMDLINE_LINUX="%s"\n' "{{ ndb_kernel_args | join(' ') }}" >> "$grub_file"
+      printf 'changed\n'
+      exit 0
+    fi
+    value=${current#GRUB_CMDLINE_LINUX=}
+    value=${value#\"}
+    value=${value%\"}
+    changed=0
+    for arg in {{ ndb_kernel_args | join(' ') }}; do
+      if [[ " $value " != *" $arg "* ]]; then
+        value="${value:+$value }$arg"
+        changed=1
+      fi
+    done
+    if [[ "$changed" -eq 1 ]]; then
+      escaped=${value//\\/\\\\}
+      escaped=${escaped//&/\\&}
+      sed -i.bak -E "s|^GRUB_CMDLINE_LINUX=.*|GRUB_CMDLINE_LINUX=\"$escaped\"|" "$grub_file"
+      printf 'changed\n'
+    else
+      printf 'unchanged\n'
+    fi
+  args:
+    executable: /bin/bash
+  register: ndb_grub_kernel_args_result
+  changed_when: ndb_grub_kernel_args_result.stdout == "changed"
+  become: true
+
+- name: Apply NDB kernel arguments to Red Hat boot entries
+  ansible.builtin.command:
+    argv:
+      - grubby
+      - --update-kernel=ALL
+      - "--args={{ ndb_kernel_args | join(' ') }}"
+  when:
+    - ndb_os_family == "RedHat"
+    - ndb_grub_kernel_args_result.changed
+  become: true
+
+- name: Force Debian GRUB to use device paths for root disk mapping
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub
+    regexp: "^{{ item.name }}="
+    line: "{{ item.name }}={{ item.value }}"
+  loop:
+    - name: GRUB_DISABLE_LINUX_UUID
+      value: "true"
+    - name: GRUB_DISABLE_LINUX_PARTUUID
+      value: "true"
+  register: ndb_debian_grub_device_path_result
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Ensure Debian GRUB defaults override directory exists
+  ansible.builtin.file:
+    path: /etc/default/grub.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Write late Debian GRUB root-device override
+  ansible.builtin.copy:
+    dest: /etc/default/grub.d/99-ndb-root-device.cfg
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by the NDB image builder. Keep this file late so cloud-image
+      # defaults cannot force UUID or PARTUUID root mappings back into grub.cfg.
+      GRUB_DISABLE_LINUX_UUID=true
+      GRUB_DISABLE_LINUX_PARTUUID=true
+      GRUB_FORCE_PARTUUID=
+  register: ndb_debian_grub_late_root_device_result
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Check Ubuntu cloud-image forced PARTUUID GRUB setting
+  ansible.builtin.stat:
+    path: /etc/default/grub.d/40-force-partuuid.cfg
+  register: ndb_debian_grub_force_partuuid_stat
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Disable Ubuntu cloud-image forced PARTUUID root
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub.d/40-force-partuuid.cfg
+    regexp: '^GRUB_FORCE_PARTUUID='
+    line: 'GRUB_FORCE_PARTUUID='
+  register: ndb_debian_grub_force_partuuid_result
+  when:
+    - ndb_os_family == "Debian"
+    - ndb_debian_grub_force_partuuid_stat.stat.exists
+  become: true
+
+- name: Refresh Debian GRUB configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/update-grub
+  when:
+    - ndb_os_family == "Debian"
+    - ndb_grub_kernel_args_result.changed or ndb_debian_grub_device_path_result.changed or ndb_debian_grub_late_root_device_result.changed or (ndb_debian_grub_force_partuuid_result.changed | default(false))
+  become: true

@@ -1,0 +1,345 @@
+---
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+
+- name: Derive PostgreSQL validation facts
+  ansible.builtin.set_fact:
+    validate_postgres_major_version: "{{ postgres_major_version | default(db_version) }}"
+    validate_postgres_psql_binary: "{{ (postgres_psql_bin_map | default(validate_postgres_psql_bin_map)).get(ndb_os_family, 'psql') | replace('%s', (postgres_major_version | default(db_version))) }}"
+    validate_postgres_postgres_binary: "{{ (validate_postgres_postgres_bin_map.get(ndb_os_family, 'postgres')) | replace('%s', (postgres_major_version | default(db_version))) }}"
+    validate_postgres_pg_config_binary: "{{ (validate_postgres_pg_config_bin_map.get(ndb_os_family, 'pg_config')) | replace('%s', (postgres_major_version | default(db_version))) }}"
+    validate_postgres_service_check:
+      label: postgresql
+      unit: "{{ 'postgresql-' + (postgres_major_version | default(db_version)) + '.service' if ndb_os_family == 'RedHat' else 'postgresql.service' }}"
+    validate_service_checks:
+      - label: firewalld
+        unit: firewalld.service
+      - label: chrony
+        unit: "{{ 'chronyd.service' if ndb_os_family == 'RedHat' else 'chrony.service' }}"
+      - label: cron
+        unit: "{{ 'crond.service' if ndb_os_family == 'RedHat' else 'cron.service' }}"
+
+- name: Check required services are active
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ item.unit }}"
+  loop: "{{ validate_service_checks }}"
+  loop_control:
+    label: "{{ item.label }}"
+  register: validate_service_active_result
+  retries: "{{ validate_service_active_retries }}"
+  delay: "{{ validate_service_active_delay }}"
+  until: validate_service_active_result.stdout == "active"
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Assert required services are active
+  ansible.builtin.assert:
+    that:
+      - item.stdout == "active"
+    fail_msg: "Expected service {{ item.item.unit }} to be active, got {{ item.stdout | default('') | trim }}"
+  loop: "{{ validate_service_active_result.results }}"
+  loop_control:
+    label: "{{ item.item.label }}"
+
+- name: Check required services are enabled
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - "{{ item.unit }}"
+  loop: "{{ validate_service_checks }}"
+  loop_control:
+    label: "{{ item.label }}"
+  register: validate_service_enabled_results
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Assert required services are enabled
+  ansible.builtin.assert:
+    that:
+      - item.stdout in validate_enabled_status_values
+    fail_msg: "Expected service {{ item.item.unit }} to be enabled, got {{ item.stdout | default('') | trim }}"
+  loop: "{{ validate_service_enabled_results.results }}"
+  loop_control:
+    label: "{{ item.item.label }}"
+
+- name: Run shared NDB image validation checks
+  ansible.builtin.include_role:
+    name: validate_common
+
+- name: Check packaged PostgreSQL service is inactive
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ validate_postgres_service_check.unit }}"
+  register: validate_postgres_service_active
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Assert packaged PostgreSQL service is inactive
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_service_active.stdout != "active"
+    fail_msg: "Expected packaged PostgreSQL service {{ validate_postgres_service_check.unit }} to be inactive so NDB can bind port 5432, got {{ validate_postgres_service_active.stdout | default('') | trim }}"
+
+- name: Check packaged PostgreSQL service is disabled
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - "{{ validate_postgres_service_check.unit }}"
+  register: validate_postgres_service_enabled
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Assert packaged PostgreSQL service is disabled
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_service_enabled.stdout in validate_disabled_status_values
+    fail_msg: "Expected packaged PostgreSQL service {{ validate_postgres_service_check.unit }} to be disabled so NDB-provisioned VMs boot without a default PostgreSQL listener, got {{ validate_postgres_service_enabled.stdout | default('') | trim }}"
+
+- name: Check PostgreSQL listener port is free
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ss -H -ltn "( sport = :{{ listener_port | default(5432) }} )"
+  args:
+    executable: /bin/bash
+  register: validate_postgres_listener_check
+  changed_when: false
+  become: true
+
+- name: Assert PostgreSQL listener port is free
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_listener_check.stdout | trim == ""
+    fail_msg: "Expected no packaged PostgreSQL process to listen on port {{ listener_port | default(5432) }}, got {{ validate_postgres_listener_check.stdout | trim }}"
+
+- name: Check NDB sudoers drop-in exists
+  ansible.builtin.stat:
+    path: "{{ validate_sudoers_path }}"
+  register: validate_ndb_sudoers_stat
+  when: configure_ndb_sudoers | default(false) | bool
+  become: true
+
+- name: Assert NDB sudoers drop-in exists
+  ansible.builtin.assert:
+    that:
+      - validate_ndb_sudoers_stat.stat.exists
+      - validate_ndb_sudoers_stat.stat.mode | default('') == "0440"
+    fail_msg: "Expected sudoers drop-in {{ validate_sudoers_path }} with mode 0440"
+  when: configure_ndb_sudoers | default(false) | bool
+
+- name: Validate sudoers configuration
+  ansible.builtin.command:
+    argv:
+      - visudo
+      - -cf
+      - /etc/sudoers
+  register: validate_sudoers_check
+  changed_when: false
+  when: configure_ndb_sudoers | default(false) | bool
+  become: true
+
+- name: Check PostgreSQL client version
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_postgres_psql_binary }}"
+      - --version
+  register: validate_psql_version
+  changed_when: false
+  become: true
+
+- name: Assert PostgreSQL client version matches matrix selection
+  ansible.builtin.assert:
+    that:
+      - validate_psql_version.stdout is regex("(^|\\s)" ~ validate_postgres_major_version ~ "(\\.|\\s|$)")
+    fail_msg: "Expected psql version {{ validate_postgres_major_version }}, got {{ validate_psql_version.stdout | default('') | trim }}"
+
+- name: Check PostgreSQL server binary version
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_postgres_postgres_binary }}"
+      - --version
+  register: validate_postgres_server_version
+  changed_when: false
+  become: true
+  become_user: postgres
+
+- name: Assert PostgreSQL server version matches matrix selection
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_server_version.stdout is regex("(^|\\s)" ~ validate_postgres_major_version ~ "(\\.|\\s|$)")
+    fail_msg: "Expected PostgreSQL server version {{ validate_postgres_major_version }}, got {{ validate_postgres_server_version.stdout | default('') | trim }}"
+
+- name: Assert PostgreSQL server version matches release-note package pin
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_server_version.stdout is regex("(^|\\s)" ~ (postgres_package_version_prefix | regex_escape) ~ "(\\.|\\s|\\-|$)")
+    fail_msg: "Expected PostgreSQL {{ postgres_package_version_prefix }} from NDB-qualified range {{ postgres_qualified_version_range | default('not specified') }}, got {{ validate_postgres_server_version.stdout | default('') | trim }}"
+  when: postgres_package_version_prefix | default('') | length > 0
+
+- name: Check PostgreSQL pg_config version
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_postgres_pg_config_binary }}"
+      - --version
+  register: validate_postgres_pg_config_version
+  changed_when: false
+  become: true
+
+- name: Assert PostgreSQL pg_config version matches matrix selection
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_pg_config_version.stdout is regex("(^|\\s)" ~ validate_postgres_major_version ~ "(\\.|\\s|$)")
+    fail_msg: "Expected pg_config version {{ validate_postgres_major_version }}, got {{ validate_postgres_pg_config_version.stdout | default('') | trim }}"
+
+- name: Assert PostgreSQL pg_config version matches release-note package pin
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_pg_config_version.stdout is regex("(^|\\s)" ~ (postgres_package_version_prefix | regex_escape) ~ "(\\.|\\s|\\-|$)")
+    fail_msg: "Expected pg_config {{ postgres_package_version_prefix }} from NDB-qualified range {{ postgres_qualified_version_range | default('not specified') }}, got {{ validate_postgres_pg_config_version.stdout | default('') | trim }}"
+  when: postgres_package_version_prefix | default('') | length > 0
+
+- name: Derive expected PostgreSQL HA component versions
+  ansible.builtin.set_fact:
+    validate_postgres_patroni_versions: "{{ (postgres_ha_components | default({})).get('patroni', []) }}"
+    validate_postgres_etcd_versions: "{{ (postgres_ha_components | default({})).get('etcd', []) }}"
+    validate_postgres_haproxy_versions: "{{ (postgres_ha_components | default({})).get('haproxy', []) }}"
+    validate_postgres_keepalived_versions: "{{ (postgres_ha_components | default({})).get('keepalived', []) }}"
+
+- name: Select expected PostgreSQL HA component versions
+  ansible.builtin.set_fact:
+    validate_postgres_patroni_version: "{{ validate_postgres_patroni_versions[0] if validate_postgres_patroni_versions | length > 0 else '' }}"
+    validate_postgres_etcd_version: "{{ validate_postgres_etcd_versions[0] if validate_postgres_etcd_versions | length > 0 else '' }}"
+
+- name: Check Patroni version
+  ansible.builtin.command:
+    argv:
+      - patroni
+      - --version
+  register: validate_patroni_version
+  changed_when: false
+  when: validate_postgres_patroni_version | length > 0
+
+- name: Assert Patroni version matches matrix selection
+  ansible.builtin.assert:
+    that:
+      - validate_patroni_version.stdout is regex("patroni\\s+" ~ (validate_postgres_patroni_version | regex_escape))
+    fail_msg: "Expected Patroni {{ validate_postgres_patroni_version }}, got {{ validate_patroni_version.stdout | default(validate_patroni_version.stderr | default('')) | trim }}"
+  when: validate_postgres_patroni_version | length > 0
+
+- name: Check etcd version
+  ansible.builtin.command:
+    argv:
+      - etcd
+      - --version
+  register: validate_etcd_version
+  changed_when: false
+  when: validate_postgres_etcd_version | length > 0
+
+- name: Assert etcd version matches matrix selection
+  ansible.builtin.assert:
+    that:
+      - validate_etcd_version.stdout is regex("etcd Version:\\s+" ~ (validate_postgres_etcd_version | regex_escape))
+    fail_msg: "Expected etcd {{ validate_postgres_etcd_version }}, got {{ validate_etcd_version.stdout | default(validate_etcd_version.stderr | default('')) | trim }}"
+  when: validate_postgres_etcd_version | length > 0
+
+- name: Check HAProxy is installed
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/haproxy
+      - -v
+  register: validate_haproxy_version
+  changed_when: false
+  when: validate_postgres_haproxy_versions | length > 0
+
+# No version assert for HAProxy/Keepalived: unlike Patroni/etcd (installed
+# at the matrix-pinned version), these come from the distro repositories at
+# whatever version the distro ships, so the matrix ha_components entries
+# document NDB qualification rather than the installed version.
+- name: Check Keepalived is installed
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/keepalived
+      - --version
+  register: validate_keepalived_version
+  changed_when: false
+  when: validate_postgres_keepalived_versions | length > 0
+
+- name: Initialize PostgreSQL extension validation planning
+  ansible.builtin.set_fact:
+    validate_expected_postgres_extensions: []
+    validate_postgres_extensions_skipped: []
+  when:
+    - postgres_extensions | default([]) | length > 0 or postgres_extensions_to_create | default([]) | length > 0
+
+- name: Use explicit PostgreSQL extension creation list when provided
+  ansible.builtin.set_fact:
+    validate_expected_postgres_extensions: "{{ postgres_extensions_to_create | default([]) | unique }}"
+  when:
+    - postgres_extensions_to_create | default([]) | length > 0
+
+- name: Derive expected PostgreSQL extensions from extension metadata
+  ansible.builtin.set_fact:
+    validate_expected_postgres_extensions: "{{ ((validate_expected_postgres_extensions | default([])) + (version_supported | ternary([sql_extension_name], []))) | unique }}"
+    validate_postgres_extensions_skipped: "{{ (validate_postgres_extensions_skipped | default([])) + (version_supported | ternary([], [extension_name ~ ': ' ~ skip_reason])) }}"
+  loop: "{{ postgres_extensions | default([]) }}"
+  loop_control:
+    loop_var: extension_name
+  vars:
+    extension_metadata_family: "{{ postgres_extension_metadata.get(ndb_os_family, {}) }}"
+    extension_metadata: "{{ extension_metadata_family.get(extension_name, {}) }}"
+    unsupported_versions: "{{ extension_metadata.get('unsupported_versions', []) }}"
+    supported_versions: "{{ extension_metadata.get('supported_versions', []) }}"
+    version_supported: "{{ (supported_versions | length == 0 or validate_postgres_major_version in supported_versions) and (validate_postgres_major_version not in unsupported_versions) }}"  # noqa: jinja[invalid] - extension_name/extension_metadata are loop vars the linter cannot statically render
+    sql_extension_name: "{{ extension_metadata.get('sql_name', extension_name) }}"
+    skip_reason: "{{ extension_metadata.get('reason', 'unsupported on PostgreSQL ' ~ validate_postgres_major_version) }}"
+  when:
+    - postgres_extensions_to_create | default([]) | length == 0
+    - postgres_extensions | default([]) | length > 0
+
+- name: Assert all requested PostgreSQL extensions are validated
+  ansible.builtin.assert:
+    that:
+      - validate_postgres_extensions_skipped | default([]) | length == 0
+    fail_msg: "Requested PostgreSQL extensions were skipped and cannot be validated: {{ validate_postgres_extensions_skipped | default([]) | join(', ') }}"
+  when:
+    - postgres_extensions_to_create | default([]) | length == 0
+    - postgres_extensions | default([]) | length > 0
+    - not validate_postgres_extensions_allow_skips | default(postgres_extensions_allow_skips | default(false)) | bool
+
+- name: Get PostgreSQL shared extension directory
+  ansible.builtin.command:
+    argv:
+      - "{{ validate_postgres_pg_config_binary }}"
+      - --sharedir
+  register: validate_postgres_sharedir
+  changed_when: false
+  when:
+    - validate_expected_postgres_extensions | default([]) | length > 0
+
+- name: Check expected PostgreSQL extension control files exist
+  ansible.builtin.stat:
+    path: "{{ validate_postgres_sharedir.stdout | trim }}/extension/{{ item }}.control"
+  loop: "{{ validate_expected_postgres_extensions | default([]) }}"
+  register: validate_extension_control_results
+  when:
+    - validate_expected_postgres_extensions | default([]) | length > 0
+
+- name: Assert expected PostgreSQL extension control files exist
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+    fail_msg: "Expected PostgreSQL extension control file for {{ item.item }} under {{ validate_postgres_sharedir.stdout | trim }}/extension"
+  loop: "{{ validate_extension_control_results.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"

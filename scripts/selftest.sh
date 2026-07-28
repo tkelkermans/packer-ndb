@@ -38,6 +38,16 @@ pass() {
   SELFTEST_PASS_COUNT=$((SELFTEST_PASS_COUNT + 1))
 }
 
+# Every NDB version tree present in the repo. Suites iterate this instead of a
+# hardcoded list so a newly scaffolded release is covered automatically.
+selftest_ndb_versions() {
+  local dir
+  for dir in "$ROOT_DIR"/ansible/*/; do
+    [[ -d "$dir" ]] || continue
+    basename "$dir"
+  done
+}
+
 usage() {
   cat <<'EOF'
 Usage: scripts/selftest.sh [--filter REGEX]

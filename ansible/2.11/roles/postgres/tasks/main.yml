@@ -1,0 +1,569 @@
+---
+- name: Normalize OS facts
+  ansible.builtin.set_fact:
+    ndb_os_family: "{{ ansible_facts['os_family'] }}"
+    ndb_distribution_major_version: "{{ ansible_facts['distribution_major_version'] }}"
+    ndb_distribution_release: "{{ ansible_facts['distribution_release'] }}"
+    postgres_major_version: "{{ postgres_version_map[db_version] }}"
+    postgres_package_version_prefix_normalized: "{{ postgres_package_version_prefix | default('') | string | trim }}"
+    postgres_package_use_archive_normalized: "{{ postgres_package_use_archive | default(false) | bool }}"
+
+- name: Derive PostgreSQL service name
+  ansible.builtin.set_fact:
+    postgres_service_name: "{{ 'postgresql-' ~ postgres_major_version if ndb_os_family == 'RedHat' else 'postgresql' }}"
+
+- name: Derive PostgreSQL package names
+  ansible.builtin.set_fact:
+    postgres_redhat_server_package_name: "postgresql{{ postgres_major_version }}-server"
+    postgres_debian_server_package_name: "postgresql-{{ postgres_major_version }}"
+    postgres_debian_client_package_name: "postgresql-client-{{ postgres_major_version }}"
+    postgres_debian_contrib_package_name: "postgresql-contrib-{{ postgres_major_version }}"
+    postgres_contrib_package_name: "{{ 'postgresql' + postgres_major_version + '-contrib' if ndb_os_family == 'RedHat' else 'postgresql-contrib-' + postgres_major_version }}"
+
+- name: Import PostgreSQL GPG key (RedHat)
+  ansible.builtin.rpm_key:
+    state: present
+    key: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+  register: postgres_redhat_gpg_key_result
+  retries: 6
+  delay: 10
+  until: postgres_redhat_gpg_key_result is succeeded
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Import PostgreSQL GPG key (Debian)
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Download PostgreSQL GPG key (Debian)
+  ansible.builtin.get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /etc/apt/keyrings/postgresql.asc
+    owner: root
+    group: root
+    mode: "0644"
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Add PostgreSQL repository (RHEL/Rocky)
+  ansible.builtin.yum:
+    name: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ndb_distribution_major_version }}-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
+    state: present
+    disable_gpg_check: true
+  register: postgres_redhat_repo_result
+  retries: 6
+  delay: 10
+  until: postgres_redhat_repo_result is succeeded
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Import EPEL GPG key (RHEL/Rocky PostGIS dependencies)
+  ansible.builtin.rpm_key:
+    state: present
+    key: "https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-{{ ndb_distribution_major_version }}"
+  register: epel_gpg_key_result
+  retries: 6
+  delay: 10
+  until: epel_gpg_key_result is succeeded
+  when: ndb_os_family == "RedHat" and 'postgis' in postgres_extensions
+  become: true
+
+- name: Add EPEL repository (RHEL/Rocky PostGIS dependencies)
+  ansible.builtin.yum:
+    name: "https://dl.fedoraproject.org/pub/epel/epel-release-latest-{{ ndb_distribution_major_version }}.noarch.rpm"
+    state: present
+  register: epel_repo_result
+  retries: 6
+  delay: 10
+  until: epel_repo_result is succeeded
+  when: ndb_os_family == "RedHat" and 'postgis' in postgres_extensions
+  become: true
+
+- name: Add PostgreSQL repository (Debian/Ubuntu)
+  ansible.builtin.deb822_repository:
+    name: pgdg
+    types: deb
+    uris: https://apt.postgresql.org/pub/repos/apt
+    suites: "{{ ndb_distribution_release }}-pgdg"
+    components: main
+    signed_by: /etc/apt/keyrings/postgresql.asc
+    state: present
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Add PostgreSQL archive repository for pinned packages (Debian/Ubuntu)
+  ansible.builtin.deb822_repository:
+    name: pgdg-archive
+    types: deb
+    uris: https://apt-archive.postgresql.org/pub/repos/apt
+    suites: "{{ ndb_distribution_release }}-pgdg-archive"
+    components: main
+    signed_by: /etc/apt/keyrings/postgresql.asc
+    state: present
+  when:
+    - ndb_os_family == "Debian"
+    - postgres_package_use_archive_normalized | bool
+  become: true
+
+- name: Download TimescaleDB GPG key (Debian/Ubuntu)
+  ansible.builtin.get_url:
+    url: https://packagecloud.io/timescale/timescaledb/gpgkey
+    dest: /etc/apt/keyrings/timescale_timescaledb.asc
+    owner: root
+    group: root
+    mode: "0644"
+  when: ndb_os_family == "Debian" and 'timescaledb' in postgres_extensions
+  become: true
+
+- name: Install TimescaleDB GPG keyring (Debian/Ubuntu)
+  ansible.builtin.command:
+    argv:
+      - gpg
+      - --dearmor
+      - --yes
+      - --output
+      - /etc/apt/keyrings/timescale_timescaledb-archive-keyring.gpg
+      - /etc/apt/keyrings/timescale_timescaledb.asc
+    creates: /etc/apt/keyrings/timescale_timescaledb-archive-keyring.gpg
+  when: ndb_os_family == "Debian" and 'timescaledb' in postgres_extensions
+  become: true
+
+- name: Add TimescaleDB repository (Debian/Ubuntu)
+  ansible.builtin.deb822_repository:
+    name: timescaledb
+    types: deb
+    uris: https://packagecloud.io/timescale/timescaledb/ubuntu/
+    suites: "{{ ndb_distribution_release }}"
+    components: main
+    signed_by: /etc/apt/keyrings/timescale_timescaledb-archive-keyring.gpg
+    state: present
+  when: ndb_os_family == "Debian" and 'timescaledb' in postgres_extensions
+  become: true
+
+# deb822_repository does not refresh the apt cache the way apt_repository's
+# update_cache did; refresh once after all Debian-family repos are declared.
+- name: Refresh apt cache after PostgreSQL repository changes (Debian/Ubuntu)
+  ansible.builtin.apt:
+    update_cache: true
+    lock_timeout: 600
+  register: postgres_apt_refresh_result
+  retries: 6
+  delay: 10
+  until: postgres_apt_refresh_result is succeeded
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Disable the built-in PostgreSQL module (RHEL/Rocky)
+  ansible.builtin.command:
+    cmd: "dnf -qy module disable postgresql"
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Install PostgreSQL (RHEL/Rocky)
+  ansible.builtin.package:
+    name: "{{ postgres_redhat_server_package_name }}"
+    state: present
+  register: postgres_redhat_install_result
+  retries: 6
+  delay: 10
+  until: postgres_redhat_install_result is succeeded
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Resolve pinned PostgreSQL server package version (Debian/Ubuntu)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    postgres_candidate_versions=$(apt-cache madison "$POSTGRES_PACKAGE_NAME")
+    awk -v prefix="$POSTGRES_PACKAGE_PREFIX" '$3 == prefix || index($3, prefix "-") == 1 || index($3, prefix ".") == 1 { print $3; exit }' <<<"$postgres_candidate_versions"
+  args:
+    executable: /bin/bash
+  environment:
+    POSTGRES_PACKAGE_NAME: "{{ postgres_debian_server_package_name }}"
+    POSTGRES_PACKAGE_PREFIX: "{{ postgres_package_version_prefix_normalized }}"
+  register: postgres_resolved_server_package_version
+  changed_when: false
+  when:
+    - ndb_os_family == "Debian"
+    - postgres_package_version_prefix_normalized | length > 0
+  become: true
+
+- name: Resolve pinned PostgreSQL client package version (Debian/Ubuntu)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    postgres_candidate_versions=$(apt-cache madison "$POSTGRES_PACKAGE_NAME")
+    awk -v prefix="$POSTGRES_PACKAGE_PREFIX" '$3 == prefix || index($3, prefix "-") == 1 || index($3, prefix ".") == 1 { print $3; exit }' <<<"$postgres_candidate_versions"
+  args:
+    executable: /bin/bash
+  environment:
+    POSTGRES_PACKAGE_NAME: "{{ postgres_debian_client_package_name }}"
+    POSTGRES_PACKAGE_PREFIX: "{{ postgres_package_version_prefix_normalized }}"
+  register: postgres_resolved_client_package_version
+  changed_when: false
+  when:
+    - ndb_os_family == "Debian"
+    - postgres_package_version_prefix_normalized | length > 0
+  become: true
+
+- name: Assert pinned PostgreSQL packages are available (Debian/Ubuntu)
+  ansible.builtin.assert:
+    that:
+      - postgres_resolved_server_package_version.stdout | trim | length > 0
+      - postgres_resolved_client_package_version.stdout | trim | length > 0
+    fail_msg: "Expected PostgreSQL {{ postgres_package_version_prefix_normalized }} server and client packages for {{ ndb_distribution_release }} in the configured PGDG repositories. Set postgres_package_use_archive=true for historical PGDG packages or update the matrix pin."
+  when:
+    - ndb_os_family == "Debian"
+    - postgres_package_version_prefix_normalized | length > 0
+
+- name: Derive Debian PostgreSQL package specs
+  ansible.builtin.set_fact:
+    postgres_debian_server_package_spec: "{{ postgres_debian_server_package_name ~ (('=' ~ (postgres_resolved_server_package_version.stdout | trim)) if postgres_package_version_prefix_normalized | length > 0 else '') }}"
+    postgres_debian_client_package_spec: "{{ postgres_debian_client_package_name ~ (('=' ~ (postgres_resolved_client_package_version.stdout | trim)) if postgres_package_version_prefix_normalized | length > 0 else '') }}"
+    postgres_debian_contrib_package_spec: "{{ postgres_debian_contrib_package_name }}"
+  when: ndb_os_family == "Debian"
+
+- name: Install PostgreSQL (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name:
+      - "{{ postgres_debian_server_package_spec }}"
+      - "{{ postgres_debian_client_package_spec }}"
+    state: present
+    lock_timeout: 600
+  register: apt_postgresql_install_result
+  retries: 6
+  delay: 10
+  until: apt_postgresql_install_result is succeeded
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Check if data directory is initialized (RHEL/Rocky)
+  ansible.builtin.stat:
+    path: "/var/lib/pgsql/{{ postgres_version_map[db_version] }}/data/postgresql.conf"
+  register: postgres_data
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Initialize the database (RHEL/Rocky)
+  ansible.builtin.command:
+    cmd: "/usr/pgsql-{{ postgres_version_map[db_version] }}/bin/postgresql-{{ postgres_version_map[db_version] }}-setup initdb"
+  when: ndb_os_family == "RedHat" and not postgres_data.stat.exists
+  become: true
+
+- name: Determine psql binary path
+  ansible.builtin.set_fact:
+    postgres_psql_binary: "{{ (postgres_psql_bin_map.get(ndb_os_family) | default('psql')) | replace('%s', postgres_major_version) }}"
+
+- name: Determine postgresql.conf path
+  ansible.builtin.set_fact:
+    postgres_config_file: "{{ (postgres_conf_path_map.get(ndb_os_family) | default('/var/lib/pgsql/%s/data/postgresql.conf')) | replace('%s', postgres_major_version) }}"
+
+- name: Install PostgreSQL contrib package (RHEL/Rocky)
+  ansible.builtin.package:
+    name: "{{ postgres_contrib_package_name }}"
+    state: present
+  register: postgres_redhat_contrib_result
+  retries: 6
+  delay: 10
+  until: postgres_redhat_contrib_result is succeeded
+  when: ndb_os_family == "RedHat"
+  become: true
+
+- name: Install PostgreSQL contrib package (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ postgres_debian_contrib_package_spec }}"
+    state: present
+    lock_timeout: 600
+  register: apt_postgresql_contrib_result
+  retries: 6
+  delay: 10
+  until: apt_postgresql_contrib_result is succeeded
+  when:
+    - ndb_os_family == "Debian"
+    - postgres_package_version_prefix_normalized | length == 0
+  become: true
+
+- name: Derive PostgreSQL HA component versions
+  ansible.builtin.set_fact:
+    postgres_patroni_versions: "{{ (postgres_ha_components | default({})).get('patroni', []) }}"
+    postgres_etcd_versions: "{{ (postgres_ha_components | default({})).get('etcd', []) }}"
+    postgres_haproxy_versions: "{{ (postgres_ha_components | default({})).get('haproxy', []) }}"
+    postgres_keepalived_versions: "{{ (postgres_ha_components | default({})).get('keepalived', []) }}"
+
+- name: Select PostgreSQL HA component versions
+  ansible.builtin.set_fact:
+    postgres_patroni_version: "{{ postgres_patroni_versions[0] if postgres_patroni_versions | length > 0 else '' }}"
+    postgres_etcd_version: "{{ postgres_etcd_versions[0] if postgres_etcd_versions | length > 0 else '' }}"
+    postgres_install_haproxy: "{{ postgres_haproxy_versions | length > 0 }}"
+    postgres_install_keepalived: "{{ postgres_keepalived_versions | length > 0 }}"
+
+- name: Install Patroni and PostgreSQL Python driver
+  ansible.builtin.shell: |
+    set -euo pipefail
+    pip_args=()
+    if python3 -m pip install --help | grep -q -- '--break-system-packages'; then
+      pip_args+=(--break-system-packages)
+    fi
+    python3 -m pip install "${pip_args[@]}" "patroni[etcd]=={{ postgres_patroni_version }}" psycopg2-binary
+  args:
+    executable: /bin/bash
+  register: postgres_patroni_pip_result
+  retries: 6
+  delay: 10
+  until: postgres_patroni_pip_result.rc == 0
+  changed_when: "'Successfully installed' in postgres_patroni_pip_result.stdout"
+  when: postgres_patroni_version | length > 0
+  become: true
+
+- name: Create etcd group
+  ansible.builtin.group:
+    name: etcd
+    system: true
+  when: postgres_etcd_version | length > 0
+  become: true
+
+- name: Create etcd user
+  ansible.builtin.user:
+    name: etcd
+    group: etcd
+    system: true
+    create_home: false
+  when: postgres_etcd_version | length > 0
+  become: true
+
+- name: Determine etcd binary architecture
+  ansible.builtin.set_fact:
+    postgres_etcd_arch: "{{ 'arm64' if ansible_facts['architecture'] in ['aarch64', 'arm64'] else 'amd64' }}"
+  when: postgres_etcd_version | length > 0
+
+- name: Download qualified etcd release
+  ansible.builtin.get_url:
+    url: "{{ postgres_etcd_download_base_url }}/v{{ postgres_etcd_version }}/etcd-v{{ postgres_etcd_version }}-linux-{{ postgres_etcd_arch }}.tar.gz"
+    dest: "/tmp/etcd-v{{ postgres_etcd_version }}-linux-{{ postgres_etcd_arch }}.tar.gz"
+    mode: "0644"
+  register: postgres_etcd_download_result
+  retries: 6
+  delay: 10
+  until: postgres_etcd_download_result is succeeded
+  when: postgres_etcd_version | length > 0
+  become: true
+
+- name: Extract qualified etcd release
+  ansible.builtin.unarchive:
+    src: "/tmp/etcd-v{{ postgres_etcd_version }}-linux-{{ postgres_etcd_arch }}.tar.gz"
+    dest: /tmp
+    remote_src: true
+  when: postgres_etcd_version | length > 0
+  become: true
+
+- name: Install qualified etcd binaries
+  ansible.builtin.copy:
+    src: "/tmp/etcd-v{{ postgres_etcd_version }}-linux-{{ postgres_etcd_arch }}/{{ item }}"
+    dest: "{{ postgres_ha_install_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: true
+  loop:
+    - etcd
+    - etcdctl
+  when: postgres_etcd_version | length > 0
+  become: true
+
+- name: Remove etcd download artifacts from /tmp
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/etcd-v{{ postgres_etcd_version }}-linux-{{ postgres_etcd_arch }}.tar.gz"
+    - "/tmp/etcd-v{{ postgres_etcd_version }}-linux-{{ postgres_etcd_arch }}"
+  when: postgres_etcd_version | length > 0
+  become: true
+
+- name: Install HAProxy package when qualified by the matrix
+  ansible.builtin.package:
+    name: haproxy
+    state: present
+  register: postgres_haproxy_install_result
+  retries: 6
+  delay: 10
+  until: postgres_haproxy_install_result is succeeded
+  when: postgres_install_haproxy | bool
+  become: true
+
+- name: Install Keepalived package when qualified by the matrix
+  ansible.builtin.package:
+    name: keepalived
+    state: present
+  register: postgres_keepalived_install_result
+  retries: 6
+  delay: 10
+  until: postgres_keepalived_install_result is succeeded
+  when: postgres_install_keepalived | bool
+  become: true
+
+- name: Start PostgreSQL service temporarily for extension setup
+  ansible.builtin.service:
+    name: "{{ postgres_service_name }}"
+    enabled: false
+    state: started
+  when: postgres_extensions | length > 0
+  become: true
+
+- name: Manage PostgreSQL extensions
+  when: postgres_extensions | length > 0
+  block:
+    - name: Initialize PostgreSQL extension planning
+      ansible.builtin.set_fact:
+        postgres_extension_packages_to_install: []
+        postgres_extension_dependencies_to_install: []
+        postgres_extensions_to_create: []
+        postgres_extension_preload_libraries: []
+        postgres_extension_configuration: {}
+        postgres_extensions_skipped: []
+
+    - name: Build PostgreSQL extension installation plan
+      ansible.builtin.set_fact:
+        postgres_extension_packages_to_install: "{{ postgres_extension_packages_to_install + (add_package | ternary([package_name], [])) }}"
+        postgres_extension_dependencies_to_install: "{{ postgres_extension_dependencies_to_install + (add_package | ternary(dependency_list, [])) }}"
+        postgres_extensions_to_create: "{{ postgres_extensions_to_create + (add_package | ternary([sql_extension_name], [])) }}"
+        postgres_extension_preload_libraries: "{{ postgres_extension_preload_libraries + (add_package | ternary(preload_libraries, [])) }}"
+        postgres_extension_configuration: "{{ postgres_extension_configuration | combine((add_package | ternary(config_settings, {})), recursive=True) }}"
+        postgres_extensions_skipped: "{{ postgres_extensions_skipped + ((add_package | ternary([], [extension_name ~ ': ' ~ skip_reason]))) }}"
+      loop: "{{ postgres_extensions }}"
+      loop_control:
+        loop_var: extension_name
+      vars:
+        extension_metadata_family: "{{ postgres_extension_metadata.get(ndb_os_family, {}) }}"
+        extension_metadata: "{{ extension_metadata_family.get(extension_name, {}) }}"
+        unsupported_versions: "{{ extension_metadata.get('unsupported_versions', []) }}"
+        supported_versions: "{{ extension_metadata.get('supported_versions', []) }}"
+        version_supported: "{{ (supported_versions | length == 0 or postgres_major_version in supported_versions) and (postgres_major_version not in unsupported_versions) }}"  # noqa: jinja[invalid] - extension_name/extension_metadata are loop vars the linter cannot statically render
+        package_override_map: "{{ extension_metadata.get('package_overrides', {}) }}"
+        package_override: "{{ package_override_map.get(postgres_major_version, '') }}"
+        base_template: "{{ (postgres_extension_package_map.get(ndb_os_family, {})).get(extension_name, '') }}"
+        package_name: "{{ package_override if package_override | length > 0 else ((base_template | length > 0) | ternary(base_template | format(postgres_major_version), '')) }}"
+        dependency_map: "{{ extension_metadata.get('dependencies', {}) }}"
+        dependency_default: "{{ dependency_map.get('default', []) }}"
+        dependency_list: "{{ dependency_map.get(postgres_major_version, dependency_default) }}"
+        sql_extension_name: "{{ extension_metadata.get('sql_name', extension_name) }}"
+        preload_libraries: "{{ extension_metadata.get('preload_libraries', []) }}"
+        config_settings: "{{ extension_metadata.get('config', {}) }}"
+        skip_reason: "{{ extension_metadata.get('reason', 'unsupported on PostgreSQL ' ~ postgres_major_version) }}"
+        add_package: "{{ version_supported and package_name | length > 0 }}"
+
+    - name: Report skipped PostgreSQL extensions
+      ansible.builtin.debug:
+        msg:
+          - "Some extensions were skipped:"
+          - "{{ postgres_extensions_skipped }}"
+      when: postgres_extensions_skipped | length > 0
+
+    - name: Assert all requested PostgreSQL extensions are installable
+      ansible.builtin.assert:
+        that:
+          - postgres_extensions_skipped | length == 0
+        fail_msg: "Requested PostgreSQL extensions were skipped and will not be installed: {{ postgres_extensions_skipped | join(', ') }}"
+      when:
+        - not postgres_extensions_allow_skips | default(false) | bool
+
+    - name: Deduplicate extension dependency packages
+      ansible.builtin.set_fact:
+        postgres_extension_dependencies_to_install: "{{ postgres_extension_dependencies_to_install | reject('equalto', '') | list | unique }}"
+      when: postgres_extension_dependencies_to_install | length > 0
+
+    - name: Install PostgreSQL extension dependency packages
+      ansible.builtin.package:
+        name: "{{ postgres_extension_dependencies_to_install }}"
+        state: present
+      register: postgres_redhat_extension_dependencies_result
+      retries: 6
+      delay: 10
+      until: postgres_redhat_extension_dependencies_result is succeeded
+      when: postgres_extension_dependencies_to_install | length > 0
+      become: true
+
+    - name: Deduplicate extension packages
+      ansible.builtin.set_fact:
+        postgres_extension_packages_to_install: "{{ postgres_extension_packages_to_install | reject('equalto', '') | list | unique }}"
+      when: postgres_extension_packages_to_install | length > 0
+
+    - name: Deduplicate extension preload libraries
+      ansible.builtin.set_fact:
+        postgres_extension_preload_libraries: "{{ postgres_extension_preload_libraries | reject('equalto', '') | list | unique }}"
+      when: postgres_extension_preload_libraries | length > 0
+
+    - name: Install requested PostgreSQL extension packages (RHEL/Rocky)
+      ansible.builtin.package:
+        name: "{{ postgres_extension_packages_to_install }}"
+        state: present
+      register: postgres_redhat_extension_packages_result
+      retries: 6
+      delay: 10
+      until: postgres_redhat_extension_packages_result is succeeded
+      when:
+        - ndb_os_family == "RedHat"
+        - postgres_extension_packages_to_install | length > 0
+      become: true
+
+    - name: Install requested PostgreSQL extension packages (Debian/Ubuntu)
+      ansible.builtin.apt:
+        name: "{{ postgres_extension_packages_to_install }}"
+        state: present
+        lock_timeout: 600
+      register: apt_postgres_extension_packages_result
+      retries: 6
+      delay: 10
+      until: apt_postgres_extension_packages_result is succeeded
+      when:
+        - ndb_os_family == "Debian"
+        - postgres_extension_packages_to_install | length > 0
+      become: true
+
+    - name: Configure shared_preload_libraries for requested PostgreSQL extensions
+      ansible.builtin.lineinfile:
+        path: "{{ postgres_config_file }}"
+        regexp: '^#?\s*shared_preload_libraries\s*='
+        line: "shared_preload_libraries = '{{ postgres_extension_preload_libraries | join(',') }}'"
+      when: postgres_extension_preload_libraries | length > 0
+      become: true
+
+    - name: Configure PostgreSQL settings required by requested extensions
+      ansible.builtin.lineinfile:
+        path: "{{ postgres_config_file }}"
+        regexp: "^#?\\s*{{ item.key | regex_escape }}\\s*="
+        line: "{{ item.key }} = '{{ item.value }}'"
+      loop: "{{ postgres_extension_configuration | dict2items }}"
+      when: postgres_extension_configuration | length > 0
+      become: true
+
+    - name: Restart PostgreSQL after extension configuration changes
+      ansible.builtin.service:
+        name: "{{ postgres_service_name }}"
+        state: restarted
+      when: postgres_extension_preload_libraries | length > 0 or postgres_extension_configuration | length > 0
+      become: true
+
+    - name: Ensure PostgreSQL extensions are created
+      ansible.builtin.command:
+        argv:
+          - "{{ postgres_psql_binary }}"
+          - -d
+          - "{{ item.0 }}"
+          - -c
+          - "CREATE EXTENSION IF NOT EXISTS \"{{ item.1 }}\";"
+      become: true
+      become_user: postgres
+      loop: "{{ postgres_extensions_databases | product(postgres_extensions_to_create) | list }}"
+      when: postgres_extensions_to_create | length > 0
+
+- name: Stop and disable packaged PostgreSQL service before image capture
+  ansible.builtin.service:
+    name: "{{ postgres_service_name }}"
+    enabled: false
+    state: stopped
+  become: true

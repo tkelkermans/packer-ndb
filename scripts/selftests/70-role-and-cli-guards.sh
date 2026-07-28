@@ -13,7 +13,7 @@ run_mongodb_dispatch_guard_tests() {
 }
 run_extension_strictness_tests() {
   local version
-  for version in 2.9 2.10; do
+  for version in $(selftest_ndb_versions); do
     grep -q "Assert all requested PostgreSQL extensions are installable" "$ROOT_DIR/ansible/$version/roles/postgres/tasks/main.yml" || fail "postgres role $version does not fail skipped requested extensions"
     grep -q "Assert all requested PostgreSQL extensions are validated" "$ROOT_DIR/ansible/$version/roles/validate_postgres/tasks/main.yml" || fail "validate_postgres role $version does not fail skipped requested extensions"
     grep -q "until: validate_service_active_result.stdout == \"active\"" "$ROOT_DIR/ansible/$version/roles/validate_postgres/tasks/main.yml" || fail "validate_postgres role $version does not wait for services to become active"
@@ -62,7 +62,7 @@ run_extension_strictness_tests() {
 }
 run_playbook_database_dispatch_tests() {
   local version
-  for version in 2.9 2.10; do
+  for version in $(selftest_ndb_versions); do
     grep -q "role: postgres" "$ROOT_DIR/ansible/$version/playbooks/site.yml" || fail "playbook $version missing postgres role dispatch"
     grep -q "role: mongodb" "$ROOT_DIR/ansible/$version/playbooks/site.yml" || fail "playbook $version missing mongodb role dispatch"
     grep -q "role: validate_mongodb" "$ROOT_DIR/ansible/$version/playbooks/site.yml" || fail "playbook $version missing validate_mongodb dispatch"
@@ -72,7 +72,7 @@ run_playbook_database_dispatch_tests() {
 }
 run_mongodb_role_static_tests() {
   local version
-  for version in 2.9 2.10; do
+  for version in $(selftest_ndb_versions); do
     grep -q "mongodb_edition" "$ROOT_DIR/ansible/$version/roles/mongodb/defaults/main.yml" || fail "mongodb role $version missing edition default"
     grep -q "repo.mongodb.org" "$ROOT_DIR/ansible/$version/roles/mongodb/tasks/main.yml" || fail "mongodb role $version missing community repository"
     grep -q "repo.mongodb.com" "$ROOT_DIR/ansible/$version/roles/mongodb/tasks/main.yml" || fail "mongodb role $version missing enterprise repository"
@@ -104,7 +104,7 @@ run_mongodb_role_static_tests() {
 }
 run_validate_mongodb_role_static_tests() {
   local version
-  for version in 2.9 2.10; do
+  for version in $(selftest_ndb_versions); do
     grep -q "validate_mongodb_service_active_retries" "$ROOT_DIR/ansible/$version/roles/validate_mongodb/defaults/main.yml" || fail "validate_mongodb role $version missing retry default"
     grep -q "mongod --version" "$ROOT_DIR/ansible/$version/roles/validate_mongodb/tasks/main.yml" || fail "validate_mongodb role $version does not check mongod version"
     grep -q "Check NDB-safe MongoDB software home binary" "$ROOT_DIR/ansible/$version/roles/validate_mongodb/tasks/main.yml" || fail "validate_mongodb role $version does not validate NDB-safe MongoDB software home"
@@ -139,7 +139,7 @@ run_ndb_common_runtime_guard_tests() {
   newline_less_pam_password=$(printf 'secret' | bash -c 'pam_password=""; IFS= read -r pam_password || true; printf "%s" "$pam_password"')
   [[ "$newline_less_pam_password" == "secret" ]] || fail "PAM auth-token read pattern does not preserve newline-less stdin"
 
-  for version in 2.9 2.10; do
+  for version in $(selftest_ndb_versions); do
     grep -q "numa=off" "$ROOT_DIR/ansible/$version/roles/common/vars/main.yml" || fail "common role $version missing NDB numa kernel arg default"
     grep -q "transparent_hugepage=never" "$ROOT_DIR/ansible/$version/roles/common/vars/main.yml" || fail "common role $version missing NDB transparent hugepage kernel arg default"
     grep -q "Persist NDB kernel arguments in GRUB defaults" "$ROOT_DIR/ansible/$version/roles/common/tasks/grub.yml" || fail "common role $version does not persist NDB kernel args"
@@ -346,7 +346,7 @@ run_ndb_common_runtime_guard_tests() {
 }
 run_image_prepare_tests() {
   local version
-  for version in 2.9 2.10; do
+  for version in $(selftest_ndb_versions); do
     grep -q -- "- image_prepare" "$ROOT_DIR/ansible/$version/playbooks/site.yml" || fail "playbook $version does not run final image preparation"
     grep -q "/usr/bin/cloud-init clean --logs --machine-id" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not reset cloud-init state"
     grep -q "/etc/netplan/50-cloud-init.yaml" "$ROOT_DIR/ansible/$version/roles/image_prepare/tasks/main.yml" || fail "image_prepare role $version does not remove generated Ubuntu netplan"
@@ -493,7 +493,7 @@ run_ansible_fact_normalization_guard_tests() {
 run_debian_libaio_package_guard_tests() {
   local version vars_file
 
-  for version in 2.9 2.10; do
+  for version in $(selftest_ndb_versions); do
     vars_file="$ROOT_DIR/ansible/$version/roles/common/vars/main.yml"
 
     grep -q "debian_libaio_package" "$vars_file" "$ROOT_DIR/ansible/$version/roles/common/tasks/packages.yml" || fail "NDB $version common role does not derive Debian libaio package by OS release"
@@ -507,7 +507,7 @@ run_debian_libaio_package_guard_tests() {
 run_debian_common_package_guard_tests() {
   local version vars_file
 
-  for version in 2.9 2.10; do
+  for version in $(selftest_ndb_versions); do
     vars_file="$ROOT_DIR/ansible/$version/roles/common/vars/main.yml"
     grep -qE '^[[:space:]]*-[[:space:]]+cron$' "$vars_file" || fail "NDB $version common role does not install cron before managing cron.service on Debian"
   done

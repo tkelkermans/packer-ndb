@@ -1094,7 +1094,8 @@ this README):
 .
 |-- ansible/
 |   |-- 2.9/
-|   `-- 2.10/
+|   |-- 2.10/
+|   `-- 2.11/
 |-- build.sh
 |-- customizations/
 |-- docs/
@@ -1103,7 +1104,8 @@ this README):
 |-- manifests/
 |-- ndb/
 |   |-- 2.9/
-|   `-- 2.10/
+|   |-- 2.10/
+|   `-- 2.11/
 |-- packer/
 |   |-- database.pkr.hcl
 |   |-- http/user-data          (build cloud-init)
