@@ -1,4 +1,14 @@
-# Lessons
+# Operational Lessons
+
+Behaviour of NDB, Nutanix AHV, cloud-init and the guest operating systems that
+is not obvious from their documentation, and that this project has hit in
+practice. Read this before changing anything related to NDB provisioning, PAM
+and SSH on Debian-family clones, storage and device-mapper handling, or image
+capture — several of these took a long time to diagnose and are easy to
+reintroduce.
+
+Each entry is written as guidance, not history: if you learn something the hard
+way, add it here in the same style.
 
 - Do not treat a manually remediated live VM as proof that the saved image is correct. If NDB profile creation only succeeds after live package installs, rebuild the image from the project code and recreate the profile from that rebuilt image.
 - PostgreSQL software profile creation in NDB checks HA support binaries even when the first provisioned database is a single instance. Matrix `ha_components` must be passed into Ansible, installed, validated, shown in the wizard, and reflected in the image name.

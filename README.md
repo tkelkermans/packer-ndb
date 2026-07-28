@@ -15,7 +15,7 @@
 
 ## What This Tool Does
 
-This repository builds Nutanix Database Service (NDB) image artifacts with Packer, Ansible, Terraform-backed Packer plugins, and shell scripts.
+This repository builds Nutanix Database Service (NDB) gold images on Nutanix AHV. Packer creates a temporary builder VM through Prism Central, Ansible installs and validates the database engine inside it, and the result is saved back to Prism as a reusable image that NDB can turn into a software profile.
 
 The normal workflow is:
 
@@ -43,18 +43,27 @@ Install these commands on your workstation:
 - `ssh`
 - `base64`
 
-For long live validation runs, prefer `ansible-core` 2.18.x. Newer Ansible controller versions can fail on some targets with module result deserialization errors before the build reaches extension validation. A temporary local runtime is enough:
+`ansible-core` 2.16 or newer is required. If a specific controller version ever
+misbehaves against your targets, a throwaway virtualenv is enough to pin one:
 
 ```bash
-python3.11 -m venv /tmp/ndb-ansible-2.18
-/tmp/ndb-ansible-2.18/bin/python -m pip install 'ansible-core>=2.18,<2.19'
-export PATH="/tmp/ndb-ansible-2.18/bin:$PATH"
+python3 -m venv /tmp/ndb-ansible
+/tmp/ndb-ansible/bin/python -m pip install 'ansible-core>=2.16'
+export PATH="/tmp/ndb-ansible/bin:$PATH"
 ```
 
 The build also needs an SSH keypair in `packer/id_rsa` and `packer/id_rsa.pub`. If you need to create one:
 
 ```bash
 ssh-keygen -t rsa -b 4096 -C "packer@nutanix" -f packer/id_rsa -N ""
+```
+
+Both halves must belong to the same keypair. If `packer/id_rsa` is ever
+regenerated without its `.pub`, cloud-init injects a public key the private key
+cannot answer and every build stops at `Timeout waiting for SSH`. Check with:
+
+```bash
+diff <(ssh-keygen -y -f packer/id_rsa) packer/id_rsa.pub && echo "keypair OK"
 ```
 
 Initialize the Packer plugins once on a new workstation:
@@ -69,8 +78,27 @@ Copy the template and edit `.env` with your Prism Central details:
 
 ```bash
 cp .env.example .env
-source .env
 ```
+
+How you load it depends on where the values come from:
+
+- **Plain file you manage yourself** — export the variables into your shell:
+
+  ```bash
+  set -a; . ./.env; set +a
+  ```
+
+- **Secret manager (1Password `op run` and similar)** — pass the file to the
+  command instead, and run one such command at a time:
+
+  ```bash
+  op run --env-file=.env -- ./build.sh --ci --dry-run --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
+  ```
+
+  When a secret manager supplies `.env` it may be a managed named pipe rather
+  than a regular file. Never `cat`, `source`, or otherwise read such a file
+  directly — a direct read blocks and consumes the stream. `.env.example` is
+  always safe to read as the schema reference.
 
 ### 3. Use The Guided Wizard
 
@@ -276,12 +304,9 @@ Temporary files are removed automatically. Manifests are ignored by git because 
 
 ## Environment Variables
 
-The easiest setup is:
-
-```bash
-cp .env.example .env
-source .env
-```
+`.env.example` is the schema reference; see
+[Create Your Environment File](#2-create-your-environment-file) for how to load
+your own `.env` safely.
 
 The important Prism variables are:
 
@@ -294,11 +319,19 @@ export PKR_VAR_subnet_name="<your-subnet-name>"
 export PKR_VAR_nutanix_insecure="true"
 ```
 
-TLS verification to Prism Central is **on by default** (the Packer variable
-defaults to `false`-insecure, and `scripts/prism.sh` only passes `curl -k`
-when opted in). Keep `PKR_VAR_nutanix_insecure="true"` only for labs with
-self-signed Prism certificates; unset it or set `"false"` when Prism has a
-trusted certificate.
+TLS verification to Prism Central is **on by default**: `nutanix_insecure`
+defaults to `false`, and the helper scripts only skip certificate verification
+when you opt in. Set `PKR_VAR_nutanix_insecure="true"` only for labs with
+self-signed Prism certificates; leave it unset or `"false"` when Prism presents
+a trusted certificate.
+
+Two optional timeouts bound every Prism REST call, which is useful on slow or
+VPN-backed links:
+
+```bash
+export PRISM_API_CONNECT_TIMEOUT="15"   # seconds to establish a connection
+export PRISM_API_MAX_TIME="300"         # seconds for a whole request
+```
 
 Optional build VM sizing overrides:
 
@@ -614,6 +647,26 @@ NDB profile IDs:
 - `NDB_E2E_POSTGRES_DB_PARAM_PROFILE_ID` is required for PostgreSQL rows.
 - `NDB_E2E_MONGODB_DB_PARAM_PROFILE_ID` is required for MongoDB rows.
 - `NDB_E2E_MONGODB_NETWORK_PROFILE_ID` is optional. If omitted, the script discovers the first READY MongoDB network profile.
+
+Those IDs are read-only lookups against your own NDB server, so you can list
+them instead of hunting through the UI. Each command prints `id  name` pairs;
+pick the ones you want and store them with your other secrets:
+
+```bash
+op run --env-file=.env -- bash -c '
+cfg=$(printf "user = \"%s:%s\"" "$NDB_SERVER_USER" "$NDB_SERVER_PASSWORD")
+api() { curl -sSk --max-time 60 --config - "https://${NDB_SERVER_ADDRESS}:8443/era/v0.9$1" <<<"$cfg"; }
+api /clusters                     | jq -r ".[]? | select(.status==\"UP\") | \"\(.id)  \(.name)\""
+api /profiles?type=Compute        | jq -r ".[]? | \"\(.id)  \(.name)\""
+api /slas                         | jq -r ".[]? | \"\(.id)  \(.name)\""
+api /profiles?type=Network        | jq -r ".[]? | \"\(.id)  \(.name)  \(.engineType)\""
+api /profiles?type=Database_Parameter | jq -r ".[]? | \"\(.id)  \(.name)  \(.engineType)\""
+'
+```
+
+Network and database-parameter profiles are engine-specific: a PostgreSQL
+network profile cannot provision MongoDB, so match `engineType` to the rows you
+intend to run.
 
 First preview the rows it will run:
 

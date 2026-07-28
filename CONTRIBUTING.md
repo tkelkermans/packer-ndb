@@ -32,8 +32,8 @@ jq empty images.json ndb/*/matrix.json
 scripts/matrix_validate.sh ndb/*/matrix.json
 bash scripts/selftest.sh            # supports --filter REGEX
 packer fmt -check packer/
-for v in ansible/*/; do ANSIBLE_ROLES_PATH="$v/roles" ansible-playbook --syntax-check "$v/playbooks/site.yml"; done
-ANSIBLE_ROLES_PATH=ansible/2.10/roles ansible-lint --profile basic ansible/2.10
+for v in ansible/*/; do ANSIBLE_ROLES_PATH="${v}roles" ansible-playbook --syntax-check "${v}playbooks/site.yml"; done
+for v in ansible/*/; do ANSIBLE_ROLES_PATH="${v}roles" ansible-lint --profile basic "$v"; done
 git diff --check
 ```
 

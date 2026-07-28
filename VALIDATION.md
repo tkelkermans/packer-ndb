@@ -1,65 +1,70 @@
 # Validation Status
 
-This report records the sanitized public validation state for this branch as of
-May 7, 2026. It contains no Prism hostnames, IP addresses, credentials, saved
-image UUIDs, manifest filenames, or customer-specific values.
+This document describes how this project is validated, and which parts of the
+support matrix have been proven on real hardware. It contains no Prism
+hostnames, IP addresses, credentials, image UUIDs, or customer-specific values.
 
-## What Has Been Verified
+## Validation Layers
 
-The repository passed these local and static gates from the current branch:
+Each layer costs more and proves more than the one above it:
+
+| Layer | What it proves | Needs a lab? |
+|---|---|---|
+| Static gates | Scripts parse and lint, matrices satisfy every schema rule, playbooks are syntactically valid, Packer template is valid | No |
+| In-guest validation (`--validate`) | The engine, extensions, HA binaries and NDB prerequisites are correct inside the builder VM before capture | Yes |
+| Artifact validation (`--validate-artifact`) | The **saved image** boots as a fresh VM, is reachable, and still satisfies every check | Yes |
+| NDB E2E (`scripts/ndb_e2e_validate.sh`) | NDB can register the image, create a software profile, and provision a working database from it | Yes |
+
+Run the static gates before trusting any change:
 
 ```bash
-bash -n build.sh test.sh scripts/*.sh
-bash scripts/selftest.sh
+bash -n build.sh test.sh scripts/*.sh scripts/selftests/*.sh
+printf '%s\n' build.sh test.sh scripts/*.sh scripts/selftests/*.sh | xargs -n1 shellcheck -S warning
+jq empty images.json ndb/*/matrix.json
 scripts/matrix_validate.sh ndb/*/matrix.json
-packer fmt -check packer
-packer validate ...
-ansible-playbook --syntax-check ...
+bash scripts/selftest.sh
+packer fmt -check packer/
+for v in ansible/*/; do ANSIBLE_ROLES_PATH="${v}roles" ansible-playbook --syntax-check "${v}playbooks/site.yml"; done
+for v in ansible/*/; do ANSIBLE_ROLES_PATH="${v}roles" ansible-lint --profile basic "$v"; done
 git diff --check
 ```
 
-The representative `packer validate` used placeholder Prism values and the NDB
-2.10 PostgreSQL 18 Rocky Linux 9.7 row. The Ansible syntax checks covered both
-NDB 2.9 and NDB 2.10 site and customization preflight playbooks.
+The same gates run in CI on every pull request, so a green CI run means the
+whole list above passed.
 
-Live manifests currently prove successful in-guest validation, saved-artifact
-validation, and validation VM cleanup for all buildable non-RHEL rows. The live
-coverage audit reports:
+## Proven On Hardware
 
-```text
-Buildable rows: 54
-Successful live rows: 35
-Missing live rows: 19
+These paths have completed every layer, including NDB provisioning a live
+database from the built image:
+
+| Path | Build | In-guest | Artifact boot | NDB E2E |
+|---|---|---|---|---|
+| Rocky Linux 9.7 / PostgreSQL 18 | pass | pass | pass | pass |
+| Ubuntu 24.04 / PostgreSQL 18 | pass | pass | pass | — |
+| Rocky Linux 9.7 / MongoDB 6.0 | pass | pass | pass | pass |
+
+Other buildable rows in the matrix use the same roles and differ only in
+package versions, but have not been re-proven recently — build them with
+`--validate --validate-artifact --manifest` before relying on them.
+
+## Checking Your Own Coverage
+
+Manifests under `manifests/` record what you have built locally. Audit them
+against the matrix:
+
+```bash
+scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json
 ```
 
-All 19 missing rows are Red Hat Enterprise Linux rows.
+A manifest proves a build *happened*; it does not prove the image still exists
+in Prism, because images are routinely cleaned up. Confirm the images behind
+your manifests are still present before planning an E2E run:
 
-> **Update (2026-07-27, live campaign):** the July refactor branch was
-> validated live against the lab. Four paths pass end to end:
->
-> | Path | Build | In-guest | Artifact boot | Manifest |
-> |---|---|---|---|---|
-> | Rocky 9.7 / PostgreSQL 18 | 171 tasks, 0 failed | passed | passed | success |
-> | Ubuntu 24.04 / PostgreSQL 18 (deb822) | 175 tasks, 0 failed | passed | passed | success |
-> | Rocky 9.7 / MongoDB 6.0 | 95 tasks, 0 failed | passed | passed | success |
->
-> NDB E2E smoke row `210-pg18-rocky97` also passed: NDB registered the source
-> DB server, created a software profile, provisioned a PostgreSQL database from
-> the branch-built image, and guest validation returned server version 18.4.
->
-> Two live-only defects were found and fixed (neither is reachable by the
-> static gates): dropped `ndb_distribution*` facts that would have failed every
-> build, and a firewalld/cloud-init systemd ordering cycle that made Debian
-> images boot without a provisioning user *nondeterministically*. See
-> `docs/operational-lessons.md`.
->
-> **Coverage caveat:** an image preflight on 2026-07-27 found that **51 of the
-> 54** images recorded in the June manifests no longer exist in Prism, so the
-> historical "54/54 live rows" figure reflects manifests, not currently
-> existing artifacts. Coverage of *today's* branch is the four paths above;
-> the remaining matrix rows need rebuilding to be re-proven.
+```bash
+op run --env-file=.env -- scripts/ndb_e2e_validate.sh --preflight-images
+```
 
-## Remaining Gap
+## Red Hat Enterprise Linux
 
 Full live validation is not complete until the RHEL rows have successful
 manifests. RHEL source images are licensed and are not committed to this
