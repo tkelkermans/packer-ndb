@@ -1,0 +1,77 @@
+---
+# LVM settings and Debian-family NDB Era device-mapper compatibility.
+- name: Disable LVM devices file for NDB compatibility
+  ansible.builtin.lineinfile:
+    path: /etc/lvm/lvm.conf
+    regexp: '^\s*#?\s*use_devicesfile\s*='
+    line: '        use_devicesfile = 0'
+    insertafter: '^\s*devices\s*\{'
+  become: true
+
+- name: Install Debian-family NDB Era device-mapper compatibility helper
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/ndb-era-dm-compat
+    owner: root
+    group: root
+    mode: "0755"
+    src: ndb-era-dm-compat.sh
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Install Debian-family NDB Era device-mapper compatibility service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ndb-era-dm-compat.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=NDB Era device-mapper compatibility
+      Documentation=man:systemd.service(5)
+      After=local-fs.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/ndb-era-dm-compat
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Install Debian-family NDB Era device-mapper compatibility timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ndb-era-dm-compat.timer
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Run NDB Era device-mapper compatibility periodically
+      Documentation=man:systemd.timer(5)
+
+      [Timer]
+      OnBootSec=30s
+      OnUnitActiveSec=10s
+      AccuracySec=1s
+      Persistent=false
+      Unit=ndb-era-dm-compat.service
+
+      [Install]
+      WantedBy=timers.target
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Enable Debian-family NDB Era device-mapper compatibility timer
+  ansible.builtin.systemd:
+    name: ndb-era-dm-compat.timer
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: ndb_os_family == "Debian"
+  become: true
+
+- name: Run Debian-family NDB Era device-mapper compatibility helper once
+  ansible.builtin.command:
+    argv:
+      - /usr/local/sbin/ndb-era-dm-compat
+  changed_when: false
+  when: ndb_os_family == "Debian"
+  become: true

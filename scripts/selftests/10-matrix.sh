@@ -196,7 +196,7 @@ run_qualified_extension_matrix_tests() {
 }
 run_postgres_debian_package_resolver_tests() {
   local version role_file
-  for version in 2.9 2.10; do
+  for version in $(selftest_ndb_versions); do
     role_file="$ROOT_DIR/ansible/$version/roles/postgres/tasks/main.yml"
     ! grep -q 'apt-cache madison "$POSTGRES_PACKAGE_NAME" |' "$role_file" || fail "postgres role $version uses an early-exit apt-cache pipeline that can fail with rc 141 under pipefail"
   done

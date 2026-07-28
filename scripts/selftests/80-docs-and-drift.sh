@@ -24,7 +24,7 @@ run_ndb_linux_precheck_guard_tests() {
     xfsprogs
   )
 
-  for version in 2.9 2.10; do
+  for version in $(selftest_ndb_versions); do
     vars_file="$ROOT_DIR/ansible/$version/roles/common/vars/main.yml"
     sudoers_file="$ROOT_DIR/ansible/$version/roles/common/templates/ndb_sudoers.j2"
 
@@ -85,7 +85,7 @@ run_readme_customization_tests() {
 
 run_common_role_fact_contract_tests() {
   local version fact
-  for version in 2.9 2.10; do
+  for version in $(selftest_ndb_versions); do
     # Facts consumed inside the split include files must be normalized by
     # main.yml: syntax-check does not evaluate when: conditionals, so a
     # dropped set_fact only surfaces on a live build otherwise.
@@ -120,7 +120,16 @@ run_ansible_tree_drift_tests() {
 
   local ref="${versions[0]}"
   local ref_dir="$ROOT_DIR/ansible/$ref"
-  local ver ver_dir rel allowed entry
+  local ver ver_dir rel allowed idx i
+  # An allowlisted file only has to differ SOMEWHERE. With three or more trees a
+  # legitimately allowlisted file matches some pairs - a freshly scaffolded
+  # release is a byte copy of the version it came from - so staleness can only
+  # be judged after every comparison, not per pair.
+  local allowlist_differs=()
+  for i in "${!allowlist[@]}"; do
+    allowlist_differs+=("false")
+  done
+
   for ver in "${versions[@]:1}"; do
     ver_dir="$ROOT_DIR/ansible/$ver"
 
@@ -134,22 +143,27 @@ run_ansible_tree_drift_tests() {
     while IFS= read -r rel; do
       rel="${rel#./}"
       allowed=false
-      for entry in "${allowlist[@]}"; do
-        if [[ "$rel" == "$entry" ]]; then
+      idx=-1
+      for i in "${!allowlist[@]}"; do
+        if [[ "$rel" == "${allowlist[$i]}" ]]; then
           allowed=true
+          idx=$i
           break
         fi
       done
-      if cmp -s "$ref_dir/$rel" "$ver_dir/$rel"; then
-        if [[ "$allowed" == "true" ]]; then
-          fail "stale ansible drift allowlist: $rel is identical between $ref and $ver; remove it from the allowlist"
-        fi
-      else
+      if ! cmp -s "$ref_dir/$rel" "$ver_dir/$rel"; then
         if [[ "$allowed" != "true" ]]; then
           fail "unintended ansible drift: ansible/$ver/$rel differs from ansible/$ref/$rel (sync the change or allowlist it with justification)"
         fi
+        allowlist_differs[$idx]=true
       fi
     done < <(cd "$ref_dir" && find . -type f | sort)
+  done
+
+  for i in "${!allowlist[@]}"; do
+    if [[ "${allowlist_differs[$i]}" != "true" ]]; then
+      fail "stale ansible drift allowlist: ${allowlist[$i]} is identical across every NDB version tree; remove it from the allowlist"
+    fi
   done
 
   pass "ansible tree drift between NDB versions is intentional"
