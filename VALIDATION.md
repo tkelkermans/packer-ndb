@@ -26,6 +26,7 @@ bash scripts/selftest.sh
 packer fmt -check packer/
 for v in ansible/*/; do ANSIBLE_ROLES_PATH="${v}roles" ansible-playbook --syntax-check "${v}playbooks/site.yml"; done
 for v in ansible/*/; do ANSIBLE_ROLES_PATH="${v}roles" ansible-lint --profile basic "$v"; done
+for roles_dir in customizations/examples/*/roles; do ANSIBLE_ROLES_PATH="$roles_dir" ansible-lint --profile basic "$roles_dir"; done
 git diff --check
 ```
 
