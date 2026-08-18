@@ -413,6 +413,11 @@ run_cli_argument_guard_tests() {
   fi
   grep -q "requires a value" <<<"$output" || fail "ndb_e2e_validate.sh missing-value error not reported: $output"
 
+  if output=$(cd "$ROOT_DIR" && "$BASH" scripts/live_coverage_audit.sh --manifest-dir 2>&1); then
+    fail "live_coverage_audit.sh accepted --manifest-dir without a value"
+  fi
+  grep -q "requires a value" <<<"$output" || fail "live_coverage_audit.sh missing-value error not reported: $output"
+
   pass "CLI argument guards"
 }
 run_postgres_suffix_helper_tests() {
@@ -454,6 +459,17 @@ run_readme_mongodb_tests() {
   grep -q "scripts/live_coverage_audit.sh" "$ROOT_DIR/README.md" || fail "README missing live coverage audit command"
   grep -q "live_coverage_audit.sh --suggest-runs --source-image-uuid-map" "$ROOT_DIR/README.md" || fail "README missing coverage audit UUID suggestion command"
   grep -q "live_coverage_audit.sh --suggest-runs --customization-profile" "$ROOT_DIR/README.md" || fail "README missing coverage audit customization suggestion command"
+  grep -q "ndb/2.11/matrix.json" "$ROOT_DIR/README.md" || fail "README coverage commands must include NDB 2.11"
+  grep -q "ndb/2.11/matrix.json" "$ROOT_DIR/VALIDATION.md" || fail "VALIDATION.md coverage commands must include NDB 2.11"
+  grep -q "Recommended live campaign order" "$ROOT_DIR/VALIDATION.md" || fail "VALIDATION.md missing recommended live campaign order"
+  ! grep -q 'tasks/todo.md' "$ROOT_DIR/AGENTS.md" || fail "AGENTS.md still references removed tasks/todo.md"
+  ! grep -q 'tasks/todo.md' "$ROOT_DIR/CLAUDE.md" || fail "CLAUDE.md still references removed tasks/todo.md"
+  grep -q "2.9, 2.10 and 2.11" "$ROOT_DIR/AGENTS.md" || fail "AGENTS.md must list NDB 2.11"
+  grep -q "NDB_RHEL_9_8_IMAGE_URI" "$ROOT_DIR/.env.example" || fail ".env.example missing RHEL 9.8 URI"
+  grep -q "NDB_RHEL_10_IMAGE_URI" "$ROOT_DIR/.env.example" || fail ".env.example missing RHEL 10 URI"
+  grep -q "pull_request:" "$ROOT_DIR/.github/workflows/url-health.yml" || fail "url-health workflow must run on images.json PRs"
+  grep -q "Table 4" "$ROOT_DIR/ndb/2.11/REVIEW.md" || fail "NDB 2.11 REVIEW must document Table 4 HA hold"
+  grep -q "provisioning_role=metadata" "$ROOT_DIR/ndb/2.11/REVIEW.md" || fail "NDB 2.11 REVIEW must hold metadata engines"
   grep -q "sharded topology" "$ROOT_DIR/README.md" || fail "README missing local sharded topology explanation"
   grep -q "mongodb_edition" "$ROOT_DIR/README.md" || fail "README missing MongoDB edition matrix guidance"
   grep -q "/opt/ndb/mongodb" "$ROOT_DIR/README.md" || fail "README missing NDB-safe MongoDB software home guidance"

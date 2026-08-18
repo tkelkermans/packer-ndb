@@ -10,8 +10,8 @@ Usage: scripts/release_scaffold.sh NEW_VERSION --from OLD_VERSION [--dry-run]
 Creates ndb/NEW_VERSION and ansible/NEW_VERSION from an existing release.
 
 Examples:
-  scripts/release_scaffold.sh 2.11 --from 2.10
-  scripts/release_scaffold.sh 2.11 --from 2.10 --dry-run
+  scripts/release_scaffold.sh 2.12 --from 2.11
+  scripts/release_scaffold.sh 2.12 --from 2.11 --dry-run
 EOF
 }
 

@@ -1,14 +1,23 @@
 name: Source image URL health
 
 # Public cloud-image URLs rot (a Rocky 9.7 URL 404'd in June 2026 and only
-# surfaced as a live Prism ImageCreate failure). Catch rot on a schedule
-# instead. env_var-indirected entries (licensed RHEL) are objects in
-# images.json and are skipped.
+# surfaced as a live Prism ImageCreate failure). Catch rot on a schedule and
+# on PRs that touch images.json. env_var-indirected entries (licensed RHEL)
+# are objects in images.json and are skipped.
 
 on:
   schedule:
     - cron: '17 6 * * 1'
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'images.json'
+      - '.github/workflows/url-health.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'images.json'
+      - '.github/workflows/url-health.yml'
 
 jobs:
   head-check:

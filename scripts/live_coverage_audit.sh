@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=scripts/source_images.sh
 source "$ROOT_DIR/scripts/source_images.sh"
+# shellcheck source=scripts/args.sh
+source "$ROOT_DIR/scripts/args.sh"
 MANIFEST_DIR="$ROOT_DIR/manifests"
 MATRIX_FILES=()
 SUGGEST_RUNS=false
@@ -100,14 +102,17 @@ while [[ $# -gt 0 ]]; do
       SUGGEST_RUNS=true
       ;;
     --source-image-uuid-map)
+      require_option_value "$1" "$#"
       SOURCE_IMAGE_UUID_MAP_RAW=$2
       shift
       ;;
     --customization-profile)
+      require_option_value "$1" "$#"
       CUSTOMIZATION_PROFILE=$2
       shift
       ;;
     --manifest-dir)
+      require_option_value "$1" "$#"
       MANIFEST_DIR=$2
       shift
       ;;

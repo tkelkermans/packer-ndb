@@ -31,3 +31,7 @@ reviewed row by row against the NDB 2.11 release notes in `source/`.
   rows as unvalidated until a build succeeds.
 - Enterprise MongoDB editions qualified by 2.11 on Rocky Linux and Debian are
   recorded in `notes` rather than as buildable rows.
+- Metadata engines (Oracle, SQL Server, MySQL, MariaDB, EDB) remain
+  `provisioning_role=metadata` until real Ansible roles exist; do not promote
+  them to buildable rows without explicit scope.
+- Hold RHEL 9.8 / RHEL 10 HA version updates until Nutanix publishes Table 4.

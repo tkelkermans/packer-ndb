@@ -89,6 +89,24 @@ jobs:
             -var ansible_extra_vars_file=/tmp/ci-ansible-vars.json \
             -var "ssh_public_key=$(cat packer/id_rsa.pub)" \
             packer/
+          packer validate \
+            -var pc_username=placeholder \
+            -var pc_password=placeholder \
+            -var pc_ip=192.0.2.1 \
+            -var cluster_name=placeholder \
+            -var subnet_name=placeholder \
+            -var image_name=ci-placeholder-mongo \
+            -var ndb_version=2.10 \
+            -var db_type=mongodb \
+            -var db_version=8.0 \
+            -var os_type="Rocky Linux" \
+            -var os_version=9.7 \
+            -var source_image_uri=https://example.invalid/source.qcow2 \
+            -var ansible_site_playbook=ansible/2.10/playbooks/site.yml \
+            -var "ansible_config_path=ANSIBLE_CONFIG=ansible/2.10/ansible.cfg" \
+            -var ansible_extra_vars_file=/tmp/ci-ansible-vars.json \
+            -var "ssh_public_key=$(cat packer/id_rsa.pub)" \
+            packer/
 
       - name: Ansible syntax check
         # Glob-derived so a release scaffolded with release_scaffold.sh gets
@@ -103,10 +121,15 @@ jobs:
 
       - name: Ansible lint
         # Per-tree so role resolution works; config in .ansible-lint.
+        # Also lint committed customization example roles (no playbooks; roles only).
         run: |
           for ver_dir in ansible/*/; do
             ver=$(basename "$ver_dir")
             ANSIBLE_ROLES_PATH="ansible/${ver}/roles" ansible-lint --profile basic "ansible/${ver}"
+          done
+          for roles_dir in customizations/examples/*/roles; do
+            [ -d "$roles_dir" ] || continue
+            ANSIBLE_ROLES_PATH="$roles_dir" ansible-lint --profile basic "$roles_dir"
           done
 
       - name: Whitespace check

@@ -8,6 +8,28 @@ source "$ROOT_DIR/scripts/prism.sh"
 SCAN_PRISM=false
 SHOW_PRISM_MATCHES=false
 
+# Core RHEL 9.6/9.7 inputs cover NDB 2.9 and 2.10. NDB 2.11 adds 9.8 and 10.
+RHEL_URI_VARS=(
+  NDB_RHEL_9_6_IMAGE_URI
+  NDB_RHEL_9_7_IMAGE_URI
+  NDB_RHEL_9_8_IMAGE_URI
+  NDB_RHEL_10_IMAGE_URI
+)
+RHEL_UUID_VARS=(
+  RHEL_96_UUID
+  RHEL_97_UUID
+  RHEL_98_UUID
+  RHEL_10_UUID
+)
+RHEL_CORE_URI_VARS=(
+  NDB_RHEL_9_6_IMAGE_URI
+  NDB_RHEL_9_7_IMAGE_URI
+)
+RHEL_CORE_UUID_VARS=(
+  RHEL_96_UUID
+  RHEL_97_UUID
+)
+
 usage() {
   cat <<'EOF'
 Usage: scripts/rhel_readiness.sh [--scan-prism] [--show-prism-matches]
@@ -59,6 +81,16 @@ all_set() {
   return 0
 }
 
+any_set() {
+  local name
+
+  for name in "$@"; do
+    [[ -n "${!name:-}" ]] && return 0
+  done
+
+  return 1
+}
+
 print_commands() {
   local uri_ready=$1
   local uuid_ready=$2
@@ -66,17 +98,17 @@ print_commands() {
   printf '\nNext commands:\n'
 
   if [[ "$uuid_ready" == "true" ]]; then
-    printf './test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --preflight --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" --max-parallel 1\n'
+    printf './test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --preflight --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID},rhel-9.8=${RHEL_98_UUID},rhel-10=${RHEL_10_UUID}" --max-parallel 1\n'
   elif [[ "$uri_ready" == "true" ]]; then
     printf './test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --preflight --max-parallel 1\n'
   else
-    printf 'Set NDB_RHEL_9_6_IMAGE_URI and NDB_RHEL_9_7_IMAGE_URI, or set RHEL_96_UUID and RHEL_97_UUID for staged Prism images.\n'
+    printf 'Set NDB_RHEL_9_6_IMAGE_URI and NDB_RHEL_9_7_IMAGE_URI (plus NDB_RHEL_9_8_IMAGE_URI / NDB_RHEL_10_IMAGE_URI for NDB 2.11), or set matching RHEL_*_UUID staged Prism image variables.\n'
   fi
 
   printf 'Set NDB_RHEL_ORGID and NDB_RHEL_ACTIVATIONKEY before running --rhel-repository-check or live RHEL builds that need Red Hat CDN repositories.\n'
   printf 'scripts/source_image_ssh_probe.sh --source-image-uuid "${RHEL_97_UUID}" --rhel-repository-check --ssh-timeout 900\n'
   printf './test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --validate --validate-artifact --manifest --continue-on-error --max-parallel 1\n'
-  printf 'scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json\n'
+  printf 'scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json ndb/2.11/matrix.json\n'
 }
 
 scan_prism_images() {
@@ -189,26 +221,46 @@ done
 
 uri_ready=false
 uuid_ready=false
+uri_211_ready=false
+uuid_211_ready=false
 
-printf 'RHEL source URI readiness: '
-if all_set NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI; then
+printf 'RHEL source URI readiness (9.6/9.7 core): '
+if all_set "${RHEL_CORE_URI_VARS[@]}"; then
   uri_ready=true
   printf 'complete\n'
 else
   printf 'incomplete\n'
 fi
-env_status NDB_RHEL_9_6_IMAGE_URI || true
-env_status NDB_RHEL_9_7_IMAGE_URI || true
+for name in "${RHEL_URI_VARS[@]}"; do
+  env_status "$name" || true
+done
 
-printf '\nRHEL staged image UUID readiness: '
-if all_set RHEL_96_UUID RHEL_97_UUID; then
+printf '\nRHEL source URI readiness (2.11: 9.8/10): '
+if all_set NDB_RHEL_9_8_IMAGE_URI NDB_RHEL_10_IMAGE_URI; then
+  uri_211_ready=true
+  printf 'complete\n'
+else
+  printf 'incomplete\n'
+fi
+
+printf '\nRHEL staged image UUID readiness (9.6/9.7 core): '
+if all_set "${RHEL_CORE_UUID_VARS[@]}"; then
   uuid_ready=true
   printf 'complete\n'
 else
   printf 'incomplete\n'
 fi
-env_status RHEL_96_UUID || true
-env_status RHEL_97_UUID || true
+for name in "${RHEL_UUID_VARS[@]}"; do
+  env_status "$name" || true
+done
+
+printf '\nRHEL staged image UUID readiness (2.11: 9.8/10): '
+if all_set RHEL_98_UUID RHEL_10_UUID; then
+  uuid_211_ready=true
+  printf 'complete\n'
+else
+  printf 'incomplete\n'
+fi
 
 printf '\nRHEL activation key readiness: '
 if all_set NDB_RHEL_ORGID NDB_RHEL_ACTIVATIONKEY; then
@@ -218,6 +270,14 @@ else
 fi
 env_status NDB_RHEL_ORGID || true
 env_status NDB_RHEL_ACTIVATIONKEY || true
+
+if [[ "$uri_211_ready" != "true" && "$uuid_211_ready" != "true" ]]; then
+  if any_set NDB_RHEL_9_8_IMAGE_URI NDB_RHEL_10_IMAGE_URI RHEL_98_UUID RHEL_10_UUID; then
+    printf '\nNote: NDB 2.11 RHEL 9.8/10 inputs are partially set; finish both versions before auditing full 2.11 RHEL coverage.\n'
+  else
+    printf '\nNote: NDB 2.11 RHEL 9.8/10 inputs are optional until you build those matrix rows.\n'
+  fi
+fi
 
 if [[ "$SCAN_PRISM" == "true" ]]; then
   scan_prism_images

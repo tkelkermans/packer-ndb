@@ -14,9 +14,14 @@ source "$ROOT_DIR/scripts/args.sh"
 # shellcheck source=scripts/vm_lifecycle.sh
 source "$ROOT_DIR/scripts/vm_lifecycle.sh"
 
-TARGETS_FILE=${NDB_E2E_TARGETS_FILE:-/private/tmp/ndb_e2e_latest_targets.psv}
-STATE_DIR=${NDB_E2E_STATE_DIR:-/private/tmp/ndb_e2e_state}
-EVIDENCE_FILE=${NDB_E2E_EVIDENCE_FILE:-/private/tmp/ndb_e2e_results.jsonl}
+# Prefer $TMPDIR when set (macOS often uses /var/folders/...; Linux uses /tmp).
+# Avoid hardcoded /private/tmp so Linux dry-runs do not require creating
+# macOS-only paths.
+NDB_E2E_TMP_ROOT=${TMPDIR:-/tmp}
+NDB_E2E_TMP_ROOT=${NDB_E2E_TMP_ROOT%/}
+TARGETS_FILE=${NDB_E2E_TARGETS_FILE:-${NDB_E2E_TMP_ROOT}/ndb_e2e_latest_targets.psv}
+STATE_DIR=${NDB_E2E_STATE_DIR:-${NDB_E2E_TMP_ROOT}/ndb_e2e_state}
+EVIDENCE_FILE=${NDB_E2E_EVIDENCE_FILE:-${NDB_E2E_TMP_ROOT}/ndb_e2e_results.jsonl}
 LIMIT=0
 DB_TYPE_FILTER=""
 ROW_FILTER=""

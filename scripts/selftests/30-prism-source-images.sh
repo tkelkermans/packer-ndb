@@ -543,32 +543,37 @@ run_rhel_readiness_helper_tests() {
 
   status=0
   (
-    unset NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI RHEL_96_UUID RHEL_97_UUID
+    unset NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI NDB_RHEL_9_8_IMAGE_URI NDB_RHEL_10_IMAGE_URI \
+      RHEL_96_UUID RHEL_97_UUID RHEL_98_UUID RHEL_10_UUID
     "$ROOT_DIR/scripts/rhel_readiness.sh" >"$output" 2>&1
   ) || status=$?
   [[ "$status" -eq 1 ]] || fail "RHEL readiness helper should fail when RHEL inputs are missing"
-  grep -q "RHEL source URI readiness: incomplete" "$output" || fail "RHEL readiness helper did not report missing URI readiness"
+  grep -q "RHEL source URI readiness (9.6/9.7 core): incomplete" "$output" || fail "RHEL readiness helper did not report missing URI readiness"
   grep -q "NDB_RHEL_9_6_IMAGE_URI=missing" "$output" || fail "RHEL readiness helper did not report missing RHEL 9.6 URI"
-  grep -q "RHEL staged image UUID readiness: incomplete" "$output" || fail "RHEL readiness helper did not report missing staged UUID readiness"
+  grep -q "NDB_RHEL_9_8_IMAGE_URI=missing" "$output" || fail "RHEL readiness helper did not report missing RHEL 9.8 URI"
+  grep -q "RHEL staged image UUID readiness (9.6/9.7 core): incomplete" "$output" || fail "RHEL readiness helper did not report missing staged UUID readiness"
   grep -q "RHEL_97_UUID=missing" "$output" || fail "RHEL readiness helper did not report missing RHEL 9.7 UUID"
+  grep -q "RHEL_10_UUID=missing" "$output" || fail "RHEL readiness helper did not report missing RHEL 10 UUID"
+  grep -q "ndb/2.11/matrix.json" "$output" || fail "RHEL readiness helper missing 2.11 coverage audit command"
 
   (
     export NDB_RHEL_9_6_IMAGE_URI=/private/rhel-9.6.qcow2
     export NDB_RHEL_9_7_IMAGE_URI=/private/rhel-9.7.qcow2
-    unset RHEL_96_UUID RHEL_97_UUID
+    unset NDB_RHEL_9_8_IMAGE_URI NDB_RHEL_10_IMAGE_URI RHEL_96_UUID RHEL_97_UUID RHEL_98_UUID RHEL_10_UUID
     "$ROOT_DIR/scripts/rhel_readiness.sh" >"$output" 2>&1
   ) || fail "RHEL readiness helper should pass when licensed URI inputs are set"
-  grep -q "RHEL source URI readiness: complete" "$output" || fail "RHEL readiness helper did not report complete URI readiness"
+  grep -q "RHEL source URI readiness (9.6/9.7 core): complete" "$output" || fail "RHEL readiness helper did not report complete URI readiness"
   ! grep -q "/private/rhel" "$output" || fail "RHEL readiness helper printed source image URI values"
   grep -q -- './test.sh --allow-rhel --include-os "Red Hat Enterprise Linux (RHEL)" --preflight --max-parallel 1' "$output" || fail "RHEL readiness helper did not print URI preflight command"
 
   (
-    unset NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI
+    unset NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI NDB_RHEL_9_8_IMAGE_URI NDB_RHEL_10_IMAGE_URI
     export RHEL_96_UUID=00000000-0000-0000-0000-000000000000
     export RHEL_97_UUID=11111111-1111-1111-1111-111111111111
+    unset RHEL_98_UUID RHEL_10_UUID
     "$ROOT_DIR/scripts/rhel_readiness.sh" >"$output" 2>&1
   ) || fail "RHEL readiness helper should pass when staged UUID inputs are set"
-  grep -q "RHEL staged image UUID readiness: complete" "$output" || fail "RHEL readiness helper did not report complete UUID readiness"
+  grep -q "RHEL staged image UUID readiness (9.6/9.7 core): complete" "$output" || fail "RHEL readiness helper did not report complete UUID readiness"
   grep -q 'rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}' "$output" || fail "RHEL readiness helper did not print staged UUID map command"
   ! grep -q "00000000-0000-0000-0000-000000000000" "$output" || fail "RHEL readiness helper printed staged UUID values"
 
@@ -620,7 +625,8 @@ SH
     export PKR_VAR_pc_username=user
     export PKR_VAR_pc_password=password
     export PKR_VAR_pc_ip=pc.example.com
-    unset NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI RHEL_96_UUID RHEL_97_UUID
+    unset NDB_RHEL_9_6_IMAGE_URI NDB_RHEL_9_7_IMAGE_URI NDB_RHEL_9_8_IMAGE_URI NDB_RHEL_10_IMAGE_URI \
+      RHEL_96_UUID RHEL_97_UUID RHEL_98_UUID RHEL_10_UUID
     "$ROOT_DIR/scripts/rhel_readiness.sh" --scan-prism --show-prism-matches >"$output" 2>&1
   ) || status=$?
   [[ "$status" -eq 1 ]] || fail "RHEL readiness helper should still fail when scan finds candidates but no chosen inputs are set"

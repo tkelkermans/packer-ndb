@@ -192,7 +192,13 @@ Reuse a source image that is already present in Prism:
 ./build.sh --ci --source-image-name "Rocky-9-GenericCloud-LVM-9.7-20251123.2.x86_64.qcow2" --ndb-version 2.10 --db-type pgsql --os "Rocky Linux" --os-version 9.7 --db-version 18
 ```
 
-Run the Rocky Linux NDB 2.10 build suite with both validation stages and manifests. This is a live Prism build suite, not a local unit test; it can create several build VMs, disposable validation VMs, saved images, and manifest files. If one parallel build fails, `test.sh` stops launching new builds, waits for already-started builds to finish, and then exits with a failure.
+Run the Rocky Linux NDB 2.10 build suite with both validation stages and manifests. This is a live Prism build suite, not a local unit test; it can create several build VMs, disposable validation VMs, saved images, and manifest files. If one parallel build fails, `test.sh` stops launching new builds, waits for already-started builds to finish, and then exits with a failure. Default `--max-parallel 1` is intentional for Prism load; when you raise it, throttling waits on the oldest in-flight PID (FIFO), not "any completed job." Wrap the whole suite in one `op run --env-file=.env -- ./test.sh ...` — never spawn a separate `op run` per child build.
+
+Preview every selected row's plan without Prism credentials:
+
+```bash
+./test.sh --include-ndb 2.10 --include-os "Rocky Linux" --dry-run
+```
 
 ```bash
 ./test.sh --include-ndb 2.10 --include-os "Rocky Linux" --validate --validate-artifact --manifest
@@ -217,7 +223,7 @@ UBUNTU_2204_UUID="replace-with-ubuntu-22.04-image-uuid"
 After live matrix runs, audit manifest coverage against every buildable matrix row:
 
 ```bash
-scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json
+scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json ndb/2.11/matrix.json
 ```
 
 The audit exits non-zero and lists missing rows until each buildable row has a manifest with `status=success`, in-guest validation `passed`, artifact validation `passed`, and validation VM cleanup `deleted`.
@@ -225,19 +231,19 @@ The audit exits non-zero and lists missing rows until each buildable row has a m
 Add `--suggest-runs` when you want one copy-pasteable validated build command per missing row:
 
 ```bash
-scripts/live_coverage_audit.sh --suggest-runs ndb/2.9/matrix.json ndb/2.10/matrix.json
+scripts/live_coverage_audit.sh --suggest-runs ndb/2.9/matrix.json ndb/2.10/matrix.json ndb/2.11/matrix.json
 ```
 
 If the missing rows should reuse staged Prism source images, pass the same source-image UUID map you use with `test.sh`. Matching rows will include `--source-image-uuid` in the suggested `build.sh` command:
 
 ```bash
-scripts/live_coverage_audit.sh --suggest-runs --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" ndb/2.9/matrix.json ndb/2.10/matrix.json
+scripts/live_coverage_audit.sh --suggest-runs --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" ndb/2.9/matrix.json ndb/2.10/matrix.json ndb/2.11/matrix.json
 ```
 
 If the missing rows also need an enterprise customization profile, add the same profile to the suggestion command:
 
 ```bash
-scripts/live_coverage_audit.sh --suggest-runs --customization-profile customizations/local/rhel-repositories.yml --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" ndb/2.9/matrix.json ndb/2.10/matrix.json
+scripts/live_coverage_audit.sh --suggest-runs --customization-profile customizations/local/rhel-repositories.yml --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" ndb/2.9/matrix.json ndb/2.10/matrix.json ndb/2.11/matrix.json
 ```
 
 `test.sh` skips RHEL rows unless you add `--allow-rhel`. Only add it after the licensed RHEL source image environment variables are set.
@@ -701,8 +707,10 @@ op run --env-file=.env -- scripts/ndb_e2e_validate.sh --preflight-images
 
 The script is intentionally serialized. Do not run multiple copies at the same
 time against the same NDB server. Results are appended to
-`/private/tmp/ndb_e2e_results.jsonl`, and per-row payloads, responses, and state
-files are written under `/private/tmp/ndb_e2e_state`.
+`${TMPDIR:-/tmp}/ndb_e2e_results.jsonl` by default, and per-row payloads,
+responses, and state files are written under `${TMPDIR:-/tmp}/ndb_e2e_state`.
+Override with `NDB_E2E_EVIDENCE_FILE`, `NDB_E2E_STATE_DIR`, and
+`NDB_E2E_TARGETS_FILE` when you need a fixed path.
 
 Successful E2E rows intentionally leave the created NDB database, software
 profile, source DB server record, and source/provisioned VMs available as live
@@ -787,7 +795,7 @@ Useful optional environment overrides:
 - `NDB_E2E_NDB_API_TIMEOUT` controls how long each NDB API request may wait before failing. The default is `300` seconds. Increase it, for example to `600`, if a VPN or slow NDB server makes registration/profile/provision API calls time out.
 - `NDB_E2E_OPERATION_MAX_POLLS`, `NDB_E2E_OPERATION_POLL_SECONDS`, and `NDB_E2E_OPERATION_STALL_POLLS` control how long the script waits for NDB operations and how many unchanged running polls count as stalled.
 - NDB database provisioning always creates the database together with its Time Machine/protection workflow. The E2E runner intentionally keeps that payload complete so a pass proves the full NDB provisioning path, not only software-profile creation.
-- `NDB_E2E_TARGET_OBSERVER=true` enables passive target diagnostics during NDB provisioning. It starts inside the same E2E run after NDB returns the provision operation ID, discovers target IP candidates from operation metadata and the Prism VM created for the target database server, then writes best-effort snapshots under the row state directory, for example `/private/tmp/ndb_e2e_state/<row>/target-observer`.
+- `NDB_E2E_TARGET_OBSERVER=true` enables passive target diagnostics during NDB provisioning. It starts inside the same E2E run after NDB returns the provision operation ID, discovers target IP candidates from operation metadata and the Prism VM created for the target database server, then writes best-effort snapshots under the row state directory, for example `${TMPDIR:-/tmp}/ndb_e2e_state/<row>/target-observer`.
 - `NDB_E2E_TARGET_OBSERVER_INTERVAL_SECONDS` controls observer polling. The default is `10`.
 - `NDB_E2E_TARGET_OBSERVER_MAX_SECONDS` caps observer runtime. The default is `900`.
 
@@ -819,18 +827,20 @@ If artifact validation succeeds but the validation VM cannot be deleted, the bui
 
 ## Release Onboarding
 
-When Nutanix publishes a new NDB release, scaffold it from the previous supported release:
+NDB **2.11** is already scaffolded and reviewed under `ndb/2.11/` and
+`ansible/2.11/` (see `ndb/2.11/REVIEW.md`). When Nutanix publishes the next
+release, scaffold it from the latest supported tree:
 
 ```bash
-scripts/release_scaffold.sh 2.11 --from 2.10
+scripts/release_scaffold.sh 2.12 --from 2.11
 ```
 
 The scaffold:
 
-- Copies `ndb/2.10` to `ndb/2.11`.
-- Copies `ansible/2.10` to `ansible/2.11`.
+- Copies `ndb/2.11` to `ndb/2.12`.
+- Copies `ansible/2.11` to `ansible/2.12`.
 - Rewrites `ndb_version` values in the copied matrix.
-- Creates `ndb/2.11/REVIEW.md`.
+- Creates `ndb/2.12/REVIEW.md`.
 - Runs matrix validation and Ansible syntax checks.
 
 This is only a starting point. You must still compare the copied matrix with the new release notes before building.
@@ -838,14 +848,14 @@ This is only a starting point. You must still compare the copied matrix with the
 After editing the new matrix, run:
 
 ```bash
-scripts/matrix_validate.sh ndb/2.11/matrix.json
-ANSIBLE_CONFIG=ansible/2.11/ansible.cfg ansible-playbook -i ansible/2.11/inventory/hosts ansible/2.11/playbooks/site.yml --syntax-check
+scripts/matrix_validate.sh ndb/2.12/matrix.json
+ANSIBLE_CONFIG=ansible/2.12/ansible.cfg ansible-playbook -i ansible/2.12/inventory/hosts ansible/2.12/playbooks/site.yml --syntax-check
 ```
 
 Preview the scaffold without creating files:
 
 ```bash
-scripts/release_scaffold.sh 2.11 --from 2.10 --dry-run
+scripts/release_scaffold.sh 2.12 --from 2.11 --dry-run
 ```
 
 ## Troubleshooting
@@ -861,7 +871,8 @@ op run --env-file=.env -- env NDB_E2E_TARGET_OBSERVER=true NDB_E2E_NDB_API_TIMEO
 ```
 
 The observer writes best-effort NDB operation snapshots and target SSH snapshots
-to the row's `target-observer` directory under `/private/tmp/ndb_e2e_state`.
+to the row's `target-observer` directory under `${TMPDIR:-/tmp}/ndb_e2e_state`
+(or `NDB_E2E_STATE_DIR` when set).
 Those files are troubleshooting evidence; do not paste them into tickets without
 checking for sensitive environment-specific values first.
 
@@ -1060,7 +1071,7 @@ Run the remaining RHEL live matrix with both validation stages and manifests:
 When the run finishes, audit the manifests against the full buildable matrix:
 
 ```bash
-scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json
+scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json ndb/2.11/matrix.json
 ```
 
 The goal state is `Missing live rows: 0`. If rows still show as missing, rerun only those rows after resolving the recorded manifest error or Prism-side failure.
@@ -1075,7 +1086,8 @@ this README):
 - `build.sh --no-customizations` — force a build without any customization
   profile even when one is configured.
 - `test.sh --all-db-types` — clear an earlier `--include-db-type` filter;
-  `test.sh --exclude-os "OS NAME"` — skip an OS across the matrix run.
+  `test.sh --exclude-os "OS NAME"` — skip an OS across the matrix run;
+  `test.sh --dry-run` — forward `--dry-run` to every selected `build.sh` row.
 - `scripts/live_coverage_audit.sh --manifest-dir DIR` — audit manifests from
   a different directory.
 - `scripts/prism_image_activate.sh --wait-timeout SECONDS` — cap the Prism
@@ -1130,9 +1142,11 @@ this README):
 |   |-- source_images.sh        (sourced: images.json resolution)
 |   `-- vm_lifecycle.sh         (sourced: disposable-VM plumbing)
 |-- source/
-|-- tasks/
 `-- test.sh
 ```
+
+Planning status lives in `VALIDATION.md` and GitHub issues. Local scratchpads
+under `/tasks/` are gitignored and are not part of the committed tree.
 
 ### Matrix Files
 

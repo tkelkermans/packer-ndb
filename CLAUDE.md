@@ -52,6 +52,7 @@ bash -n build.sh test.sh scripts/*.sh scripts/selftests/*.sh
 bash scripts/selftest.sh              # supports --filter REGEX
 scripts/matrix_validate.sh ndb/*/matrix.json
 for v in ansible/*/; do ANSIBLE_ROLES_PATH="${v}roles" ansible-lint --profile basic "$v"; done
+for roles_dir in customizations/examples/*/roles; do ANSIBLE_ROLES_PATH="$roles_dir" ansible-lint --profile basic "$roles_dir"; done
 git diff --check
 ```
 
@@ -66,8 +67,8 @@ op run --env-file=.env -- scripts/ndb_e2e_validate.sh --preflight-images   # Pri
 Coverage + release onboarding:
 
 ```bash
-scripts/live_coverage_audit.sh --suggest-runs ndb/2.9/matrix.json ndb/2.10/matrix.json
-scripts/release_scaffold.sh 2.11 --from 2.10   # then human-review against new release notes
+scripts/live_coverage_audit.sh --suggest-runs ndb/2.9/matrix.json ndb/2.10/matrix.json ndb/2.11/matrix.json
+scripts/release_scaffold.sh 2.12 --from 2.11   # then human-review against new release notes
 ```
 
 Other scripts: `artifact_validate.sh` (boots disposable VM from saved image — live), `source_image_ssh_probe.sh` (proves cloud-init SSH works on a source image — live), `prism_image_activate.sh` (adds cluster placement — live, dry-run by default), `rhel_readiness.sh` (RHEL env check), `manifest.sh` / `prism.sh` / `source_images.sh` / `postgres_extensions.sh` / `args.sh` / `vm_lifecycle.sh` (sourced libraries), `scripts/selftests/*.sh` (selftest suites).
@@ -89,7 +90,7 @@ ndb/<ver>/matrix.json row  →  build.sh (selection + ansible-vars JSON in /tmp)
 
 - **Matrix rows** (`ndb/2.9/matrix.json`, `ndb/2.10/matrix.json`, `ndb/2.11/matrix.json`): keyed by `db_type` + `os_type` + `os_version` + `db_version`. `ha_components` (Patroni/etcd/HAProxy/Keepalived versions) is an **install list, not documentation** — components are installed, validated, and reflected in the image name (`-ha` suffix) because NDB profile creation checks HA binaries even for single-instance databases. PostgreSQL rows carry `qualified_extensions` (empty requires `qualified_extensions_empty_reason`) and optional `postgres_package_version_prefix` patch pin (Debian/Ubuntu only — RHEL-family is never patch-pinned). MongoDB rows carry `mongodb_edition` and `deployment`.
 - **NDB versions** are parallel trees (`ndb/<ver>/` + `ansible/<ver>/`), structurally identical; new versions are scaffolded with `release_scaffold.sh`, never hand-copied.
-- **Source images** resolve via `images.json` (URL, or `env_var` indirection for licensed RHEL: `NDB_RHEL_9_6_IMAGE_URI`/`NDB_RHEL_9_7_IMAGE_URI`), overridable by UUID/name/URI flags. Public URLs rot: HEAD-check before trusting or editing `images.json` — Prism `ImageCreate ... 404` means bad source URL, not an Ansible problem.
+- **Source images** resolve via `images.json` (URL, or `env_var` indirection for licensed RHEL: `NDB_RHEL_9_6_IMAGE_URI`/`NDB_RHEL_9_7_IMAGE_URI`/`NDB_RHEL_9_8_IMAGE_URI`/`NDB_RHEL_10_IMAGE_URI`), overridable by UUID/name/URI flags. Public URLs rot: HEAD-check before trusting or editing `images.json` — Prism `ImageCreate ... 404` means bad source URL, not an Ansible problem.
 - **Customization profiles** (`customizations/profiles/*.yml`; secrets-bearing ones in git-ignored `customizations/local/`) inject extra Ansible roles at the four hook phases above.
 - **Image naming**: `ndb-<ndb>-<db_type>-<dbver>-<os>-<osver>[-ha][-pgX-Y][-ext-...]-<timestamp>`.
 - `logs/` is git-ignored debug output; `source/` is read-only vendor docs.
@@ -102,4 +103,4 @@ ndb/<ver>/matrix.json row  →  build.sh (selection + ansible-vars JSON in /tmp)
 - Artifact validation and E2E source VMs use offline-safe cloud-init on purpose: images must be self-contained at first boot; don't "fix" validation by installing packages during it.
 - A successful manifest is not proof the Prism image still exists — preflight images before E2E.
 
-`docs/operational-lessons.md` holds 55+ hard-won operational lessons (Debian/Ubuntu NDB target-clone PAM/SSH reset gating, device-mapper alias pitfalls, SELinux limits for MongoDB, diagnostic workflows). Read it at session start and before touching anything NDB-, PAM-, or storage-related; append new lessons after corrections. `tasks/todo.md` carries the running plan and current blocker state; `VALIDATION.md` defines validation layers and live coverage status. The README is the authoritative long-form reference for all command variants.
+`docs/operational-lessons.md` holds 55+ hard-won operational lessons (Debian/Ubuntu NDB target-clone PAM/SSH reset gating, device-mapper alias pitfalls, SELinux limits for MongoDB, diagnostic workflows). Read it at session start and before touching anything NDB-, PAM-, or storage-related; append new lessons after corrections. Running plan and blocker state live in `VALIDATION.md` and open GitHub issues (not a committed `tasks/` tree; local scratchpads under `/tasks/` are gitignored). The README is the authoritative long-form reference for all command variants.

@@ -26,6 +26,7 @@ bash scripts/selftest.sh
 packer fmt -check packer/
 for v in ansible/*/; do ANSIBLE_ROLES_PATH="${v}roles" ansible-playbook --syntax-check "${v}playbooks/site.yml"; done
 for v in ansible/*/; do ANSIBLE_ROLES_PATH="${v}roles" ansible-lint --profile basic "$v"; done
+for roles_dir in customizations/examples/*/roles; do ANSIBLE_ROLES_PATH="$roles_dir" ansible-lint --profile basic "$roles_dir"; done
 git diff --check
 ```
 
@@ -53,7 +54,7 @@ Manifests under `manifests/` record what you have built locally. Audit them
 against the matrix:
 
 ```bash
-scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json
+scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json ndb/2.11/matrix.json
 ```
 
 A manifest proves a build *happened*; it does not prove the image still exists
@@ -64,14 +65,32 @@ your manifests are still present before planning an E2E run:
 op run --env-file=.env -- scripts/ndb_e2e_validate.sh --preflight-images
 ```
 
+## Recommended live campaign order
+
+Hardware proof is still thin relative to the buildable matrix. Prefer this
+order when a lab is available (always `--preflight-images` before E2E):
+
+1. Ubuntu 24.04 / PostgreSQL 18 **NDB E2E** (build + artifact already pass).
+2. One Debian 12 PostgreSQL path (expect the known NDB storage/protection
+   blocker; track as product, not more image-side dm-alias churn).
+3. Rocky Linux MongoDB 7.0 and 8.0 smoke (`--validate --validate-artifact --manifest`).
+4. NDB **2.11** first-of-each-OS smoke (scaffold/review landed; no live proof yet).
+5. Debian 12 MongoDB (buildable in 2.11; never built here).
+
+Metadata engines (Oracle, SQL Server, MySQL, MariaDB, EDB) stay documentation-only
+until real Ansible roles exist. RHEL 9.8 / RHEL 10 HA versions remain pinned to
+the RHEL 9.7 tuple until Nutanix publishes Table 4 — see `ndb/2.11/REVIEW.md`.
+
 ## Red Hat Enterprise Linux
 
 Full live validation is not complete until the RHEL rows have successful
 manifests. RHEL source images are licensed and are not committed to this
 repository. To finish coverage, provide either:
 
-- `NDB_RHEL_9_6_IMAGE_URI` and `NDB_RHEL_9_7_IMAGE_URI`, or
-- staged Prism image UUIDs for RHEL 9.6 and RHEL 9.7.
+- `NDB_RHEL_9_6_IMAGE_URI`, `NDB_RHEL_9_7_IMAGE_URI`, and for NDB 2.11 also
+  `NDB_RHEL_9_8_IMAGE_URI` / `NDB_RHEL_10_IMAGE_URI`, or
+- staged Prism image UUIDs for the matching RHEL versions (`RHEL_96_UUID`,
+  `RHEL_97_UUID`, and for 2.11 `RHEL_98_UUID` / `RHEL_10_UUID`).
 
 Also provide `NDB_RHEL_ORGID` and `NDB_RHEL_ACTIVATIONKEY` from 1Password when
 the RHEL rows should use Red Hat CDN repositories. Builds use those values only
@@ -118,6 +137,9 @@ If using staged Prism images, set stable local shell variables:
 ```bash
 export RHEL_96_UUID="replace-with-rhel-9.6-image-uuid"
 export RHEL_97_UUID="replace-with-rhel-9.7-image-uuid"
+# NDB 2.11 rows also need:
+# export RHEL_98_UUID="replace-with-rhel-9.8-image-uuid"
+# export RHEL_10_UUID="replace-with-rhel-10-image-uuid"
 ```
 
 If a staged image is present but inactive, inspect the activation plan first:
@@ -170,14 +192,14 @@ Run the RHEL live matrix:
 Audit full coverage:
 
 ```bash
-scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json
+scripts/live_coverage_audit.sh ndb/2.9/matrix.json ndb/2.10/matrix.json ndb/2.11/matrix.json
 ```
 
 To generate individual recovery commands that include both staged RHEL image
 UUIDs and a local repository customization profile:
 
 ```bash
-scripts/live_coverage_audit.sh --suggest-runs --customization-profile customizations/local/rhel-repositories.yml --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" ndb/2.9/matrix.json ndb/2.10/matrix.json
+scripts/live_coverage_audit.sh --suggest-runs --customization-profile customizations/local/rhel-repositories.yml --source-image-uuid-map "rhel-9.6=${RHEL_96_UUID},rhel-9.7=${RHEL_97_UUID}" ndb/2.9/matrix.json ndb/2.10/matrix.json ndb/2.11/matrix.json
 ```
 
 Completion requires:
