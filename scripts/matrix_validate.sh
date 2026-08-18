@@ -7,9 +7,10 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 MATRIX_VALIDATE_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+MATRIX_VALIDATE_ROOT_DIR=$(cd "${MATRIX_VALIDATE_SCRIPT_DIR}/.." && pwd)
 # shellcheck source=scripts/source_images.sh
 source "${MATRIX_VALIDATE_SCRIPT_DIR}/source_images.sh"
-IMAGES_JSON_FILE="${MATRIX_VALIDATE_SCRIPT_DIR}/../images.json"
+IMAGES_JSON_FILE="${MATRIX_VALIDATE_ROOT_DIR}/images.json"
 # Keys have no whitespace by construction (source_image_key_for_os slugs),
 # so a space-separated scalar is bash-3.2-safe here.
 IMAGES_JSON_KEYS=""
@@ -20,7 +21,8 @@ fi
 if (( $# > 0 )); then
   MATRIX_FILES=("$@")
 else
-  MATRIX_FILES=(ndb/*/matrix.json)
+  # Expand from the repo root so the default glob works from any cwd.
+  MATRIX_FILES=("${MATRIX_VALIDATE_ROOT_DIR}"/ndb/*/matrix.json)
 fi
 
 if (( ${#MATRIX_FILES[@]} == 0 )) || [[ ! -e "${MATRIX_FILES[0]}" ]]; then

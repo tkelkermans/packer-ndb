@@ -2,12 +2,12 @@
   ansible.builtin.set_fact:
     ndb_os_family: "{{ ansible_facts['os_family'] }}"
 
-- name: validate_custom_enterprise role marker
+- name: Validate custom enterprise role marker
   ansible.builtin.debug:
     msg: "validate_custom_enterprise"
 
 - name: Check RedHat sample CA certificate
-  become: yes
+  become: true
   ansible.builtin.stat:
     path: "{{ enterprise_internal_ca_path_redhat }}"
   register: enterprise_ca_redhat_stat
@@ -16,7 +16,7 @@
     - ndb_os_family == "RedHat"
 
 - name: Check Debian sample CA certificate
-  become: yes
+  become: true
   ansible.builtin.stat:
     path: "{{ enterprise_internal_ca_path_debian }}"
   register: enterprise_ca_debian_stat
@@ -33,7 +33,7 @@
   when: enterprise_internal_ca_enabled | default(false) | bool
 
 - name: Check monitoring marker
-  become: yes
+  become: true
   ansible.builtin.stat:
     path: "{{ enterprise_otel_marker_path }}"
   register: enterprise_otel_marker_stat
@@ -47,7 +47,7 @@
   when: enterprise_monitoring_enabled | default(false) | bool
 
 - name: Check monitoring service is active
-  become: yes
+  become: true
   ansible.builtin.command:
     argv:
       - systemctl
@@ -65,7 +65,7 @@
   when: enterprise_monitoring_enabled | default(false) | bool
 
 - name: Read hardening marker
-  become: yes
+  become: true
   ansible.builtin.slurp:
     path: "{{ enterprise_hardening_marker_path }}"
   register: enterprise_hardening_marker

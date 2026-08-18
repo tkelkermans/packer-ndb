@@ -2,7 +2,7 @@
   ansible.builtin.set_fact:
     ndb_os_family: "{{ ansible_facts['os_family'] }}"
 
-- name: validate_rhel_repositories role marker
+- name: Validate RHEL repositories role marker
   ansible.builtin.debug:
     msg: "validate_rhel_repositories"
 
@@ -12,7 +12,7 @@
     - ndb_os_family == "RedHat"
   block:
     - name: List enabled dnf repositories
-      become: yes
+      become: true
       ansible.builtin.command:
         argv:
           - dnf
@@ -29,7 +29,7 @@
       loop: "{{ rhel_repositories_expected_enabled_repo_ids | default([]) }}"
 
     - name: Gather installed package facts
-      become: yes
+      become: true
       ansible.builtin.package_facts:
         manager: auto
 

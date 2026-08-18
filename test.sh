@@ -2,12 +2,15 @@
 
 set -euo pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+cd "$SCRIPT_DIR"
+
 # shellcheck source=scripts/postgres_extensions.sh
-source "scripts/postgres_extensions.sh"
+source "${SCRIPT_DIR}/scripts/postgres_extensions.sh"
 # shellcheck source=scripts/args.sh
-source "scripts/args.sh"
+source "${SCRIPT_DIR}/scripts/args.sh"
 # shellcheck source=scripts/source_images.sh
-source "scripts/source_images.sh"
+source "${SCRIPT_DIR}/scripts/source_images.sh"
 
 INCLUDE_OS=()
 EXCLUDE_OS=()
@@ -22,6 +25,7 @@ WRITE_MANIFEST=false
 EXTENSIONS_ONLY=false
 CONTINUE_ON_ERROR=false
 PREFLIGHT_ONLY=false
+DRY_RUN=false
 CUSTOMIZATION_PROFILE=""
 POSTGRES_INSTALLABLE_EXTENSIONS_JSON=$(postgres_installable_extensions_json)
 SOURCE_IMAGE_UUID_MAP_KEYS=()
@@ -37,12 +41,16 @@ Options:
   --include-ndb LIST    Comma-separated list of NDB versions to include (default: all)
   --include-db-type LIST  Comma-separated list of db_type values (default: pgsql)
   --all-db-types        Disable db_type filtering
-  --max-parallel N      Number of concurrent builds to run (default: 1)
+  --max-parallel N      Number of concurrent builds to run (default: 1). Throttling
+                        waits on the oldest in-flight PID (FIFO), not any completed
+                        job. Prefer one outer 'op run --env-file=.env -- $0 ...' when
+                        secrets come from 1Password; do not wrap each child build.
   --allow-rhel          Include RHEL builds (skipped by default)
   --validate            Run in-guest validation after provisioning for each build
   --validate-artifact   Boot and validate each saved artifact after Packer succeeds
   --manifest            Write build manifests for each live build
   --preflight           Check live Prism/source-image readiness for each selected row without invoking Packer
+  --dry-run             Forward --dry-run to each build.sh invocation (no Prism credentials needed)
   --extensions-only     Only run PostgreSQL rows with installable qualified extensions and select --extensions all-qualified
   --continue-on-error   Run all selected rows even if one build fails
   --customization-profile PROFILE
@@ -176,6 +184,9 @@ while [[ $# -gt 0 ]]; do
     --preflight)
       PREFLIGHT_ONLY=true
       ;;
+    --dry-run)
+      DRY_RUN=true
+      ;;
     --extensions-only)
       EXTENSIONS_ONLY=true
       ;;
@@ -210,6 +221,10 @@ if ! [[ "$MAX_PARALLEL" =~ ^[0-9]+$ ]] || (( MAX_PARALLEL < 1 )); then
   exit 1
 fi
 
+if (( MAX_PARALLEL > 1 )); then
+  echo "Warning: --max-parallel ${MAX_PARALLEL} uses FIFO throttling (waits on the oldest in-flight PID). Prism image import/placement load rises with concurrency. Wrap the suite once with 'op run --env-file=.env --', not per child." >&2
+fi
+
 if ! command -v jq >/dev/null 2>&1; then
   echo "Error: jq is required to run the tests." >&2
   exit 1
@@ -217,14 +232,14 @@ fi
 
 # An unmatched glob stays literal, so the array is never empty; check the
 # first entry actually exists instead of testing the array length.
-MATRIX_FILES=(ndb/*/matrix.json)
+MATRIX_FILES=("${SCRIPT_DIR}"/ndb/*/matrix.json)
 if (( ${#MATRIX_FILES[@]} == 0 )) || [[ ! -e "${MATRIX_FILES[0]}" ]]; then
   echo "Error: No matrix files found under ndb/." >&2
   exit 1
 fi
 
 if [[ "${SKIP_MATRIX_VALIDATION:-false}" != "true" ]]; then
-  scripts/matrix_validate.sh "${MATRIX_FILES[@]}"
+  "${SCRIPT_DIR}/scripts/matrix_validate.sh" "${MATRIX_FILES[@]}"
 fi
 
 declare -a ACTIVE_PIDS=()
@@ -326,6 +341,7 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
     fi
     db_type=$(echo "$build" | jq -r '.db_type // ""')
     if ! db_type_allowed "$db_type"; then
+      echo "--> Skipping db_type ${db_type} build per filters."
       continue
     fi
     provisioning_role=$(echo "$build" | jq -r '.provisioning_role // "postgresql"')
@@ -353,9 +369,12 @@ for matrix_file in "${MATRIX_FILES[@]}"; do
 
     (
       set -euo pipefail
-      BUILD_ARGS=(./build.sh --ci --ndb-version "$ndb_version" --db-type "$db_type" --os "$os_type" --os-version "$os_version" --db-version "$db_version")
+      BUILD_ARGS=("${SCRIPT_DIR}/build.sh" --ci --ndb-version "$ndb_version" --db-type "$db_type" --os "$os_type" --os-version "$os_version" --db-version "$db_version")
       if [[ "$PREFLIGHT_ONLY" == "true" ]]; then
         BUILD_ARGS+=(--preflight)
+      fi
+      if [[ "$DRY_RUN" == "true" ]]; then
+        BUILD_ARGS+=(--dry-run)
       fi
       if [[ "$VALIDATE_BUILDS" == "true" ]]; then
         BUILD_ARGS+=(--validate)

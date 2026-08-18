@@ -7,6 +7,10 @@ TEMP_FILES=()
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# Resolve repo-relative paths from the script location so callers need not cd
+# to the repository root first.
+cd "$SCRIPT_DIR"
+
 MANIFEST_HELPER="${SCRIPT_DIR}/scripts/manifest.sh"
 # shellcheck source=scripts/source_images.sh
 source "${SCRIPT_DIR}/scripts/source_images.sh"
@@ -268,7 +272,7 @@ function validate_matrix_file() {
   if [[ "${SKIP_MATRIX_VALIDATION:-false}" == "true" ]]; then
     return
   fi
-  scripts/matrix_validate.sh "$matrix_file"
+  "${SCRIPT_DIR}/scripts/matrix_validate.sh" "$matrix_file"
 }
 
 function normalize_image_key_part() {

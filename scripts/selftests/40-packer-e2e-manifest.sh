@@ -570,9 +570,13 @@ SH
   pass "artifact validation failure handling"
 }
 run_ndb_e2e_validate_static_tests() {
+  local tmpdir targets_file output status
   bash -n "$ROOT_DIR/scripts/ndb_e2e_validate.sh" || fail "NDB E2E validation runner has shell syntax errors"
   bash "$ROOT_DIR/scripts/ndb_e2e_validate.sh" --help >/dev/null || fail "NDB E2E validation runner help failed"
 
+  grep -q 'TMPDIR:-/tmp' "$ROOT_DIR/scripts/ndb_e2e_validate.sh" || fail "NDB E2E runner must default temp paths via TMPDIR/tmp"
+  ! grep -Eq '=(/private/tmp|\$\{[^}]*private/tmp)' "$ROOT_DIR/scripts/ndb_e2e_validate.sh" \
+    || fail "NDB E2E runner must not hardcode macOS /private/tmp path defaults"
   grep -q "NDB_E2E_EVIDENCE_FILE" "$ROOT_DIR/scripts/ndb_e2e_validate.sh" || fail "NDB E2E runner missing configurable evidence file"
   grep -q "join(\"|\")" "$ROOT_DIR/scripts/ndb_e2e_validate.sh" || fail "NDB E2E runner must preserve empty target fields with a non-whitespace delimiter"
   grep -q "IFS='|'" "$ROOT_DIR/scripts/ndb_e2e_validate.sh" || fail "NDB E2E runner must read target rows with the non-whitespace delimiter"
@@ -645,6 +649,31 @@ run_ndb_e2e_validate_static_tests() {
   grep -q "NDB_E2E_TARGET_OBSERVER_MAX_SECONDS" "$ROOT_DIR/README.md" || fail "README missing target observer max-duration override"
   grep -q "target-observer" "$ROOT_DIR/README.md" || fail "README missing target observer output directory guidance"
   grep -q "offline-safe E2E cloud-init" "$ROOT_DIR/README.md" || fail "README missing offline-safe E2E cloud-init guidance"
+
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+  targets_file="$tmpdir/ndb_e2e_latest_targets.psv"
+  output="$tmpdir/e2e-dry-run.out"
+  status=0
+  (
+    unset TMPDIR
+    NDB_E2E_TARGETS_FILE="$targets_file" \
+      NDB_E2E_STATE_DIR="$tmpdir/state" \
+      NDB_E2E_EVIDENCE_FILE="$tmpdir/results.jsonl" \
+      "$ROOT_DIR/scripts/ndb_e2e_validate.sh" --dry-run --limit 1
+  ) >"$output" 2>&1 || status=$?
+  [[ -d "$tmpdir" ]] || fail "E2E dry-run temp directory disappeared"
+  # Fresh clones have no manifests, so dry-run fails the coverage count — that is
+  # expected. The important check is that it never tries to create /private/tmp.
+  ! grep -q '/private/tmp' "$output" || fail "E2E dry-run referenced /private/tmp: $(cat "$output")"
+  [[ -e "$targets_file" || -d "$(dirname "$targets_file")" ]] \
+    || fail "E2E dry-run did not use NDB_E2E_TARGETS_FILE under mktemp"
+  if [[ "$status" -eq 0 ]]; then
+    grep -q "Attempted rows:" "$output" || fail "E2E dry-run succeeded without reporting attempted rows"
+  else
+    grep -Eq 'expected .* latest-success targets|Attempted rows:' "$output" \
+      || fail "E2E dry-run failed for an unexpected reason: $(cat "$output")"
+  fi
 
   pass "NDB E2E validation runner static guards"
 }

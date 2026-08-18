@@ -2,7 +2,7 @@
   ansible.builtin.set_fact:
     ndb_os_family: "{{ ansible_facts['os_family'] }}"
 
-- name: custom_rhel_repositories role marker
+- name: Custom RHEL repositories role marker
   ansible.builtin.debug:
     msg: "custom_rhel_repositories"
 
@@ -19,7 +19,7 @@
         fail_msg: "Enable at least one yum repository or subscription-manager repository for RHEL builds"
 
     - name: Configure explicit RHEL yum repositories
-      become: yes
+      become: true
       no_log: "{{ rhel_repositories_hide_values | default(true) | bool }}"
       ansible.builtin.yum_repository:
         name: "{{ item.name }}"
@@ -38,7 +38,7 @@
       loop: "{{ rhel_repositories_yum_repositories | default([]) }}"
 
     - name: Enable subscription-manager repositories
-      become: yes
+      become: true
       no_log: "{{ rhel_repositories_hide_values | default(true) | bool }}"
       ansible.builtin.command:
         argv:
@@ -49,7 +49,7 @@
       changed_when: false
 
     - name: Refresh dnf metadata after RHEL repository changes
-      become: yes
+      become: true
       ansible.builtin.command:
         argv:
           - dnf
