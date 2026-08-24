@@ -1128,6 +1128,7 @@ this README):
 |   |-- artifact_validate.sh
 |   |-- build_wizard.sh
 |   |-- live_coverage_audit.sh
+|   |-- live_campaign.sh          (recommended live validation campaign)
 |   |-- manifest.sh
 |   |-- matrix_validate.sh
 |   |-- ndb_e2e_validate.sh

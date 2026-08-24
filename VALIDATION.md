@@ -77,6 +77,14 @@ order when a lab is available (always `--preflight-images` before E2E):
 4. NDB **2.11** first-of-each-OS smoke (scaffold/review landed; no live proof yet).
 5. Debian 12 MongoDB (buildable in 2.11; never built here).
 
+Orchestrate the campaign with `scripts/live_campaign.sh` (dry-run first):
+
+```bash
+scripts/live_campaign.sh --list-phases
+scripts/live_campaign.sh --dry-run --phase 1
+op run --env-file=.env -- scripts/live_campaign.sh --execute --phase 1
+```
+
 Metadata engines (Oracle, SQL Server, MySQL, MariaDB, EDB) stay documentation-only
 until real Ansible roles exist. RHEL 9.8 / RHEL 10 HA versions remain pinned to
 the RHEL 9.7 tuple until Nutanix publishes Table 4 — see `ndb/2.11/REVIEW.md`.
