@@ -703,5 +703,7 @@ run_live_campaign_tests() {
   output=$("$ROOT_DIR/scripts/live_campaign.sh" --dry-run --phase 4 2>&1)
   grep -q "Skipping RHEL" <<<"$output" || fail "live campaign phase 4 should skip RHEL by default"
   grep -q "scripts/live_campaign.sh" "$ROOT_DIR/VALIDATION.md" || fail "VALIDATION.md missing live campaign script"
+  output=$("$ROOT_DIR/scripts/live_campaign.sh" --check-lab --skip-e2e 2>&1) || true
+  grep -q "Lab readiness:" <<<"$output" || fail "live campaign --check-lab missing readiness summary"
   pass "live campaign planner"
 }

@@ -81,9 +81,12 @@ Orchestrate the campaign with `scripts/live_campaign.sh` (dry-run first):
 
 ```bash
 scripts/live_campaign.sh --list-phases
+scripts/live_campaign.sh --check-lab --skip-e2e
 scripts/live_campaign.sh --dry-run --phase 1
 op run --env-file=.env -- scripts/live_campaign.sh --execute --phase 1
 ```
+
+From GitHub Actions (repository secrets must match `.env.example` names), run one phase at a time via the **Live validation campaign** workflow.
 
 Metadata engines (Oracle, SQL Server, MySQL, MariaDB, EDB) stay documentation-only
 until real Ansible roles exist. RHEL 9.8 / RHEL 10 HA versions remain pinned to
