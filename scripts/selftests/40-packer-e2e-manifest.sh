@@ -686,3 +686,22 @@ run_release_scaffold_tests() {
   [[ ! -e "$ROOT_DIR/ansible/$test_version" ]] || fail "release scaffold dry-run created ansible/$test_version"
   pass "release scaffold dry-run"
 }
+run_live_campaign_tests() {
+  bash -n "$ROOT_DIR/scripts/live_campaign.sh" || fail "live campaign script has shell syntax errors"
+  "$ROOT_DIR/scripts/live_campaign.sh" --help >/dev/null || fail "live campaign help failed"
+  output=$("$ROOT_DIR/scripts/live_campaign.sh" --list-phases)
+  grep -q "ubuntu_pg18_e2e" <<<"$output" || fail "live campaign missing phase 1"
+  grep -q "debian_mongo" <<<"$output" || fail "live campaign missing phase 5"
+  output=$("$ROOT_DIR/scripts/live_campaign.sh" --dry-run --phase 1 2>&1)
+  grep -q "210-pg18-ubuntu2404" <<<"$output" || fail "live campaign phase 1 missing Ubuntu PG18 E2E row id"
+  grep -q "preflight-images" <<<"$output" || fail "live campaign phase 1 missing image preflight"
+  grep -q 'Ubuntu Linux' <<<"$output" || fail "live campaign phase 1 missing Ubuntu build"
+  output=$("$ROOT_DIR/scripts/live_campaign.sh" --dry-run --phase 3 2>&1)
+  grep -q 'mongodb' <<<"$output" || fail "live campaign phase 3 missing mongodb builds"
+  grep -q '7.0' <<<"$output" || fail "live campaign phase 3 missing MongoDB 7.0"
+  grep -q '8.0' <<<"$output" || fail "live campaign phase 3 missing MongoDB 8.0"
+  output=$("$ROOT_DIR/scripts/live_campaign.sh" --dry-run --phase 4 2>&1)
+  grep -q "Skipping RHEL" <<<"$output" || fail "live campaign phase 4 should skip RHEL by default"
+  grep -q "scripts/live_campaign.sh" "$ROOT_DIR/VALIDATION.md" || fail "VALIDATION.md missing live campaign script"
+  pass "live campaign planner"
+}
