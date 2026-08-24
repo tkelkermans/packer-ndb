@@ -14,7 +14,12 @@ PHASE_FILTER=""
 FROM_PHASE=1
 STOP_AFTER_PHASE=0
 SKIP_E2E=false
+CHECK_LAB=false
 NDB_VERSION_DEFAULT="2.10"
+
+log() {
+  printf '%s\n' "$*" >&2
+}
 
 usage() {
   cat <<'EOF'
@@ -49,12 +54,94 @@ Options:
   --skip-e2e            Skip NDB E2E steps in phases that support them
   --allow-rhel          Include RHEL rows in phase 4
   --env-file PATH       Alternate .env path (default: repo-root .env)
+  --check-lab           Verify local tools, keys, and required env vars; exit 0/1
   -h, --help            Show this help and exit
 EOF
 }
 
-log() {
-  printf '%s\n' "$*" >&2
+REQUIRED_PRISM_VARS=(
+  PKR_VAR_pc_username
+  PKR_VAR_pc_password
+  PKR_VAR_pc_ip
+  PKR_VAR_cluster_name
+  PKR_VAR_subnet_name
+)
+REQUIRED_E2E_VARS=(
+  NDB_SERVER_ADDRESS
+  NDB_SERVER_USER
+  NDB_SERVER_PASSWORD
+  NDB_E2E_CLUSTER_ID
+  NDB_E2E_COMPUTE_PROFILE_ID
+  NDB_E2E_SLA_ID
+  NDB_E2E_POSTGRES_NETWORK_PROFILE_ID
+  NDB_E2E_POSTGRES_DB_PARAM_PROFILE_ID
+)
+
+check_lab_readiness() {
+  local missing=0
+  local var
+
+  for cmd in bash jq curl packer ansible-playbook; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      log "  ok: command ${cmd}"
+    else
+      log "  missing: command ${cmd}"
+      missing=$((missing + 1))
+    fi
+  done
+
+  if [[ -f "$ROOT_DIR/packer/id_rsa" && -f "$ROOT_DIR/packer/id_rsa.pub" ]]; then
+    log "  ok: packer/id_rsa key pair"
+  else
+    log "  missing: packer/id_rsa (run: ssh-keygen -t rsa -b 4096 -f packer/id_rsa -N \"\")"
+    missing=$((missing + 1))
+  fi
+
+  if packer init "$ROOT_DIR/packer/" >/dev/null 2>&1; then
+    log "  ok: packer init"
+  else
+    log "  missing: packer plugins (run: packer init packer/)"
+    missing=$((missing + 1))
+  fi
+
+  if [[ -f "$ENV_FILE" ]]; then
+    log "  ok: env file present at ${ENV_FILE}"
+  elif [[ -n "${PKR_VAR_pc_ip:-}" ]]; then
+    log "  ok: Prism env vars exported in shell"
+  else
+    log "  missing: ${ENV_FILE} or exported PKR_VAR_pc_ip (wire 1Password or export lab env)"
+    missing=$((missing + 1))
+  fi
+
+  for var in "${REQUIRED_PRISM_VARS[@]}"; do
+    if [[ -n "${!var:-}" ]]; then
+      log "  ok: ${var}=set"
+    else
+      log "  missing: ${var}"
+      missing=$((missing + 1))
+    fi
+  done
+
+  if [[ "$SKIP_E2E" != "true" && "$PREFLIGHT_ONLY" != "true" ]]; then
+    for var in "${REQUIRED_E2E_VARS[@]}"; do
+      if [[ -n "${!var:-}" ]]; then
+        log "  ok: ${var}=set"
+      else
+        log "  missing: ${var} (required for E2E phases; use --skip-e2e or --preflight to omit)"
+        missing=$((missing + 1))
+      fi
+    done
+  fi
+
+  if (( missing > 0 )); then
+    log ""
+    log "Lab readiness: incomplete (${missing} gap(s))"
+    return 1
+  fi
+
+  log ""
+  log "Lab readiness: complete"
+  return 0
 }
 
 run_cmd() {
@@ -275,6 +362,9 @@ while [[ $# -gt 0 ]]; do
     --allow-rhel)
       ALLOW_RHEL=true
       ;;
+    --check-lab)
+      CHECK_LAB=true
+      ;;
     --env-file)
       require_option_value "$1" "$#"
       ENV_FILE=$2
@@ -295,6 +385,12 @@ done
 
 if [[ "$EXECUTE" != "true" && "$DRY_RUN" != "true" ]]; then
   DRY_RUN=true
+fi
+
+if [[ "$CHECK_LAB" == "true" ]]; then
+  log "Checking lab readiness for live campaign..."
+  check_lab_readiness
+  exit $?
 fi
 
 if [[ "$EXECUTE" == "true" ]]; then

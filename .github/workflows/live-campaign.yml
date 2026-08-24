@@ -1,0 +1,128 @@
+name: Live validation campaign
+
+# Manual hardware validation against Prism + NDB. Configure repository secrets
+# matching .env.example (PKR_VAR_*, NDB_SERVER_*, NDB_E2E_*). One phase per run;
+# never start two campaign jobs concurrently against the same lab.
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: 'Campaign phase (1-5) or name (ubuntu_pg18_e2e, debian_pg_smoke, rocky_mongo_smoke, ndb_211_smoke, debian_mongo)'
+        required: true
+        default: '1'
+      preflight_only:
+        description: 'Prism/source-image preflight only (no Packer/E2E)'
+        type: boolean
+        default: false
+      skip_e2e:
+        description: 'Skip NDB E2E steps (build + artifact only)'
+        type: boolean
+        default: false
+      allow_rhel:
+        description: 'Include RHEL rows in phase 4 (requires issue #2 readiness)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: live-campaign
+  cancel-in-progress: false
+
+jobs:
+  run-phase:
+    name: Live campaign phase ${{ inputs.phase }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        env:
+          SHELLCHECK_VERSION: v0.11.0
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq jq
+          pipx install 'ansible-core>=2.18'
+          pipx install 'ansible-lint==26.6.0'
+          curl -fsSL "https://releases.hashicorp.com/packer/1.15.4/packer_1.15.4_linux_amd64.zip" -o /tmp/packer.zip
+          sudo unzip -o /tmp/packer.zip -d /usr/local/bin/
+          packer --version
+
+      - name: Packer SSH key and plugins
+        run: |
+          ssh-keygen -t rsa -b 4096 -C "packer@nutanix" -f packer/id_rsa -N "" -q
+          packer init packer/
+
+      - name: Lab readiness check
+        env:
+          PKR_VAR_pc_username: ${{ secrets.PKR_VAR_pc_username }}
+          PKR_VAR_pc_password: ${{ secrets.PKR_VAR_pc_password }}
+          PKR_VAR_pc_ip: ${{ secrets.PKR_VAR_pc_ip }}
+          PKR_VAR_cluster_name: ${{ secrets.PKR_VAR_cluster_name }}
+          PKR_VAR_subnet_name: ${{ secrets.PKR_VAR_subnet_name }}
+          PKR_VAR_nutanix_insecure: ${{ secrets.PKR_VAR_nutanix_insecure }}
+          NDB_SERVER_ADDRESS: ${{ secrets.NDB_SERVER_ADDRESS }}
+          NDB_SERVER_USER: ${{ secrets.NDB_SERVER_USER }}
+          NDB_SERVER_PASSWORD: ${{ secrets.NDB_SERVER_PASSWORD }}
+          NDB_E2E_CLUSTER_ID: ${{ secrets.NDB_E2E_CLUSTER_ID }}
+          NDB_E2E_COMPUTE_PROFILE_ID: ${{ secrets.NDB_E2E_COMPUTE_PROFILE_ID }}
+          NDB_E2E_SLA_ID: ${{ secrets.NDB_E2E_SLA_ID }}
+          NDB_E2E_POSTGRES_NETWORK_PROFILE_ID: ${{ secrets.NDB_E2E_POSTGRES_NETWORK_PROFILE_ID }}
+          NDB_E2E_POSTGRES_DB_PARAM_PROFILE_ID: ${{ secrets.NDB_E2E_POSTGRES_DB_PARAM_PROFILE_ID }}
+          NDB_E2E_MONGODB_DB_PARAM_PROFILE_ID: ${{ secrets.NDB_E2E_MONGODB_DB_PARAM_PROFILE_ID }}
+          NDB_E2E_MONGODB_NETWORK_PROFILE_ID: ${{ secrets.NDB_E2E_MONGODB_NETWORK_PROFILE_ID }}
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          args=(--check-lab)
+          if [[ "${{ inputs.skip_e2e }}" == "true" ]]; then
+            args+=(--skip-e2e)
+          fi
+          if [[ "${{ inputs.preflight_only }}" == "true" ]]; then
+            args+=(--preflight)
+          fi
+          scripts/live_campaign.sh "${args[@]}"
+
+      - name: Run campaign phase
+        env:
+          PKR_VAR_pc_username: ${{ secrets.PKR_VAR_pc_username }}
+          PKR_VAR_pc_password: ${{ secrets.PKR_VAR_pc_password }}
+          PKR_VAR_pc_ip: ${{ secrets.PKR_VAR_pc_ip }}
+          PKR_VAR_cluster_name: ${{ secrets.PKR_VAR_cluster_name }}
+          PKR_VAR_subnet_name: ${{ secrets.PKR_VAR_subnet_name }}
+          PKR_VAR_nutanix_insecure: ${{ secrets.PKR_VAR_nutanix_insecure }}
+          PKR_VAR_vm_cpu: ${{ secrets.PKR_VAR_vm_cpu }}
+          PKR_VAR_vm_memory_mb: ${{ secrets.PKR_VAR_vm_memory_mb }}
+          PKR_VAR_vm_disk_size_gb: ${{ secrets.PKR_VAR_vm_disk_size_gb }}
+          NDB_SERVER_ADDRESS: ${{ secrets.NDB_SERVER_ADDRESS }}
+          NDB_SERVER_USER: ${{ secrets.NDB_SERVER_USER }}
+          NDB_SERVER_PASSWORD: ${{ secrets.NDB_SERVER_PASSWORD }}
+          NDB_E2E_CLUSTER_ID: ${{ secrets.NDB_E2E_CLUSTER_ID }}
+          NDB_E2E_COMPUTE_PROFILE_ID: ${{ secrets.NDB_E2E_COMPUTE_PROFILE_ID }}
+          NDB_E2E_SLA_ID: ${{ secrets.NDB_E2E_SLA_ID }}
+          NDB_E2E_POSTGRES_NETWORK_PROFILE_ID: ${{ secrets.NDB_E2E_POSTGRES_NETWORK_PROFILE_ID }}
+          NDB_E2E_POSTGRES_DB_PARAM_PROFILE_ID: ${{ secrets.NDB_E2E_POSTGRES_DB_PARAM_PROFILE_ID }}
+          NDB_E2E_MONGODB_DB_PARAM_PROFILE_ID: ${{ secrets.NDB_E2E_MONGODB_DB_PARAM_PROFILE_ID }}
+          NDB_E2E_MONGODB_NETWORK_PROFILE_ID: ${{ secrets.NDB_E2E_MONGODB_NETWORK_PROFILE_ID }}
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          args=(--execute --phase "${{ inputs.phase }}")
+          if [[ "${{ inputs.skip_e2e }}" == "true" ]]; then
+            args+=(--skip-e2e)
+          fi
+          if [[ "${{ inputs.preflight_only }}" == "true" ]]; then
+            args+=(--preflight)
+          fi
+          if [[ "${{ inputs.allow_rhel }}" == "true" ]]; then
+            args+=(--allow-rhel)
+          fi
+          scripts/live_campaign.sh "${args[@]}"
+
+      - name: Upload build manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-campaign-manifests-phase-${{ inputs.phase }}
+          path: manifests/*.json
+          if-no-files-found: ignore
