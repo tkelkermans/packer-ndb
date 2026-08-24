@@ -388,12 +388,17 @@ if [[ "$EXECUTE" != "true" && "$DRY_RUN" != "true" ]]; then
 fi
 
 if [[ "$CHECK_LAB" == "true" ]]; then
+  export PKR_VAR_nutanix_insecure="${PKR_VAR_nutanix_insecure:-true}"
   log "Checking lab readiness for live campaign..."
   check_lab_readiness
   exit $?
 fi
 
 if [[ "$EXECUTE" == "true" ]]; then
+  export PKR_VAR_nutanix_insecure="${PKR_VAR_nutanix_insecure:-true}"
+  export PKR_VAR_vm_cpu="${PKR_VAR_vm_cpu:-2}"
+  export PKR_VAR_vm_memory_mb="${PKR_VAR_vm_memory_mb:-4096}"
+  export PKR_VAR_vm_disk_size_gb="${PKR_VAR_vm_disk_size_gb:-40}"
   if [[ ! -f "$ENV_FILE" ]] && [[ -z "${PKR_VAR_pc_ip:-}" ]]; then
     log "Error: --execute requires credentials at ${ENV_FILE} or exported PKR_VAR_* env vars."
     log "Wire 1Password, then run exactly one serialized wrapper, for example:"
