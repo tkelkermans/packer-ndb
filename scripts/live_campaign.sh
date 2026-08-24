@@ -157,7 +157,6 @@ phase_rocky_mongo_smoke() {
 phase_ndb_211_smoke() {
   local rows_file
   rows_file=$(mktemp -t ndb-211-smoke.XXXXXX)
-  trap 'rm -f "$rows_file"' RETURN
   jq -r '
     [.[] | select((.provisioning_role // "postgresql") != "metadata")]
     | group_by(.os_type)
@@ -183,6 +182,7 @@ phase_ndb_211_smoke() {
       build_row "$ndb_version" "$db_type" "$os_type" "$os_version" "$db_version"
     fi
   done <"$rows_file"
+  rm -f "$rows_file"
 }
 
 phase_debian_mongo() {
