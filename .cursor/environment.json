@@ -1,0 +1,4 @@
+{
+  "name": "packer-ndb",
+  "install": "bash .cursor/install.sh"
+}

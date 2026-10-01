@@ -88,6 +88,26 @@ op run --env-file=.env -- scripts/live_campaign.sh --execute --phase 1
 
 From GitHub Actions (repository secrets must match `.env.example` names), run one phase at a time via the **Live validation campaign** workflow.
 
+### Cloud Agent (Cursor)
+
+Repository-managed bootstrap lives in `.cursor/environment.json` (installs
+ansible-core ≥ 2.18, Packer 1.15.4, shellcheck, and `packer init`). Add lab
+credentials as **environment secrets** in the [Cloud Agents
+dashboard](https://cursor.com/dashboard/cloud-agents#environments) using the
+same variable names as `.env.example` (`PKR_VAR_*`, `NDB_SERVER_*`,
+`NDB_E2E_*`). Never commit secrets into `environment.json`.
+
+After secrets are wired and Builds are enabled for the environment:
+
+```bash
+scripts/live_campaign.sh --check-lab
+scripts/live_campaign.sh --execute --phase 1
+```
+
+The cloud-agent integration token cannot dispatch GitHub Actions workflows or
+read repository secrets (HTTP 403); use the dashboard workflow or a token with
+`actions:write` when triggering **Live validation campaign** from automation.
+
 Metadata engines (Oracle, SQL Server, MySQL, MariaDB, EDB) stay documentation-only
 until real Ansible roles exist. RHEL 9.8 / RHEL 10 HA versions remain pinned to
 the RHEL 9.7 tuple until Nutanix publishes Table 4 — see `ndb/2.11/REVIEW.md`.
